@@ -81,8 +81,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -104,12 +102,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              // On desktop, use Row layout; on mobile, use Column with scroll
-              if (isWide && constraints.maxHeight > 600) {
-                return _buildDesktopLayout(constraints);
-              } else {
-                return _buildMobileLayout(constraints);
+              final content = _buildFullscreenLayout(constraints);
+              if (constraints.maxHeight < 720) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: content,
+                  ),
+                );
               }
+              return content;
             },
           ),
         ),
@@ -117,59 +119,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
-  /// Desktop: Side-by-side banner + form (no scroll needed)
-  Widget _buildDesktopLayout(BoxConstraints constraints) {
-    return Row(
-      children: [
-        // Left: Large hero banner
-        Expanded(
-          flex: 1,
-          child: Center(
-            child: const BannerHeader.variantAuthHero(
-              showSubtitle: true,
-              subtitle: 'Your Trophy Community',
-            ),
-          ),
-        ),
-
-        // Right: Form card centered
-        Expanded(
-          flex: 1,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xxl),
-                child: _buildFormCard(),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Mobile: Vertical stack with scroll
-  Widget _buildMobileLayout(BoxConstraints constraints) {
-    return SingleChildScrollView(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minHeight: constraints.maxHeight,
-        ),
+  Widget _buildFullscreenLayout(BoxConstraints constraints) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+      child: IntrinsicHeight(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const SizedBox(height: AppSpacing.xl),
-
             // Hero banner at top - large and dominant
             const BannerHeader.variantAuthHero(
               showSubtitle: true,
               subtitle: 'Your Trophy Community',
             ),
 
-            const SizedBox(height: AppSpacing.xxxl),
+            const Spacer(),
 
-            // Form card
+            // Form card centered
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.screenPadding,
@@ -180,7 +145,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
             ),
 
-            const SizedBox(height: AppSpacing.xxxl),
+            const Spacer(),
           ],
         ),
       ),
