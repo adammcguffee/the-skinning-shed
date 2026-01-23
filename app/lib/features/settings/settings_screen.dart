@@ -18,11 +18,9 @@ class SettingsScreen extends ConsumerWidget {
       children: [
         const SafeArea(
           bottom: false,
-          child: Column(
-            children: [
-              BannerHeader.page(),
-              SizedBox(height: AppSpacing.md),
-            ],
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+            child: BannerHeader.appTop(),
           ),
         ),
 

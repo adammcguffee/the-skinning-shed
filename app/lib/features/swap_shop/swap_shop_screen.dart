@@ -14,16 +14,22 @@ class SwapShopScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text('Swap Shop'),
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundGradient,
         ),
         child: CustomScrollView(
           slivers: [
+            const SliverToBoxAdapter(
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  child: BannerHeader.appTop(),
+                ),
+              ),
+            ),
+
             // Categories
             SliverToBoxAdapter(
               child: _CategoriesSection(),

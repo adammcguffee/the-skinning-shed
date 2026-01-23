@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/auth_service.dart';
+import 'package:shed/services/auth_preferences.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// 🔐 AUTH SCREEN - FULLSCREEN HERO LAYOUT
@@ -27,7 +28,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _isSignUp = false;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _keepSignedIn = true;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadKeepSignedIn();
+  }
+
+  Future<void> _loadKeepSignedIn() async {
+    final value = await AuthPreferences.getKeepSignedIn();
+    if (!mounted) return;
+    setState(() => _keepSignedIn = value);
+  }
 
   @override
   void dispose() {
@@ -45,6 +59,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
 
     try {
+      await AuthPreferences.setKeepSignedIn(_keepSignedIn);
       final authService = ref.read(authServiceProvider);
       AuthResult result;
 
@@ -267,7 +282,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 return null;
               },
             ),
-            const SizedBox(height: AppSpacing.xxl),
+            const SizedBox(height: AppSpacing.lg),
+
+            // Keep me signed in toggle
+            _KeepSignedInToggle(
+              value: _keepSignedIn,
+              onChanged: (value) => setState(() => _keepSignedIn = value),
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
 
             // Submit button
             AppButtonPrimary(
@@ -386,6 +409,54 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               horizontal: AppSpacing.lg,
               vertical: AppSpacing.lg,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KeepSignedInToggle extends StatelessWidget {
+  const _KeepSignedInToggle({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeColor: AppColors.accent,
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                'Keep me signed in',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                "If off, you'll be asked to sign in again after closing the app.",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
           ),
         ),
       ],

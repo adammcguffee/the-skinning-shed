@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_preferences.dart';
+
 /// Supabase client singleton.
 /// 
 /// Credentials are provided via --dart-define at build/run time:
@@ -44,6 +46,14 @@ class SupabaseService {
         authFlowType: AuthFlowType.pkce,
       ),
     );
+
+    final keepSignedIn = await AuthPreferences.getKeepSignedIn();
+    if (!keepSignedIn) {
+      final client = Supabase.instance.client;
+      if (client.auth.currentSession != null) {
+        await client.auth.signOut();
+      }
+    }
     
     _initialized = true;
   }

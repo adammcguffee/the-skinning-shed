@@ -171,11 +171,9 @@ class _ProfileHeader extends StatelessWidget {
         // Banner at very top
         SafeArea(
           bottom: false,
-          child: Column(
-            children: const [
-              BannerHeader.page(),
-              SizedBox(height: AppSpacing.md),
-            ],
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+            child: BannerHeader.appTop(),
           ),
         ),
 

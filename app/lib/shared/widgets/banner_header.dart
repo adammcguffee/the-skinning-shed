@@ -5,9 +5,9 @@ import 'package:shed/shared/branding/brand_assets.dart';
 /// 🏆 BANNER HEADER - THE SKINNING SHED
 ///
 /// Premium banner widget using official brand assets.
-/// Two variants:
+/// Variants:
 /// - authHero: Large hero banner for Auth screen (260/230/200px)
-/// - page: Page banner for Feed/Explore/Trophy (180/160/140px)
+/// - appTop: In-app top header (170/150/130px)
 ///
 /// RULES (NON-NEGOTIABLE):
 /// - Uses ONLY official assets from BrandAssets
@@ -23,8 +23,8 @@ class BannerHeader extends StatelessWidget {
   const BannerHeader.authHero({Key? key})
       : this._(variant: _BannerVariant.authHero);
 
-  /// Page banner for Feed, Explore, Trophy Wall - visually prominent
-  const BannerHeader.page({Key? key}) : this._(variant: _BannerVariant.page);
+  /// In-app top header (uses hero banner asset)
+  const BannerHeader.appTop({Key? key}) : this._(variant: _BannerVariant.appTop);
 
   final _BannerVariant variant;
 
@@ -37,24 +37,19 @@ class BannerHeader extends StatelessWidget {
 
         return SizedBox(
           width: double.infinity,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: config.maxWidth),
-              child: Padding(
+          child: Padding(
                 padding: EdgeInsets.symmetric(
                   vertical: config.verticalPadding,
-                  horizontal: AppSpacing.screenPadding,
+                  horizontal: config.horizontalPadding,
                 ),
-                child: Center(
-                  child: SizedBox(
-                    height: config.bannerHeight,
-                    child: Image.asset(
-                      config.assetPath,
-                      fit: BoxFit.contain,
-                      alignment: Alignment.center,
-                      filterQuality: FilterQuality.high,
-                    ),
-                  ),
+            child: Center(
+              child: SizedBox(
+                height: config.bannerHeight,
+                child: Image.asset(
+                  config.assetPath,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
             ),
@@ -74,14 +69,16 @@ class BannerHeader extends StatelessWidget {
           assetPath: BrandAssets.heroBanner,
           bannerHeight: isWide ? 260 : (isMedium ? 230 : 200),
           verticalPadding: isWide ? 40 : (isMedium ? 32 : 24),
-          maxWidth: isWide ? 1280 : 1100,
+          horizontalPadding: AppSpacing.screenPadding,
         );
-      case _BannerVariant.page:
+      case _BannerVariant.appTop:
+        // If a checkerboard appears here, the PNG has baked pixels.
+        // Do not process the image; replace the asset with a transparent PNG.
         return _BannerConfig(
-          assetPath: BrandAssets.pageBanner,
-          bannerHeight: isWide ? 180 : (isMedium ? 160 : 140),
-          verticalPadding: isWide ? 28 : (isMedium ? 24 : 20),
-          maxWidth: isWide ? 1200 : 1100,
+          assetPath: BrandAssets.heroBanner,
+          bannerHeight: isWide ? 170 : (isMedium ? 150 : 130),
+          verticalPadding: 0,
+          horizontalPadding: AppSpacing.sm,
         );
     }
   }
@@ -89,7 +86,7 @@ class BannerHeader extends StatelessWidget {
 
 enum _BannerVariant {
   authHero,
-  page,
+  appTop,
 }
 
 class _BannerConfig {
@@ -97,11 +94,11 @@ class _BannerConfig {
     required this.assetPath,
     required this.bannerHeight,
     required this.verticalPadding,
-    required this.maxWidth,
+    required this.horizontalPadding,
   });
 
   final String assetPath;
   final double bannerHeight;
   final double verticalPadding;
-  final double maxWidth;
+  final double horizontalPadding;
 }

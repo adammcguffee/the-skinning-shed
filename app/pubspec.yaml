@@ -34,6 +34,7 @@ dependencies:
   cached_network_image: ^3.4.1
   image_picker: ^1.2.1
   flutter_cache_manager: ^3.4.1
+  shared_preferences: ^2.3.2
   
   # UI
   cupertino_icons: ^1.0.8

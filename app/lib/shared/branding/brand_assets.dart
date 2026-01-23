@@ -20,8 +20,7 @@ abstract final class BrandAssets {
   /// Use with BannerHeader.authHero
   static const String heroBanner = 'assets/branding/banner_v2/hero_banner.png';
 
-  /// Smaller banner for Feed, Explore, Trophy Wall pages
-  /// Use with BannerHeader.page
+  /// Optional smaller banner (not used for in-app headers)
   static const String pageBanner = 'assets/branding/banner_v2/page_banner.png';
 
   /// Text wordmark only - "THE SKINNING SHED"

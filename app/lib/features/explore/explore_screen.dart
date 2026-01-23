@@ -71,11 +71,9 @@ class ExploreScreen extends StatelessWidget {
   Widget _buildHeader(BuildContext context, bool isWide) {
     return SafeArea(
       bottom: false,
-      child: Column(
-        children: const [
-          BannerHeader.page(),
-          SizedBox(height: AppSpacing.md),
-        ],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: BannerHeader.appTop(),
       ),
     );
   }

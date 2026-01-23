@@ -38,11 +38,9 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
         const SliverToBoxAdapter(
           child: SafeArea(
             bottom: false,
-            child: Column(
-              children: [
-                BannerHeader.page(),
-                SizedBox(height: AppSpacing.md),
-              ],
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: BannerHeader.appTop(),
             ),
           ),
         ),
