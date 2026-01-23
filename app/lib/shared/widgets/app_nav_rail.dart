@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
-import 'package:shed/shared/branding_assets.dart';
+import 'package:shed/shared/branding/brand_assets.dart';
 
 /// 🧭 PREMIUM NAVIGATION RAIL - 2025 DARK THEME
 ///
@@ -71,20 +71,22 @@ class AppNavRail extends StatelessWidget {
 
   Widget _buildBrandMark() {
     return Container(
-      width: 40,
-      height: 40,
+      width: 52,
+      height: 52,
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withOpacity(0.2),
-            blurRadius: 16,
+            color: AppColors.accent.withOpacity(0.15),
+            blurRadius: 20,
             spreadRadius: 2,
           ),
         ],
       ),
       child: Image.asset(
-        BrandingAssets.markIcon,
+        BrandAssets.crest,
         fit: BoxFit.contain,
+        alignment: Alignment.center,
         filterQuality: FilterQuality.high,
       ),
     );

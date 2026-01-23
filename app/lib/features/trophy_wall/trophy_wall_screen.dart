@@ -6,7 +6,6 @@ import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
-import 'package:shed/shared/widgets/app_banner_logo.dart';
 
 /// 🏆 TROPHY WALL SCREEN - 2025 CINEMATIC DARK THEME
 ///
@@ -172,9 +171,7 @@ class _ProfileHeader extends StatelessWidget {
         // Banner at very top
         SafeArea(
           bottom: false,
-          child: BannerHeader(
-            size: isWide ? BannerSize.medium : BannerSize.compact,
-          ),
+          child: const BannerHeader.variantPage(),
         ),
 
         // Profile content with gradient

@@ -5,7 +5,6 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
-import 'package:shed/shared/widgets/app_banner_logo.dart';
 
 /// 🏠 FEED SCREEN - 2025 CINEMATIC DARK THEME
 ///
@@ -93,8 +92,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Widget _buildHeader(BuildContext context, bool isWide) {
     return SafeArea(
       bottom: false,
-      child: BannerHeader(
-        size: isWide ? BannerSize.large : BannerSize.medium,
+      child: const BannerHeader.variantPage(
         showSubtitle: true,
         subtitle: 'Your Trophy Community',
       ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
-import 'package:shed/shared/branding_assets.dart';
 import 'app_nav_rail.dart';
 
 /// 🏗️ 2025 PREMIUM APP SCAFFOLD - DARK THEME

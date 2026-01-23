@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/widgets/widgets.dart';
-import 'package:shed/shared/widgets/app_banner_logo.dart';
 
 /// 🧭 EXPLORE SCREEN - 2025 CINEMATIC DARK THEME
 ///
@@ -72,8 +71,7 @@ class ExploreScreen extends StatelessWidget {
   Widget _buildHeader(BuildContext context, bool isWide) {
     return SafeArea(
       bottom: false,
-      child: BannerHeader(
-        size: isWide ? BannerSize.large : BannerSize.medium,
+      child: const BannerHeader.variantPage(
         showSubtitle: true,
         subtitle: 'Discover Species, Regions & More',
       ),

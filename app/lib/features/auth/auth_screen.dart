@@ -4,15 +4,14 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/auth_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
-import 'package:shed/shared/widgets/app_banner_logo.dart';
 
-/// 🔐 AUTH SCREEN - 2025 CINEMATIC DARK THEME
+/// 🔐 AUTH SCREEN - FULLSCREEN HERO LAYOUT
 ///
-/// Premium authentication with:
-/// - Hero-style banner with logo
-/// - Dark background with depth
-/// - Floating card above background
-/// - Modern input styling
+/// REQUIREMENTS:
+/// - FULL viewport height (no half screen)
+/// - Hero banner at top using BannerHeader.variantAuthHero
+/// - Centered sign-in card below
+/// - Maintain full height layout on desktop
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
 
@@ -81,61 +80,109 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // Background with gradient
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.primary.withOpacity(0.15),
-                    AppColors.background,
-                    AppColors.backgroundAlt,
-                  ],
-                  stops: const [0.0, 0.4, 1.0],
-                ),
+      body: Container(
+        // MUST fill full viewport height
+        constraints: BoxConstraints(minHeight: screenHeight),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.primary.withOpacity(0.2),
+              AppColors.background,
+              AppColors.backgroundAlt,
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // On desktop, use Row layout; on mobile, use Column with scroll
+              if (isWide && constraints.maxHeight > 600) {
+                return _buildDesktopLayout(constraints);
+              } else {
+                return _buildMobileLayout(constraints);
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Desktop: Side-by-side banner + form (no scroll needed)
+  Widget _buildDesktopLayout(BoxConstraints constraints) {
+    return Row(
+      children: [
+        // Left: Large hero banner
+        Expanded(
+          flex: 1,
+          child: Center(
+            child: const BannerHeader.variantAuthHero(
+              showSubtitle: true,
+              subtitle: 'Your Trophy Community',
+            ),
+          ),
+        ),
+
+        // Right: Form card centered
+        Expanded(
+          flex: 1,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.xxl),
+                child: _buildFormCard(),
               ),
             ),
           ),
+        ),
+      ],
+    );
+  }
 
-          // Content
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isWide ? AppSpacing.xxxxl : AppSpacing.screenPadding,
-                  vertical: AppSpacing.xxl,
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Hero banner logo
-                      const BannerHeader(
-                        size: BannerSize.hero,
-                        showSubtitle: true,
-                        subtitle: 'Your Trophy Community',
-                      ),
-                      const SizedBox(height: AppSpacing.xxxl),
+  /// Mobile: Vertical stack with scroll
+  Widget _buildMobileLayout(BoxConstraints constraints) {
+    return SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: constraints.maxHeight,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: AppSpacing.xl),
 
-                      // Form card
-                      _buildFormCard(),
-                    ],
-                  ),
-                ),
+            // Hero banner at top - large and dominant
+            const BannerHeader.variantAuthHero(
+              showSubtitle: true,
+              subtitle: 'Your Trophy Community',
+            ),
+
+            const SizedBox(height: AppSpacing.xxxl),
+
+            // Form card
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenPadding,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: _buildFormCard(),
               ),
             ),
-          ),
-        ],
+
+            const SizedBox(height: AppSpacing.xxxl),
+          ],
+        ),
       ),
     );
   }
@@ -153,6 +200,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Header
             Text(
