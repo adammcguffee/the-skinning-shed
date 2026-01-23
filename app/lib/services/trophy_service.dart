@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -339,9 +340,10 @@ class TrophyService {
     final storagePath = '$userId/$trophyId/$fileName';
     
     try {
+      final data = Uint8List.fromList(bytes);
       await _client.storage
           .from('trophy_photos')
-          .uploadBinary(storagePath, bytes, fileOptions: const FileOptions(
+          .uploadBinary(storagePath, data, fileOptions: const FileOptions(
             contentType: 'image/jpeg',
           ));
       

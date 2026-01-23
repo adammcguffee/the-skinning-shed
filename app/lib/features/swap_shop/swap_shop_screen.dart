@@ -128,7 +128,7 @@ class _ListingCardState extends State<_ListingCard> {
         onTap: () {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Viewing ${listing['title']}'),
+              content: Text('Viewing ${listing.$1}'),
               duration: const Duration(seconds: 1),
               action: SnackBarAction(
                 label: 'Contact',
