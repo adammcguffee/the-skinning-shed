@@ -126,17 +126,17 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
         ],
         InkWell(
           onTap: widget.enabled ? _showPicker : null,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
               vertical: AppSpacing.md,
             ),
             decoration: BoxDecoration(
-              color: widget.enabled ? Colors.white : AppColors.boneLight,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              color: widget.enabled ? Colors.white : AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
               border: Border.all(
-                color: _isOpen ? AppColors.forest : AppColors.borderLight,
+                color: _isOpen ? AppColors.primary : AppColors.border,
                 width: _isOpen ? 2 : 1,
               ),
             ),
@@ -147,14 +147,14 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
                     _getDisplayText(),
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: widget.value == null
-                          ? AppColors.charcoalLight
-                          : AppColors.charcoal,
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
                     ),
                   ),
                 ),
                 Icon(
                   _isOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textSecondary,
                 ),
               ],
             ),
@@ -181,7 +181,7 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppSpacing.radiusXl),
+              top: Radius.circular(AppSpacing.radiusModal),
             ),
           ),
           child: Column(
@@ -192,7 +192,7 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.borderLight,
+                  color: AppColors.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -274,7 +274,7 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
                           'No results found',
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.charcoalLight,
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -297,7 +297,7 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
     return ListTile(
       onTap: onTap,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
       ),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
@@ -307,13 +307,13 @@ class _PremiumDropdownState<T> extends State<PremiumDropdown<T>> {
         label,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-          color: isSelected ? AppColors.forest : AppColors.charcoal,
+          color: isSelected ? AppColors.primary : AppColors.textPrimary,
         ),
       ),
       trailing: isSelected
-          ? const Icon(Icons.check, color: AppColors.forest)
+          ? const Icon(Icons.check, color: AppColors.primary)
           : null,
-      tileColor: isSelected ? AppColors.forestLight.withOpacity(0.1) : null,
+      tileColor: isSelected ? AppColors.primaryContainer.withOpacity(0.1) : null,
     );
   }
 }

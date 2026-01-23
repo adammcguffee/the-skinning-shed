@@ -120,7 +120,7 @@ class _PostScreenState extends State<PostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bone,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Post Trophy'),
         leading: IconButton(
@@ -142,7 +142,7 @@ class _PostScreenState extends State<PostScreen> {
                       'Post',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: AppColors.forest,
+                        color: AppColors.primary,
                       ),
                     ),
             ),
@@ -225,7 +225,7 @@ class _PostScreenState extends State<PostScreen> {
         const SizedBox(height: AppSpacing.xs),
         InkWell(
           onTap: () => _showStateSelector(),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
@@ -233,8 +233,8 @@ class _PostScreenState extends State<PostScreen> {
             ),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(color: AppColors.borderLight),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
@@ -243,14 +243,14 @@ class _PostScreenState extends State<PostScreen> {
                     _selectedState?.name ?? 'Select state',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: _selectedState == null
-                          ? AppColors.charcoalLight
-                          : AppColors.charcoal,
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
                     ),
                   ),
                 ),
                 Icon(
                   Icons.arrow_drop_down_rounded,
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textSecondary,
                 ),
               ],
             ),
@@ -291,7 +291,7 @@ class _PostScreenState extends State<PostScreen> {
         const SizedBox(height: AppSpacing.xs),
         InkWell(
           onTap: _selectedState == null ? null : () => _showCountySelector(),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
@@ -299,10 +299,10 @@ class _PostScreenState extends State<PostScreen> {
             ),
             decoration: BoxDecoration(
               color: _selectedState == null 
-                  ? AppColors.boneLight 
+                  ? AppColors.surfaceAlt 
                   : Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(color: AppColors.borderLight),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
@@ -313,16 +313,16 @@ class _PostScreenState extends State<PostScreen> {
                         : _selectedCounty ?? 'Select county',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: _selectedCounty == null
-                          ? AppColors.charcoalLight
-                          : AppColors.charcoal,
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
                     ),
                   ),
                 ),
                 Icon(
                   Icons.arrow_drop_down_rounded,
                   color: _selectedState == null 
-                      ? AppColors.borderLight 
-                      : AppColors.charcoalLight,
+                      ? AppColors.border 
+                      : AppColors.textSecondary,
                 ),
               ],
             ),
@@ -333,7 +333,7 @@ class _PostScreenState extends State<PostScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               'County data loading...',
-              style: TextStyle(fontSize: 12, color: AppColors.charcoalLight),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           ),
       ],
@@ -368,7 +368,7 @@ class _PostScreenState extends State<PostScreen> {
         const SizedBox(height: AppSpacing.xs),
         InkWell(
           onTap: _selectDate,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
@@ -376,13 +376,13 @@ class _PostScreenState extends State<PostScreen> {
             ),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(color: AppColors.borderLight),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
                 Icon(Icons.calendar_today_rounded, 
-                     color: AppColors.charcoalLight, size: 20),
+                     color: AppColors.textSecondary, size: 20),
                 const SizedBox(width: AppSpacing.md),
                 Text(
                   _harvestDate != null
@@ -390,8 +390,8 @@ class _PostScreenState extends State<PostScreen> {
                       : 'Select date',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: _harvestDate == null
-                        ? AppColors.charcoalLight
-                        : AppColors.charcoal,
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
                   ),
                 ),
               ],
@@ -407,8 +407,8 @@ class _PostScreenState extends State<PostScreen> {
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderLight),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,7 +416,7 @@ class _PostScreenState extends State<PostScreen> {
           Row(
             children: [
               Icon(Icons.analytics_outlined, 
-                   color: AppColors.forest, size: 20),
+                   color: AppColors.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 'Species Stats',
@@ -430,7 +430,7 @@ class _PostScreenState extends State<PostScreen> {
                 ? 'Add ${_selectedCategory!}-specific stats like score, weight, etc.'
                 : 'Select a category to see specific stat fields.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.charcoalLight,
+              color: AppColors.textSecondary,
             ),
           ),
         ],
@@ -489,7 +489,7 @@ class _PhotoUploadSection extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: AppColors.borderLight,
+          color: AppColors.border,
           width: 2,
           strokeAlign: BorderSide.strokeAlignInside,
         ),
@@ -507,20 +507,20 @@ class _PhotoUploadSection extends StatelessWidget {
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: AppColors.forestLight.withValues(alpha: 0.15),
+                    color: AppColors.primaryContainer.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.add_a_photo_rounded,
                     size: 28,
-                    color: AppColors.forest,
+                    color: AppColors.primary,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
                   'Add Photos',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.forest,
+                    color: AppColors.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -528,7 +528,7 @@ class _PhotoUploadSection extends StatelessWidget {
                 Text(
                   'Tap to select trophy photos',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.charcoalLight,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -557,8 +557,8 @@ class _PhotoUploadSection extends StatelessWidget {
                     errorBuilder: (_, __, ___) => Container(
                       width: 140,
                       height: 140,
-                      color: AppColors.boneLight,
-                      child: Icon(Icons.image, color: AppColors.charcoalLight),
+                      color: AppColors.surfaceAlt,
+                      child: Icon(Icons.image, color: AppColors.textSecondary),
                     ),
                   )
                 : Image.file(
@@ -595,7 +595,7 @@ class _PhotoUploadSection extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.forest,
+                  color: AppColors.primary,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -620,7 +620,7 @@ class _PhotoUploadSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderLight, width: 2),
+        border: Border.all(color: AppColors.border, width: 2),
       ),
       child: Material(
         color: Colors.transparent,
@@ -633,13 +633,13 @@ class _PhotoUploadSection extends StatelessWidget {
               Icon(
                 Icons.add_rounded,
                 size: 32,
-                color: AppColors.forest,
+                color: AppColors.primary,
               ),
               const SizedBox(height: 4),
               Text(
                 'Add More',
                 style: TextStyle(
-                  color: AppColors.forest,
+                  color: AppColors.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -701,7 +701,7 @@ class _SearchableStateSheetState extends State<_SearchableStateSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.borderLight,
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -750,7 +750,7 @@ class _SearchableStateSheetState extends State<_SearchableStateSheet> {
                       title: Text(state.name),
                       subtitle: Text(state.code),
                       trailing: isSelected
-                          ? Icon(Icons.check_circle, color: AppColors.forest)
+                          ? Icon(Icons.check_circle, color: AppColors.primary)
                           : null,
                       selected: isSelected,
                       onTap: () => Navigator.pop(context, state),
@@ -833,7 +833,7 @@ class _SearchableCountySheetState extends State<_SearchableCountySheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.borderLight,
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -847,7 +847,7 @@ class _SearchableCountySheetState extends State<_SearchableCountySheet> {
               Text(
                 widget.stateName,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 16),
@@ -881,7 +881,7 @@ class _SearchableCountySheetState extends State<_SearchableCountySheet> {
                     ? Center(
                         child: Text(
                           'No counties found',
-                          style: TextStyle(color: AppColors.charcoalLight),
+                          style: TextStyle(color: AppColors.textSecondary),
                         ),
                       )
                     : ListView.builder(
@@ -894,7 +894,7 @@ class _SearchableCountySheetState extends State<_SearchableCountySheet> {
                           return ListTile(
                             title: Text(county),
                             trailing: isSelected
-                                ? Icon(Icons.check_circle, color: AppColors.forest)
+                                ? Icon(Icons.check_circle, color: AppColors.primary)
                                 : null,
                             selected: isSelected,
                             onTap: () => Navigator.pop(context, county),

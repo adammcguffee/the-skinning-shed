@@ -170,7 +170,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title.toUpperCase(),
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: AppColors.charcoalLight,
+          color: AppColors.textTertiary,
           letterSpacing: 1.2,
         ),
       ),
@@ -194,10 +194,10 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(icon, color: AppColors.charcoalLight),
+      leading: Icon(icon, color: AppColors.textTertiary),
       title: Text(title),
       subtitle: subtitle != null ? Text(subtitle!) : null,
-      trailing: const Icon(Icons.chevron_right, color: AppColors.charcoalLight),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textTertiary),
       onTap: onTap,
     );
   }

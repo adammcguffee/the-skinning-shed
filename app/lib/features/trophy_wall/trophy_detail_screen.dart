@@ -23,7 +23,7 @@ class TrophyDetailScreen extends StatelessWidget {
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                color: AppColors.boneLight,
+                color: AppColors.surfaceAlt,
                 child: const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -32,7 +32,7 @@ class TrophyDetailScreen extends StatelessWidget {
                       SizedBox(height: 8),
                       Text(
                         'Trophy Photo',
-                        style: TextStyle(color: AppColors.charcoalLight),
+                        style: TextStyle(color: AppColors.textTertiary),
                       ),
                     ],
                   ),
@@ -71,13 +71,13 @@ class TrophyDetailScreen extends StatelessWidget {
                           vertical: AppSpacing.xs,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.speciesDeer.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                          color: AppColors.categoryDeer.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
                         ),
                         child: Text(
                           '🦌 Deer',
                           style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: AppColors.speciesDeer,
+                            color: AppColors.categoryDeer,
                           ),
                         ),
                       ),
@@ -94,12 +94,12 @@ class TrophyDetailScreen extends StatelessWidget {
                   // Location
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 18, color: AppColors.charcoalLight),
+                      const Icon(Icons.location_on, size: 18, color: AppColors.textTertiary),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
                         'Texas • Travis County',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textTertiary,
                         ),
                       ),
                     ],
@@ -109,12 +109,12 @@ class TrophyDetailScreen extends StatelessWidget {
                   // Dates
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today, size: 18, color: AppColors.charcoalLight),
+                      const Icon(Icons.calendar_today, size: 18, color: AppColors.textTertiary),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
                         'Harvested: Jan 15, 2026 • Morning',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textTertiary,
                         ),
                       ),
                     ],
@@ -196,7 +196,7 @@ class _ReactionButton extends StatelessWidget {
       icon: Icon(icon, size: 20),
       label: Text('$label ($count)'),
       style: TextButton.styleFrom(
-        foregroundColor: AppColors.forest,
+        foregroundColor: AppColors.primary,
       ),
     );
   }
@@ -219,15 +219,15 @@ class _SectionCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.borderLight),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: AppColors.forest),
+              Icon(icon, size: 20, color: AppColors.primary),
               const SizedBox(width: AppSpacing.sm),
               Text(
                 title,
@@ -262,7 +262,7 @@ class _ConditionRow extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.charcoalLight,
+              color: AppColors.textTertiary,
             ),
           ),
           Text(
@@ -284,15 +284,15 @@ class _UserTile extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.borderLight),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+        border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: AppColors.forestLight.withOpacity(0.2),
-            child: const Icon(Icons.person, color: AppColors.forest),
+            backgroundColor: AppColors.primaryContainer.withOpacity(0.2),
+            child: const Icon(Icons.person, color: AppColors.primary),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(

@@ -51,13 +51,13 @@ class SwapShopScreen extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.boneLight,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(color: AppColors.borderLight),
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, size: 20, color: AppColors.charcoalLight),
+                const Icon(Icons.info_outline, size: 20, color: AppColors.textTertiary),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
@@ -99,7 +99,7 @@ class SwapShopScreen extends StatelessWidget {
             child: Text(
               'More listings coming soon!',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.charcoalLight),
+              style: TextStyle(color: AppColors.textTertiary),
             ),
           ),
         ],
@@ -140,7 +140,7 @@ class SwapShopScreen extends StatelessWidget {
         onTap: () {
           // TODO: Navigate to listing detail
         },
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(
@@ -150,13 +150,13 @@ class SwapShopScreen extends StatelessWidget {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: AppColors.boneLight,
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
                 ),
                 child: const Icon(
                   Icons.image,
                   size: 32,
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textTertiary,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -172,13 +172,13 @@ class SwapShopScreen extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.forestLight.withOpacity(0.1),
+                        color: AppColors.primaryContainer.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         category,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.forest,
+                          color: AppColors.primary,
                         ),
                       ),
                     ),
@@ -193,7 +193,7 @@ class SwapShopScreen extends StatelessWidget {
                     Text(
                       price,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppColors.forest,
+                        color: AppColors.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -203,7 +203,7 @@ class SwapShopScreen extends StatelessWidget {
                         const Icon(
                           Icons.location_on,
                           size: 14,
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textTertiary,
                         ),
                         const SizedBox(width: 4),
                         Expanded(
@@ -245,16 +245,16 @@ class _CategoryChip extends StatelessWidget {
         selected: isSelected,
         onSelected: (selected) {},
         backgroundColor: Colors.white,
-        selectedColor: AppColors.forestLight.withOpacity(0.2),
-        checkmarkColor: AppColors.forest,
+        selectedColor: AppColors.primaryContainer.withOpacity(0.2),
+        checkmarkColor: AppColors.primary,
         labelStyle: TextStyle(
-          color: isSelected ? AppColors.forest : AppColors.charcoal,
+          color: isSelected ? AppColors.primary : AppColors.textPrimary,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
           side: BorderSide(
-            color: isSelected ? AppColors.forest : AppColors.borderLight,
+            color: isSelected ? AppColors.primary : AppColors.border,
           ),
         ),
       ),
@@ -274,7 +274,7 @@ class _SwapShopFilterSheet extends StatelessWidget {
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppSpacing.radiusXl),
+              top: Radius.circular(AppSpacing.radiusModal),
             ),
           ),
           child: ListView(
@@ -286,7 +286,7 @@ class _SwapShopFilterSheet extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.borderLight,
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

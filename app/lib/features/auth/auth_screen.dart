@@ -88,7 +88,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              AppColors.bone,
+              AppColors.background,
               Color(0xFFF5F3EE),
             ],
           ),
@@ -140,7 +140,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   ? 'Join the community' 
                                   : 'Sign in to continue',
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: AppColors.charcoalLight,
+                                color: AppColors.textSecondary,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -194,7 +194,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         child: Text(
                           'Continue without account (Dev Mode)',
                           style: TextStyle(
-                            color: AppColors.charcoalLight,
+                            color: AppColors.textSecondary,
                             fontSize: 13,
                           ),
                         ),
@@ -224,7 +224,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         Text(
           'Your hunting & fishing trophy journal',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: AppColors.charcoalLight,
+            color: AppColors.textSecondary,
           ),
         ),
       ],
@@ -254,7 +254,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               'Dev mode: Auth simulated without Supabase',
               style: TextStyle(
                 fontSize: 12,
-                color: AppColors.charcoal,
+                color: AppColors.textPrimary,
               ),
             ),
           ),
@@ -306,7 +306,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         hintText: 'you@example.com',
         prefixIcon: Icon(
           Icons.email_outlined,
-          color: AppColors.charcoalLight,
+          color: AppColors.textSecondary,
         ),
       ),
       validator: (value) {
@@ -331,14 +331,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         labelText: 'Password',
         prefixIcon: Icon(
           Icons.lock_outlined,
-          color: AppColors.charcoalLight,
+          color: AppColors.textSecondary,
         ),
         suffixIcon: IconButton(
           icon: Icon(
             _obscurePassword 
                 ? Icons.visibility_outlined 
                 : Icons.visibility_off_outlined,
-            color: AppColors.charcoalLight,
+            color: AppColors.textSecondary,
           ),
           onPressed: () {
             setState(() => _obscurePassword = !_obscurePassword);
@@ -368,7 +368,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         labelText: 'Confirm Password',
         prefixIcon: Icon(
           Icons.lock_outlined,
-          color: AppColors.charcoalLight,
+          color: AppColors.textSecondary,
         ),
       ),
       onFieldSubmitted: (_) => _submit(),
@@ -387,7 +387,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       child: ElevatedButton(
         onPressed: _isLoading ? null : _submit,
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.forest,
+          backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -433,12 +433,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               text: _isSignUp
                   ? 'Already have an account? '
                   : "Don't have an account? ",
-              style: TextStyle(color: AppColors.charcoalLight),
+              style: TextStyle(color: AppColors.textSecondary),
             ),
             TextSpan(
               text: _isSignUp ? 'Sign In' : 'Sign Up',
               style: TextStyle(
-                color: AppColors.forest,
+                color: AppColors.primary,
                 fontWeight: FontWeight.w600,
               ),
             ),

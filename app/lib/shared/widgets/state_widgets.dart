@@ -34,13 +34,13 @@ class EmptyState extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(AppSpacing.xl),
                 decoration: BoxDecoration(
-                  color: AppColors.boneLight,
+                  color: AppColors.surfaceAlt,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   icon,
                   size: 48,
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textTertiary,
                 ),
               ),
             if (icon != null) const SizedBox(height: AppSpacing.xl),
@@ -55,7 +55,7 @@ class EmptyState extends StatelessWidget {
             Text(
               message,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.charcoalLight,
+                color: AppColors.textTertiary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -117,7 +117,7 @@ class ErrorState extends StatelessWidget {
             Text(
               message,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.charcoalLight,
+                color: AppColors.textTertiary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -154,7 +154,7 @@ class LoadingState extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(
-              color: AppColors.forest,
+              color: AppColors.primary,
               strokeWidth: 3,
             ),
             if (message != null) ...[
@@ -162,7 +162,7 @@ class LoadingState extends StatelessWidget {
               Text(
                 message!,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textTertiary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -193,12 +193,12 @@ class CardSkeleton extends StatelessWidget {
         vertical: AppSpacing.cardMargin,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        side: const BorderSide(color: AppColors.borderLight, width: 1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+        side: const BorderSide(color: AppColors.border, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Shimmer.fromColors(
-        baseColor: AppColors.boneLight,
+        baseColor: AppColors.surfaceAlt,
         highlightColor: Colors.white,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

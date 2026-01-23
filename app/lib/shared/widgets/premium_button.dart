@@ -44,12 +44,12 @@ class PremiumButton extends StatelessWidget {
     return ElevatedButton(
       onPressed: isLoading ? null : onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.forest,
-        foregroundColor: AppColors.bone,
-        disabledBackgroundColor: AppColors.forestLight,
-        disabledForegroundColor: AppColors.bone.withOpacity(0.7),
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.onPrimary,
+        disabledBackgroundColor: AppColors.primaryContainer,
+        disabledForegroundColor: AppColors.onPrimary.withOpacity(0.7),
       ),
-      child: _buildContent(AppColors.bone),
+      child: _buildContent(AppColors.onPrimary),
     );
   }
 
@@ -57,10 +57,10 @@ class PremiumButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: isLoading ? null : onPressed,
       style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.forest,
-        side: const BorderSide(color: AppColors.forest, width: 1.5),
+        foregroundColor: AppColors.primary,
+        side: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
-      child: _buildContent(AppColors.forest),
+      child: _buildContent(AppColors.primary),
     );
   }
 
@@ -68,9 +68,9 @@ class PremiumButton extends StatelessWidget {
     return TextButton(
       onPressed: isLoading ? null : onPressed,
       style: TextButton.styleFrom(
-        foregroundColor: AppColors.forest,
+        foregroundColor: AppColors.primary,
       ),
-      child: _buildContent(AppColors.forest),
+      child: _buildContent(AppColors.primary),
     );
   }
 
@@ -127,8 +127,8 @@ class PremiumFAB extends StatelessWidget {
     if (isExtended && label != null) {
       return FloatingActionButton.extended(
         onPressed: onPressed,
-        backgroundColor: AppColors.forest,
-        foregroundColor: AppColors.bone,
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.onPrimary,
         icon: Icon(icon),
         label: Text(label!),
       );
@@ -136,8 +136,8 @@ class PremiumFAB extends StatelessWidget {
 
     return FloatingActionButton(
       onPressed: onPressed,
-      backgroundColor: AppColors.forest,
-      foregroundColor: AppColors.bone,
+      backgroundColor: AppColors.primary,
+      foregroundColor: AppColors.onPrimary,
       child: Icon(icon),
     );
   }

@@ -39,31 +39,31 @@ class ExploreScreen extends StatelessWidget {
               _SpeciesHub(
                 icon: '🦌',
                 label: 'Deer',
-                color: AppColors.speciesDeer,
+                color: AppColors.categoryDeer,
                 onTap: () {},
               ),
               _SpeciesHub(
                 icon: '🦃',
                 label: 'Turkey',
-                color: AppColors.speciesTurkey,
+                color: AppColors.categoryTurkey,
                 onTap: () {},
               ),
               _SpeciesHub(
                 icon: '🐟',
                 label: 'Bass',
-                color: AppColors.speciesBass,
+                color: AppColors.categoryBass,
                 onTap: () {},
               ),
               _SpeciesHub(
                 icon: '🎯',
                 label: 'Other Game',
-                color: AppColors.speciesOtherGame,
+                color: AppColors.categoryOtherGame,
                 onTap: () {},
               ),
               _SpeciesHub(
                 icon: '🎣',
                 label: 'Other Fishing',
-                color: AppColors.speciesOtherFishing,
+                color: AppColors.categoryOtherFishing,
                 onTap: () {},
               ),
             ],
@@ -104,7 +104,7 @@ class ExploreScreen extends StatelessWidget {
                 label: Text(state),
                 onPressed: () {},
                 backgroundColor: Colors.white,
-                side: const BorderSide(color: AppColors.borderLight),
+                side: const BorderSide(color: AppColors.border),
               );
             }).toList(),
           ),
@@ -150,14 +150,14 @@ class _SpeciesHub extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
             border: Border.all(color: color.withOpacity(0.3)),
           ),
           child: Column(
@@ -198,10 +198,10 @@ class _QuickLink extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
-            color: AppColors.forestLight.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            color: AppColors.primaryContainer.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
           ),
-          child: Icon(icon, color: AppColors.forest),
+          child: Icon(icon, color: AppColors.primary),
         ),
         title: Text(label),
         trailing: const Icon(Icons.chevron_right),

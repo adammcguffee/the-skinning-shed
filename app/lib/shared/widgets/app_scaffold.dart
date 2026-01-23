@@ -132,8 +132,8 @@ class AppScaffold extends StatelessWidget {
             Icon(
               isSelected ? item.selectedIcon : item.icon,
               color: isSelected
-                  ? AppColors.forest
-                  : AppColors.charcoalLight,
+                  ? AppColors.primary
+                  : AppColors.textTertiary,
               size: 24,
             ),
             const SizedBox(height: 4),
@@ -143,8 +143,8 @@ class AppScaffold extends StatelessWidget {
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected
-                    ? AppColors.forest
-                    : AppColors.charcoalLight,
+                    ? AppColors.primary
+                    : AppColors.textTertiary,
               ),
             ),
           ],
@@ -156,7 +156,7 @@ class AppScaffold extends StatelessWidget {
   Widget _buildFab(BuildContext context) {
     return FloatingActionButton(
       onPressed: () => _onPostTapped(context),
-      backgroundColor: AppColors.forest,
+      backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,
       elevation: 4,
       child: const Icon(Icons.add_rounded, size: 28),
@@ -174,7 +174,7 @@ class AppScaffold extends StatelessWidget {
               color: Theme.of(context).colorScheme.surface,
               border: Border(
                 right: BorderSide(
-                  color: AppColors.borderLight,
+                  color: AppColors.border,
                   width: 1,
                 ),
               ),
@@ -224,7 +224,7 @@ class AppScaffold extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Material(
-        color: AppColors.forest,
+        color: AppColors.primary,
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: () => _onPostTapped(context),
@@ -258,13 +258,13 @@ class AppScaffold extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               decoration: BoxDecoration(
                 color: isSelected 
-                    ? AppColors.forestLight.withValues(alpha: 0.15)
+                    ? AppColors.primaryContainer.withValues(alpha: 0.15)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
                 isSelected ? item.selectedIcon : item.icon,
-                color: isSelected ? AppColors.forest : AppColors.charcoalLight,
+                color: isSelected ? AppColors.primary : AppColors.textTertiary,
                 size: 24,
               ),
             ),
@@ -274,7 +274,7 @@ class AppScaffold extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? AppColors.forest : AppColors.charcoalLight,
+                color: isSelected ? AppColors.primary : AppColors.textTertiary,
               ),
             ),
           ],

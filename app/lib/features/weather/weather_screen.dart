@@ -123,12 +123,12 @@ class _WeatherScreenState extends State<WeatherScreen> {
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.boneLight,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
             ),
             child: Row(
               children: [
-                const Icon(Icons.privacy_tip, size: 20, color: AppColors.forest),
+                const Icon(Icons.privacy_tip, size: 20, color: AppColors.primary),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
@@ -200,9 +200,9 @@ class _WeatherScreenState extends State<WeatherScreen> {
           width: 120,
           height: 120,
           decoration: BoxDecoration(
-            color: AppColors.boneLight,
+            color: AppColors.surfaceAlt,
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.borderLight, width: 2),
+            border: Border.all(color: AppColors.border, width: 2),
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -226,7 +226,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                 child: const Icon(
                   Icons.navigation,
                   size: 40,
-                  color: AppColors.forest,
+                  color: AppColors.primary,
                 ),
               ),
             ],
@@ -242,14 +242,14 @@ class _WeatherScreenState extends State<WeatherScreen> {
               Text(
                 'NW',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: AppColors.forest,
+                  color: AppColors.primary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               Text(
                 'Northwest',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.charcoalLight,
+                  color: AppColors.textTertiary,
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -298,8 +298,8 @@ class _WeatherCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.borderLight),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,7 +340,7 @@ class _PlaceholderMessage extends StatelessWidget {
         message,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: AppColors.charcoalLight,
+          color: AppColors.textTertiary,
         ),
       ),
     );
@@ -362,7 +362,7 @@ class _ConditionItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: AppColors.forest),
+        Icon(icon, color: AppColors.primary),
         const SizedBox(height: AppSpacing.xs),
         Text(
           value,
@@ -423,13 +423,13 @@ class _ForecastDay extends StatelessWidget {
       children: [
         Text(day, style: Theme.of(context).textTheme.labelMedium),
         const SizedBox(height: AppSpacing.xs),
-        Icon(icon, color: AppColors.charcoalLight),
+        Icon(icon, color: AppColors.textTertiary),
         const SizedBox(height: AppSpacing.xs),
         Text(high, style: Theme.of(context).textTheme.titleSmall),
         Text(
           low,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppColors.charcoalLight,
+            color: AppColors.textTertiary,
           ),
         ),
       ],
@@ -458,10 +458,10 @@ class _ToolLink extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
-            color: AppColors.forestLight.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            color: AppColors.primaryContainer.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
           ),
-          child: Icon(icon, color: AppColors.forest),
+          child: Icon(icon, color: AppColors.primary),
         ),
         title: Text(title),
         subtitle: Text(subtitle),

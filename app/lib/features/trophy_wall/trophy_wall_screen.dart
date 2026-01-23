@@ -73,7 +73,7 @@ class TrophyWallScreen extends StatelessWidget {
               child: Text(
                 'Start posting trophies to build your Trophy Wall!',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.charcoalLight),
+                style: TextStyle(color: AppColors.textTertiary),
               ),
             ),
           ),
@@ -99,7 +99,7 @@ class TrophyWallScreen extends StatelessWidget {
   }) {
     return PremiumCard(
       placeholder: Container(
-        color: AppColors.boneLight,
+        color: AppColors.surfaceAlt,
         child: Center(
           child: Text(icon, style: const TextStyle(fontSize: 48)),
         ),
@@ -133,11 +133,11 @@ class _ProfileHeader extends StatelessWidget {
           // Avatar
           CircleAvatar(
             radius: 40,
-            backgroundColor: AppColors.forestLight.withOpacity(0.2),
+            backgroundColor: AppColors.primaryContainer.withOpacity(0.2),
             child: const Icon(
               Icons.person,
               size: 40,
-              color: AppColors.forest,
+              color: AppColors.primary,
             ),
           ),
           const SizedBox(width: AppSpacing.lg),
@@ -155,7 +155,7 @@ class _ProfileHeader extends StatelessWidget {
                 Text(
                   'Member since Jan 2026',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.charcoalLight,
+                    color: AppColors.textTertiary,
                   ),
                 ),
               ],
@@ -212,7 +212,7 @@ class _StatItem extends StatelessWidget {
         Text(
           value,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            color: AppColors.forest,
+            color: AppColors.primary,
             fontWeight: FontWeight.bold,
           ),
         ),

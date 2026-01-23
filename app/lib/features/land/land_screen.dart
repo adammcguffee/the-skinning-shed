@@ -38,9 +38,9 @@ class _LandScreenState extends State<LandScreen> with SingleTickerProviderStateM
             Tab(text: 'For Lease'),
             Tab(text: 'For Sale'),
           ],
-          labelColor: AppColors.forest,
-          unselectedLabelColor: AppColors.charcoalLight,
-          indicatorColor: AppColors.forest,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textTertiary,
+          indicatorColor: AppColors.primary,
         ),
         actions: [
           IconButton(
@@ -112,7 +112,7 @@ class _LandListingsList extends StatelessWidget {
           child: Text(
             'More land listings will appear here.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.charcoalLight),
+            style: TextStyle(color: AppColors.textTertiary),
           ),
         ),
       ],
@@ -129,16 +129,16 @@ class _LandListingsList extends StatelessWidget {
   }) {
     return PremiumCard(
       placeholder: Container(
-        color: AppColors.boneLight,
+        color: AppColors.surfaceAlt,
         child: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.terrain, size: 48, color: AppColors.forest),
+              Icon(Icons.terrain, size: 48, color: AppColors.primary),
               SizedBox(height: 8),
               Text(
                 'Property Photo',
-                style: TextStyle(color: AppColors.charcoalLight),
+                style: TextStyle(color: AppColors.textTertiary),
               ),
             ],
           ),
@@ -165,7 +165,7 @@ class _LandListingsList extends StatelessWidget {
                 labelStyle: const TextStyle(fontSize: 11),
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,
-                backgroundColor: AppColors.forestLight.withOpacity(0.1),
+                backgroundColor: AppColors.primaryContainer.withOpacity(0.1),
                 side: BorderSide.none,
               );
             }).toList(),
@@ -191,7 +191,7 @@ class _LandFilterSheet extends StatelessWidget {
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppSpacing.radiusXl),
+              top: Radius.circular(AppSpacing.radiusModal),
             ),
           ),
           child: ListView(
@@ -203,7 +203,7 @@ class _LandFilterSheet extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.borderLight,
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

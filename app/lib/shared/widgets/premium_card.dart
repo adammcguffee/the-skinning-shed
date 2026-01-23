@@ -55,9 +55,9 @@ class PremiumCard extends StatelessWidget {
         vertical: AppSpacing.cardMargin,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         side: showBorder
-            ? const BorderSide(color: AppColors.borderLight, width: 1)
+            ? const BorderSide(color: AppColors.border, width: 1)
             : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
@@ -99,7 +99,7 @@ class PremiumCard extends StatelessWidget {
                       Text(
                         subtitle!,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textSecondary,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -133,12 +133,12 @@ class PremiumCard extends StatelessWidget {
 
   Widget _buildPlaceholder() {
     return placeholder ?? Container(
-      color: AppColors.boneLight,
+      color: AppColors.surfaceAlt,
       child: const Center(
         child: Icon(
           Icons.image_outlined,
           size: 48,
-          color: AppColors.charcoalLight,
+          color: AppColors.textSecondary,
         ),
       ),
     );
@@ -146,11 +146,11 @@ class PremiumCard extends StatelessWidget {
 
   Widget _buildLoadingPlaceholder() {
     return Container(
-      color: AppColors.boneLight,
+      color: AppColors.surfaceAlt,
       child: const Center(
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppColors.forest,
+          color: AppColors.primary,
         ),
       ),
     );
@@ -179,14 +179,14 @@ class StatsStrip extends StatelessWidget {
               Icon(
                 item.icon,
                 size: 14,
-                color: AppColors.charcoalLight,
+                color: AppColors.textSecondary,
               ),
               const SizedBox(width: 4),
             ],
             Text(
               item.label,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppColors.charcoalLight,
+                color: AppColors.textSecondary,
               ),
             ),
           ],

@@ -24,16 +24,16 @@ class LandDetailScreen extends StatelessWidget {
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                color: AppColors.boneLight,
+                color: AppColors.surfaceAlt,
                 child: const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.terrain, size: 64, color: AppColors.forest),
+                      Icon(Icons.terrain, size: 64, color: AppColors.primary),
                       SizedBox(height: 8),
                       Text(
                         'Property Photo',
-                        style: TextStyle(color: AppColors.charcoalLight),
+                        style: TextStyle(color: AppColors.textTertiary),
                       ),
                     ],
                   ),
@@ -66,13 +66,13 @@ class LandDetailScreen extends StatelessWidget {
                       vertical: AppSpacing.xs,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.forest.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
                     ),
                     child: Text(
                       'FOR LEASE',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: AppColors.forest,
+                        color: AppColors.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -89,12 +89,12 @@ class LandDetailScreen extends StatelessWidget {
                   // Location
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 18, color: AppColors.charcoalLight),
+                      const Icon(Icons.location_on, size: 18, color: AppColors.textTertiary),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
                         'Texas • Travis County',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textTertiary,
                         ),
                       ),
                     ],
@@ -135,7 +135,7 @@ class LandDetailScreen extends StatelessWidget {
                     children: ['Whitetail Deer', 'Turkey', 'Hog', 'Dove'].map((s) {
                       return Chip(
                         label: Text(s),
-                        backgroundColor: AppColors.forestLight.withOpacity(0.1),
+                        backgroundColor: AppColors.primaryContainer.withOpacity(0.1),
                         side: BorderSide.none,
                       );
                     }).toList(),
@@ -162,7 +162,7 @@ class LandDetailScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(AppSpacing.md),
                     decoration: BoxDecoration(
                       color: AppColors.warning.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
                       border: Border.all(color: AppColors.warning.withOpacity(0.3)),
                     ),
                     child: Row(
@@ -219,15 +219,15 @@ class _DetailBox extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderLight),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: AppColors.charcoalLight),
+              Icon(icon, size: 16, color: AppColors.textTertiary),
               const SizedBox(width: AppSpacing.xs),
               Text(
                 label,
@@ -239,7 +239,7 @@ class _DetailBox extends StatelessWidget {
           Text(
             value,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: AppColors.forest,
+              color: AppColors.primary,
             ),
           ),
         ],

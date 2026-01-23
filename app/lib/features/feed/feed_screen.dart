@@ -24,7 +24,7 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bone,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: _buildAppBarTitle(context),
         actions: [
@@ -195,13 +195,13 @@ class _FeedScreenState extends State<FeedScreen> {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: AppColors.forestLight.withValues(alpha: 0.15),
+                color: AppColors.primaryContainer.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.emoji_events_outlined,
                 size: 48,
-                color: AppColors.forest,
+                color: AppColors.primary,
               ),
             ),
             const SizedBox(height: 24),
@@ -216,7 +216,7 @@ class _FeedScreenState extends State<FeedScreen> {
               'Be the first to share your hunting or fishing trophy with the community!',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.charcoalLight,
+                color: AppColors.textTertiary,
               ),
             ),
             const SizedBox(height: 32),
@@ -259,7 +259,7 @@ class _CategoryChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Material(
-        color: isSelected ? AppColors.forest : Colors.white,
+        color: isSelected ? AppColors.primary : Colors.white,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           onTap: onTap,
@@ -269,13 +269,13 @@ class _CategoryChip extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isSelected ? AppColors.forest : AppColors.borderLight,
+                color: isSelected ? AppColors.primary : AppColors.border,
               ),
             ),
             child: Text(
               icon != null ? '$icon $label' : label,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.charcoal,
+                color: isSelected ? Colors.white : AppColors.textPrimary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 fontSize: 14,
               ),
@@ -333,7 +333,7 @@ class _TrophyCard extends StatelessWidget {
               Container(
                 height: 200,
                 width: double.infinity,
-                color: AppColors.boneLight,
+                color: AppColors.surfaceAlt,
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -346,7 +346,7 @@ class _TrophyCard extends StatelessWidget {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.forest,
+                          color: AppColors.primary,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -383,7 +383,7 @@ class _TrophyCard extends StatelessWidget {
                         Text(
                           '@$userName',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.forest,
+                            color: AppColors.primary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -397,13 +397,13 @@ class _TrophyCard extends StatelessWidget {
                         Icon(
                           Icons.location_on_outlined,
                           size: 14,
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textTertiary,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           location,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.charcoalLight,
+                            color: AppColors.textTertiary,
                           ),
                         ),
                       ],
@@ -429,7 +429,7 @@ class _TrophyCard extends StatelessWidget {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.forestLight.withValues(alpha: 0.1),
+                        color: AppColors.primaryContainer.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
@@ -438,13 +438,13 @@ class _TrophyCard extends StatelessWidget {
                           Icon(
                             Icons.straighten_rounded,
                             size: 16,
-                            color: AppColors.forest,
+                            color: AppColors.primary,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             stats,
                             style: TextStyle(
-                              color: AppColors.forest,
+                              color: AppColors.primary,
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
                             ),
@@ -473,7 +473,7 @@ class _TrophyCard extends StatelessWidget {
                           icon: const Icon(Icons.share_outlined),
                           iconSize: 20,
                           onPressed: () {},
-                          color: AppColors.charcoalLight,
+                          color: AppColors.textTertiary,
                         ),
                       ],
                     ),
@@ -499,19 +499,19 @@ class _StatChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.boneLight,
+        color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: AppColors.charcoalLight),
+          Icon(icon, size: 12, color: AppColors.textTertiary),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
               fontSize: 11,
-              color: AppColors.charcoalLight,
+              color: AppColors.textTertiary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -541,13 +541,13 @@ class _ActionButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: AppColors.charcoalLight),
+            Icon(icon, size: 20, color: AppColors.textTertiary),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.charcoalLight,
+                color: AppColors.textTertiary,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -599,7 +599,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.borderLight,
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -677,7 +677,7 @@ class _FilterSheetState extends State<_FilterSheet> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.borderLight),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
@@ -686,12 +686,12 @@ class _FilterSheetState extends State<_FilterSheet> {
                     _selectedState?.name ?? 'All States',
                     style: TextStyle(
                       color: _selectedState == null
-                          ? AppColors.charcoalLight
-                          : AppColors.charcoal,
+                          ? AppColors.textTertiary
+                          : AppColors.textPrimary,
                     ),
                   ),
                 ),
-                Icon(Icons.arrow_drop_down, color: AppColors.charcoalLight),
+                Icon(Icons.arrow_drop_down, color: AppColors.textTertiary),
               ],
             ),
           ),
@@ -727,9 +727,9 @@ class _FilterSheetState extends State<_FilterSheet> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: _selectedState == null ? AppColors.boneLight : Colors.white,
+              color: _selectedState == null ? AppColors.surfaceAlt : Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.borderLight),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
@@ -739,11 +739,11 @@ class _FilterSheetState extends State<_FilterSheet> {
                         ? 'Select state first'
                         : (_selectedCounty ?? 'All Counties'),
                     style: TextStyle(
-                      color: AppColors.charcoalLight,
+                      color: AppColors.textTertiary,
                     ),
                   ),
                 ),
-                Icon(Icons.arrow_drop_down, color: AppColors.charcoalLight),
+                Icon(Icons.arrow_drop_down, color: AppColors.textTertiary),
               ],
             ),
           ),
@@ -818,7 +818,7 @@ class _StateSearchSheetState extends State<_StateSearchSheet> {
                       title: Text(state.name),
                       subtitle: Text(state.code),
                       trailing: state == widget.selected
-                          ? Icon(Icons.check, color: AppColors.forest)
+                          ? Icon(Icons.check, color: AppColors.primary)
                           : null,
                       onTap: () => Navigator.pop(context, state),
                     );
@@ -907,7 +907,7 @@ class _CountySearchSheetState extends State<_CountySearchSheet> {
                     return ListTile(
                       title: Text(county),
                       trailing: county == widget.selected
-                          ? Icon(Icons.check, color: AppColors.forest)
+                          ? Icon(Icons.check, color: AppColors.primary)
                           : null,
                       onTap: () => Navigator.pop(context, county),
                     );
