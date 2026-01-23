@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../shared/branding_assets.dart';
+import '../../shared/widgets/animated_entry.dart';
+import '../../shared/widgets/state_widgets.dart';
 
 /// 📱 MODERN FEED SCREEN
 /// 
@@ -22,7 +24,46 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen> {
   String? _selectedCategory;
-  final bool _showSampleData = true;
+  final bool _isLoading = false;
+  final bool _hasError = false;
+  final List<_FeedItem> _items = const [
+    _FeedItem(
+      species: 'Whitetail Deer',
+      speciesEmoji: '🦌',
+      category: 'Deer',
+      location: 'Texas • Travis County',
+      date: 'Jan 15, 2026',
+      stats: '142\" • Rifle • 8pt',
+      userName: 'Hunter_TX',
+      likes: 24,
+      comments: 5,
+      route: '/trophy/demo-1',
+    ),
+    _FeedItem(
+      species: 'Eastern Wild Turkey',
+      speciesEmoji: '🦃',
+      category: 'Turkey',
+      location: 'Alabama • Jefferson County',
+      date: 'Jan 12, 2026',
+      stats: '22 lbs • 10\" beard',
+      userName: 'GobblerGetter',
+      likes: 18,
+      comments: 3,
+      route: '/trophy/demo-2',
+    ),
+    _FeedItem(
+      species: 'Largemouth Bass',
+      speciesEmoji: '🐟',
+      category: 'Bass',
+      location: 'Florida • Lake County',
+      date: 'Jan 10, 2026',
+      stats: '8.2 lbs • 22\"',
+      userName: 'BassChaser',
+      likes: 31,
+      comments: 8,
+      route: '/trophy/demo-3',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +76,14 @@ class _FeedScreenState extends State<FeedScreen> {
           // Category filter chips
           _buildCategoryChips(),
           // Feed content
-          if (_showSampleData)
-            _buildFeedList()
+          if (_isLoading)
+            _buildLoadingState()
+          else if (_hasError)
+            _buildErrorState()
+          else if (_items.isEmpty)
+            _buildEmptyState()
           else
-            _buildEmptyState(),
+            _buildFeedList(),
           // Bottom padding
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
@@ -139,59 +184,57 @@ class _FeedScreenState extends State<FeedScreen> {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       sliver: SliverList(
-        delegate: SliverChildListDelegate([
-          _TrophyFeedCard(
-            imageUrl: null,
-            species: 'Whitetail Deer',
-            speciesEmoji: '🦌',
-            category: 'Deer',
-            location: 'Texas • Travis County',
-            date: 'Jan 15, 2026',
-            stats: '142" • Rifle • 8pt',
-            userName: 'Hunter_TX',
-            userAvatar: null,
-            likes: 24,
-            comments: 5,
-            onTap: () => context.push('/trophy/demo-1'),
-            onLike: () {},
-            onComment: () {},
-            onShare: () {},
-          ),
-          _TrophyFeedCard(
-            imageUrl: null,
-            species: 'Eastern Wild Turkey',
-            speciesEmoji: '🦃',
-            category: 'Turkey',
-            location: 'Alabama • Jefferson County',
-            date: 'Jan 12, 2026',
-            stats: '22 lbs • 10" beard',
-            userName: 'GobblerGetter',
-            userAvatar: null,
-            likes: 18,
-            comments: 3,
-            onTap: () => context.push('/trophy/demo-2'),
-            onLike: () {},
-            onComment: () {},
-            onShare: () {},
-          ),
-          _TrophyFeedCard(
-            imageUrl: null,
-            species: 'Largemouth Bass',
-            speciesEmoji: '🐟',
-            category: 'Bass',
-            location: 'Florida • Lake County',
-            date: 'Jan 10, 2026',
-            stats: '8.2 lbs • 22"',
-            userName: 'BassChaser',
-            userAvatar: null,
-            likes: 31,
-            comments: 8,
-            onTap: () => context.push('/trophy/demo-3'),
-            onLike: () {},
-            onComment: () {},
-            onShare: () {},
-          ),
-        ]),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final item = _items[index];
+            return AnimatedEntry(
+              delay: Duration(milliseconds: 50 * index),
+              child: _TrophyFeedCard(
+                imageUrl: item.imageUrl,
+                species: item.species,
+                speciesEmoji: item.speciesEmoji,
+                category: item.category,
+                location: item.location,
+                date: item.date,
+                stats: item.stats,
+                userName: item.userName,
+                userAvatar: item.userAvatar,
+                likes: item.likes,
+                comments: item.comments,
+                onTap: () => context.push(item.route),
+                onLike: () {},
+                onComment: () {},
+                onShare: () {},
+              ),
+            );
+          },
+          childCount: _items.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => const FeedCardSkeleton(),
+          childCount: 3,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: AnimatedEntry(
+        child: ErrorState(
+          title: 'Could not load feed',
+          message: 'Please check your connection and try again.',
+          onRetry: () {},
+        ),
       ),
     );
   }
@@ -199,45 +242,13 @@ class _FeedScreenState extends State<FeedScreen> {
   Widget _buildEmptyState() {
     return SliverFillRemaining(
       hasScrollBody: false,
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.emoji_events_rounded,
-                size: 40,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No Trophies Yet',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Be the first to share your harvest!',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => context.push('/post'),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Post Trophy'),
-            ),
-          ],
+      child: AnimatedEntry(
+        child: EmptyState(
+          icon: Icons.emoji_events_rounded,
+          title: 'No Trophies Yet',
+          message: 'Be the first to share your harvest.',
+          actionLabel: 'Post Trophy',
+          onAction: () => context.push('/post'),
         ),
       ),
     );
@@ -257,7 +268,7 @@ class _FeedScreenState extends State<FeedScreen> {
 // MODERN FEED CARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _TrophyFeedCard extends StatelessWidget {
+class _TrophyFeedCard extends StatefulWidget {
   const _TrophyFeedCard({
     required this.species,
     required this.speciesEmoji,
@@ -293,93 +304,106 @@ class _TrophyFeedCard extends StatelessWidget {
   final VoidCallback onShare;
 
   @override
+  State<_TrophyFeedCard> createState() => _TrophyFeedCardState();
+}
+
+class _TrophyFeedCardState extends State<_TrophyFeedCard> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image with species overlay
-              _buildImageSection(),
-              // Content section
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // User row
-                    _buildUserRow(context),
-                    const SizedBox(height: 12),
-                    // Species + stats
-                    Text(
-                      species,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      stats,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Location + date
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on_outlined,
-                          size: 14,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          location,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 14,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          date,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Action row
-                    _buildActionRow(context),
-                  ],
-                ),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        scale: _isHovered ? 1.01 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(_isHovered ? 0.06 : 0.03),
+                blurRadius: _isHovered ? 14 : 10,
+                offset: const Offset(0, 3),
               ),
             ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(16),
+              hoverColor: AppColors.primary.withOpacity(0.04),
+              splashColor: AppColors.primary.withOpacity(0.08),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildImageSection(),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildUserRow(context),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.species,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.stats,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              size: 14,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.location,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              size: 14,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.date,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildActionRow(context),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -394,8 +418,8 @@ class _TrophyFeedCard extends StatelessWidget {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           child: AspectRatio(
             aspectRatio: 4 / 3,
-            child: imageUrl != null
-                ? Image.network(imageUrl!, fit: BoxFit.cover)
+            child: widget.imageUrl != null
+                ? Image.network(widget.imageUrl!, fit: BoxFit.cover)
                 : Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -409,7 +433,7 @@ class _TrophyFeedCard extends StatelessWidget {
                     ),
                     child: Center(
                       child: Text(
-                        speciesEmoji,
+                        widget.speciesEmoji,
                         style: const TextStyle(fontSize: 64),
                       ),
                     ),
@@ -429,10 +453,10 @@ class _TrophyFeedCard extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(speciesEmoji, style: const TextStyle(fontSize: 14)),
+                Text(widget.speciesEmoji, style: const TextStyle(fontSize: 14)),
                 const SizedBox(width: 6),
                 Text(
-                  category,
+                  widget.category,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
@@ -453,10 +477,10 @@ class _TrophyFeedCard extends StatelessWidget {
         CircleAvatar(
           radius: 16,
           backgroundColor: AppColors.primary.withOpacity(0.1),
-          child: userAvatar != null
+          child: widget.userAvatar != null
               ? null
               : Text(
-                  userName[0].toUpperCase(),
+                  widget.userName[0].toUpperCase(),
                   style: const TextStyle(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w600,
@@ -466,7 +490,7 @@ class _TrophyFeedCard extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          userName,
+          widget.userName,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w500,
           ),
@@ -480,27 +504,27 @@ class _TrophyFeedCard extends StatelessWidget {
       children: [
         _ActionButton(
           icon: Icons.favorite_border_rounded,
-          label: likes.toString(),
-          onTap: onLike,
+          label: widget.likes.toString(),
+          onTap: widget.onLike,
         ),
         const SizedBox(width: 16),
         _ActionButton(
           icon: Icons.chat_bubble_outline_rounded,
-          label: comments.toString(),
-          onTap: onComment,
+          label: widget.comments.toString(),
+          onTap: widget.onComment,
         ),
         const SizedBox(width: 16),
         _ActionButton(
           icon: Icons.share_outlined,
           label: 'Share',
-          onTap: onShare,
+          onTap: widget.onShare,
         ),
       ],
     );
   }
 
   Color _getCategoryColor() {
-    switch (category.toLowerCase()) {
+    switch (widget.category.toLowerCase()) {
       case 'deer':
         return AppColors.categoryDeer;
       case 'turkey':
@@ -526,26 +550,61 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: AppColors.textSecondary),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: AppColors.textSecondary,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        hoverColor: AppColors.primary.withOpacity(0.06),
+        splashColor: AppColors.primary.withOpacity(0.1),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _FeedItem {
+  const _FeedItem({
+    required this.species,
+    required this.speciesEmoji,
+    required this.category,
+    required this.location,
+    required this.date,
+    required this.stats,
+    required this.userName,
+    required this.likes,
+    required this.comments,
+    required this.route,
+    this.imageUrl,
+    this.userAvatar,
+  });
+
+  final String species;
+  final String speciesEmoji;
+  final String category;
+  final String location;
+  final String date;
+  final String stats;
+  final String userName;
+  final int likes;
+  final int comments;
+  final String route;
+  final String? imageUrl;
+  final String? userAvatar;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -213,56 +213,62 @@ class _SpeciesHubCardState extends State<_SpeciesHubCard> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          // Navigate to species feed
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            color: _isHovered 
-                ? widget.data.color.withOpacity(0.15)
-                : widget.data.color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            // Navigate to species feed
+          },
+          borderRadius: BorderRadius.circular(16),
+          hoverColor: widget.data.color.withOpacity(0.06),
+          splashColor: widget.data.color.withOpacity(0.12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
               color: _isHovered 
-                  ? widget.data.color.withOpacity(0.4)
-                  : widget.data.color.withOpacity(0.2),
-              width: 1.5,
+                  ? widget.data.color.withOpacity(0.15)
+                  : widget.data.color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _isHovered 
+                    ? widget.data.color.withOpacity(0.4)
+                    : widget.data.color.withOpacity(0.2),
+                width: 1.5,
+              ),
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: widget.data.color.withOpacity(0.15),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
             ),
-            boxShadow: _isHovered
-                ? [
-                    BoxShadow(
-                      color: widget.data.color.withOpacity(0.15),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                widget.data.emoji,
-                style: TextStyle(fontSize: _isHovered ? 36 : 32),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.data.label,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: widget.data.color,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  widget.data.emoji,
+                  style: TextStyle(fontSize: _isHovered ? 36 : 32),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                widget.data.count,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textTertiary,
+                const SizedBox(height: 8),
+                Text(
+                  widget.data.label,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: widget.data.color,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  widget.data.count,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -304,67 +310,73 @@ class _DiscoverCardState extends State<_DiscoverCard> {
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: _isHovered 
-                    ? widget.color.withOpacity(0.3) 
-                    : AppColors.border.withOpacity(0.5),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(14),
+            hoverColor: widget.color.withOpacity(0.06),
+            splashColor: widget.color.withOpacity(0.1),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _isHovered 
+                      ? widget.color.withOpacity(0.3) 
+                      : AppColors.border.withOpacity(0.5),
+                ),
+                boxShadow: _isHovered
+                    ? [
+                        BoxShadow(
+                          color: widget.color.withOpacity(0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: widget.color.withOpacity(0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
-                    borderRadius: BorderRadius.circular(12),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(widget.icon, color: widget.color, size: 24),
                   ),
-                  child: Icon(widget.icon, color: widget.color, size: 24),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.title,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.subtitle,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: _isHovered ? widget.color : AppColors.textTertiary,
-                ),
-              ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: _isHovered ? widget.color : AppColors.textTertiary,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -394,26 +406,32 @@ class _StateChipState extends State<_StateChip> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          // Navigate to state feed
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: _isHovered ? AppColors.primary.withOpacity(0.1) : AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: _isHovered ? AppColors.primary : AppColors.border,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            // Navigate to state feed
+          },
+          borderRadius: BorderRadius.circular(20),
+          hoverColor: AppColors.primary.withOpacity(0.06),
+          splashColor: AppColors.primary.withOpacity(0.1),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: _isHovered ? AppColors.primary.withOpacity(0.1) : AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _isHovered ? AppColors.primary : AppColors.border,
+              ),
             ),
-          ),
-          child: Text(
-            widget.label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: _isHovered ? AppColors.primary : AppColors.textPrimary,
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _isHovered ? AppColors.primary : AppColors.textPrimary,
+              ),
             ),
           ),
         ),

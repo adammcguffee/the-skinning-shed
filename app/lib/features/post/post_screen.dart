@@ -9,6 +9,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../data/us_counties.dart';
 import '../../data/us_states.dart';
+import '../../shared/widgets/animated_entry.dart';
 
 /// 📝 MODERN POST TROPHY SCREEN
 /// 
@@ -151,7 +152,8 @@ class _PostScreenState extends State<PostScreen> {
               padding: const EdgeInsets.all(20),
               children: [
                 // Step 1: Photos
-                _SectionCard(
+                AnimatedEntry(
+                  child: _SectionCard(
                   number: 1,
                   title: 'Add Photos',
                   subtitle: 'Up to 5 photos',
@@ -161,11 +163,14 @@ class _PostScreenState extends State<PostScreen> {
                     onAddPhotos: _pickPhotos,
                     onRemovePhoto: _removePhoto,
                   ),
+                  ),
                 ),
                 const SizedBox(height: 16),
 
                 // Step 2: Category
-                _SectionCard(
+                AnimatedEntry(
+                  delay: const Duration(milliseconds: 60),
+                  child: _SectionCard(
                   number: 2,
                   title: 'Species Category',
                   isComplete: _selectedCategory != null,
@@ -173,11 +178,14 @@ class _PostScreenState extends State<PostScreen> {
                     selected: _selectedCategory,
                     onChanged: (v) => setState(() => _selectedCategory = v),
                   ),
+                  ),
                 ),
                 const SizedBox(height: 16),
 
                 // Step 3: Location
-                _SectionCard(
+                AnimatedEntry(
+                  delay: const Duration(milliseconds: 120),
+                  child: _SectionCard(
                   number: 3,
                   title: 'Location',
                   subtitle: 'County level only - we respect your privacy',
@@ -200,11 +208,14 @@ class _PostScreenState extends State<PostScreen> {
                       ),
                     ],
                   ),
+                  ),
                 ),
                 const SizedBox(height: 16),
 
                 // Step 4: Date & Story
-                _SectionCard(
+                AnimatedEntry(
+                  delay: const Duration(milliseconds: 180),
+                  child: _SectionCard(
                   number: 4,
                   title: 'Details',
                   isComplete: _harvestDate != null,
@@ -242,6 +253,7 @@ class _PostScreenState extends State<PostScreen> {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -490,38 +502,44 @@ class _PhotoGrid extends StatelessWidget {
         children: [
           // Add button
           if (photos.length < 5)
-            GestureDetector(
-              onTap: onAddPhotos,
-              child: Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.primary.withOpacity(0.3),
-                    width: 2,
-                    strokeAlign: BorderSide.strokeAlignInside,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onAddPhotos,
+                borderRadius: BorderRadius.circular(12),
+                hoverColor: AppColors.primary.withOpacity(0.06),
+                splashColor: AppColors.primary.withOpacity(0.12),
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.primary.withOpacity(0.3),
+                      width: 2,
+                      strokeAlign: BorderSide.strokeAlignInside,
+                    ),
                   ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_photo_alternate_rounded,
-                      color: AppColors.primary,
-                      size: 28,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Add',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_rounded,
                         color: AppColors.primary,
+                        size: 28,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'Add',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -604,32 +622,38 @@ class _CategorySelector extends StatelessWidget {
       runSpacing: 8,
       children: _categories.map((cat) {
         final isSelected = selected == cat.$2;
-        return GestureDetector(
-          onTap: () => onChanged(cat.$2),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected ? cat.$3.withOpacity(0.15) : AppColors.surfaceAlt,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? cat.$3 : AppColors.border,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(cat.$1, style: const TextStyle(fontSize: 18)),
-                const SizedBox(width: 8),
-                Text(
-                  cat.$2,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected ? cat.$3 : AppColors.textPrimary,
-                  ),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => onChanged(cat.$2),
+            borderRadius: BorderRadius.circular(12),
+            hoverColor: cat.$3.withOpacity(0.08),
+            splashColor: cat.$3.withOpacity(0.12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected ? cat.$3.withOpacity(0.15) : AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? cat.$3 : AppColors.border,
+                  width: isSelected ? 2 : 1,
                 ),
-              ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(cat.$1, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Text(
+                    cat.$2,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected ? cat.$3 : AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -661,46 +685,52 @@ class _SelectField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: enabled ? Colors.white : AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 20, color: AppColors.textSecondary),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.textTertiary,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        hoverColor: AppColors.primary.withOpacity(0.06),
+        splashColor: AppColors.primary.withOpacity(0.1),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: enabled ? Colors.white : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: AppColors.textSecondary),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value ?? hint,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
+                    const SizedBox(height: 2),
+                    Text(
+                      value ?? hint,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
-            ),
-          ],
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
+              ),
+            ],
+          ),
         ),
       ),
     );

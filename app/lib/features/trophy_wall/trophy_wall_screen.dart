@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../shared/widgets/animated_entry.dart';
+import '../../shared/widgets/state_widgets.dart';
 
 /// 🏆 PREMIUM TROPHY WALL
 /// 
@@ -11,14 +13,27 @@ import '../../app/theme/app_spacing.dart';
 /// - Stat pills (trophies, species counts)
 /// - Season cards/timeline
 /// - Trophy grid
-class TrophyWallScreen extends StatelessWidget {
+class TrophyWallScreen extends StatefulWidget {
   const TrophyWallScreen({
     super.key,
     this.userId,
   });
 
   final String? userId;
-  bool get _isCurrentUser => userId == null;
+
+  @override
+  State<TrophyWallScreen> createState() => _TrophyWallScreenState();
+}
+
+class _TrophyWallScreenState extends State<TrophyWallScreen> {
+  final bool _isLoading = false;
+  final bool _hasError = false;
+  final List<_TrophyData> _trophies = const [
+    _TrophyData('🦌', 'Whitetail Deer', 'Texas • Travis County', 'Jan 15, 2026'),
+    _TrophyData('🦃', 'Eastern Turkey', 'Alabama • Jefferson County', 'Jan 12, 2026'),
+  ];
+
+  bool get _isCurrentUser => widget.userId == null;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +68,14 @@ class TrophyWallScreen extends StatelessWidget {
           // Season selector
           SliverToBoxAdapter(child: _SeasonSelector()),
           // Trophy grid
-          _buildTrophyGrid(context),
+          if (_isLoading)
+            _buildLoadingGrid()
+          else if (_hasError)
+            _buildErrorState()
+          else if (_trophies.isEmpty)
+            _buildEmptyState()
+          else
+            _buildTrophyGrid(context),
           // Bottom padding
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
@@ -71,18 +93,6 @@ class TrophyWallScreen extends StatelessWidget {
   }
 
   Widget _buildTrophyGrid(BuildContext context) {
-    final trophies = [
-      _TrophyData('🦌', 'Whitetail Deer', 'Texas • Travis County', 'Jan 15, 2026'),
-      _TrophyData('🦃', 'Eastern Turkey', 'Alabama • Jefferson County', 'Jan 12, 2026'),
-    ];
-
-    if (trophies.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _EmptyTrophies(isCurrentUser: _isCurrentUser),
-      );
-    }
-
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       sliver: SliverGrid(
@@ -93,8 +103,59 @@ class TrophyWallScreen extends StatelessWidget {
           childAspectRatio: 1.1,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _TrophyCard(data: trophies[index]),
-          childCount: trophies.length,
+          (context, index) => AnimatedEntry(
+            delay: Duration(milliseconds: 40 * index),
+            child: _TrophyCard(data: _trophies[index]),
+          ),
+          childCount: _trophies.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingGrid() {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 400,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 1.1,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => const GridCardSkeleton(),
+          childCount: 4,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: AnimatedEntry(
+        child: ErrorState(
+          title: 'Could not load Trophy Wall',
+          message: 'Please check your connection and try again.',
+          onRetry: () {},
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: AnimatedEntry(
+        child: EmptyState(
+          icon: Icons.emoji_events_outlined,
+          title: 'No Trophies Yet',
+          message: _isCurrentUser
+              ? 'Post your first trophy to start building your wall.'
+              : 'This hunter hasn\'t posted any trophies yet.',
+          actionLabel: _isCurrentUser ? 'Post Trophy' : null,
+          onAction: _isCurrentUser ? () => context.push('/post') : null,
         ),
       ),
     );
@@ -414,96 +475,102 @@ class _TrophyCardState extends State<_TrophyCard> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => context.push('/trophy/demo'),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: _isHovered 
-                  ? AppColors.primary.withOpacity(0.3) 
-                  : AppColors.border.withOpacity(0.5),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => context.push('/trophy/demo'),
+          borderRadius: BorderRadius.circular(16),
+          hoverColor: AppColors.primary.withOpacity(0.06),
+          splashColor: AppColors.primary.withOpacity(0.1),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _isHovered 
+                    ? AppColors.primary.withOpacity(0.3) 
+                    : AppColors.border.withOpacity(0.5),
+              ),
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
             ),
-            boxShadow: _isHovered
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Image area
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                     ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image area
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  ),
-                  child: Center(
-                    child: AnimatedScale(
-                      duration: const Duration(milliseconds: 200),
-                      scale: _isHovered ? 1.1 : 1.0,
-                      child: Text(
-                        widget.data.emoji,
-                        style: const TextStyle(fontSize: 56),
+                    child: Center(
+                      child: AnimatedScale(
+                        duration: const Duration(milliseconds: 200),
+                        scale: _isHovered ? 1.1 : 1.0,
+                        child: Text(
+                          widget.data.emoji,
+                          style: const TextStyle(fontSize: 56),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              // Info
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.data.species,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+                // Info
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.data.species,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on_outlined,
-                          size: 12,
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 12,
+                            color: AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              widget.data.location,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppColors.textTertiary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.data.date,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppColors.textTertiary,
                         ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            widget.data.location,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.textTertiary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.data.date,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textTertiary,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -511,61 +578,3 @@ class _TrophyCardState extends State<_TrophyCard> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// EMPTY STATE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _EmptyTrophies extends StatelessWidget {
-  const _EmptyTrophies({required this.isCurrentUser});
-  final bool isCurrentUser;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.emoji_events_outlined,
-              size: 40,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'No Trophies Yet',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            isCurrentUser
-                ? 'Post your first trophy to start building your wall!'
-                : 'This hunter hasn\'t posted any trophies yet.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          if (isCurrentUser) ...[
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => context.push('/post'),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Post Trophy'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}

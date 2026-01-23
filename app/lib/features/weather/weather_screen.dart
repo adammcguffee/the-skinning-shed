@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../data/us_states.dart';
+import '../../shared/widgets/animated_entry.dart';
 
 /// 🌤️ MODERN WEATHER & TOOLS SCREEN
 /// 
@@ -65,13 +66,21 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
                 // Current conditions
                 if (_hasLocation) ...[
-                  _CurrentConditions(),
+                  AnimatedEntry(
+                    child: _CurrentConditions(),
+                  ),
                   const SizedBox(height: 16),
-                  _WindCard(),
+                  AnimatedEntry(
+                    delay: const Duration(milliseconds: 60),
+                    child: _WindCard(),
+                  ),
                   const SizedBox(height: 16),
-                  _ForecastCard(),
+                  AnimatedEntry(
+                    delay: const Duration(milliseconds: 120),
+                    child: _ForecastCard(),
+                  ),
                 ] else
-                  _LocationPrompt(),
+                  AnimatedEntry(child: _LocationPrompt()),
 
                 const SizedBox(height: 32),
 
@@ -230,42 +239,48 @@ class _DropdownButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: enabled ? Colors.white : AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.textTertiary,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(10),
+        hoverColor: AppColors.primary.withOpacity(0.06),
+        splashColor: AppColors.primary.withOpacity(0.1),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: enabled ? Colors.white : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value ?? hint,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
+                    const SizedBox(height: 2),
+                    Text(
+                      value ?? hint,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
-            ),
-          ],
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -670,67 +685,73 @@ class _ToolCardState extends State<_ToolCard> {
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: _isHovered 
-                    ? widget.color.withOpacity(0.3) 
-                    : AppColors.border.withOpacity(0.5),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(14),
+            hoverColor: widget.color.withOpacity(0.06),
+            splashColor: widget.color.withOpacity(0.1),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _isHovered 
+                      ? widget.color.withOpacity(0.3) 
+                      : AppColors.border.withOpacity(0.5),
+                ),
+                boxShadow: _isHovered
+                    ? [
+                        BoxShadow(
+                          color: widget.color.withOpacity(0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: widget.color.withOpacity(0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
-                    borderRadius: BorderRadius.circular(12),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(widget.icon, color: widget.color, size: 24),
                   ),
-                  child: Icon(widget.icon, color: widget.color, size: 24),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.title,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.subtitle,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: _isHovered ? widget.color : AppColors.textTertiary,
-                ),
-              ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: _isHovered ? widget.color : AppColors.textTertiary,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

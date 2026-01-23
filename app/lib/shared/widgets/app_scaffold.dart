@@ -117,40 +117,45 @@ class AppScaffold extends StatelessWidget {
 
   Widget _buildMobileNavItem(BuildContext context, int index, bool isSelected) {
     final item = _navItems[index];
-    return GestureDetector(
-      onTap: () => _onItemTapped(context, index),
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 64,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: isSelected 
-                    ? AppColors.primary.withOpacity(0.12) 
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
+    return SizedBox(
+      width: 64,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _onItemTapped(context, index),
+          borderRadius: BorderRadius.circular(20),
+          hoverColor: AppColors.primary.withOpacity(0.06),
+          splashColor: AppColors.primary.withOpacity(0.12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected 
+                      ? AppColors.primary.withOpacity(0.12) 
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  isSelected ? item.selectedIcon : item.icon,
+                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                  size: 22,
+                ),
               ),
-              child: Icon(
-                isSelected ? item.selectedIcon : item.icon,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                size: 22,
+              const SizedBox(height: 2),
+              Text(
+                item.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                  letterSpacing: 0.1,
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                letterSpacing: 0.1,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -251,23 +256,29 @@ class AppScaffold extends StatelessWidget {
   Widget _buildRailPostButton(BuildContext context) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _onPostTapped(context),
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _onPostTapped(context),
+          borderRadius: BorderRadius.circular(14),
+          hoverColor: Colors.white.withOpacity(0.08),
+          splashColor: Colors.white.withOpacity(0.12),
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withOpacity(0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
           ),
-          child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
         ),
       ),
     );
@@ -279,25 +290,31 @@ class AppScaffold extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => _onItemTapped(context, index),
-          child: Tooltip(
-            message: item.label,
-            preferBelow: false,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isSelected 
-                    ? AppColors.primary.withOpacity(0.12) 
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                isSelected ? item.selectedIcon : item.icon,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                size: 22,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _onItemTapped(context, index),
+            borderRadius: BorderRadius.circular(14),
+            hoverColor: AppColors.primary.withOpacity(0.06),
+            splashColor: AppColors.primary.withOpacity(0.12),
+            child: Tooltip(
+              message: item.label,
+              preferBelow: false,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isSelected 
+                      ? AppColors.primary.withOpacity(0.12) 
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isSelected ? item.selectedIcon : item.icon,
+                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                  size: 22,
+                ),
               ),
             ),
           ),
@@ -309,22 +326,24 @@ class AppScaffold extends StatelessWidget {
   Widget _buildRailSettingsButton(BuildContext context) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => context.go('/settings'),
-        child: Tooltip(
-          message: 'Settings',
-          preferBelow: false,
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.settings_outlined,
-              color: AppColors.textTertiary,
-              size: 22,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => context.go('/settings'),
+          borderRadius: BorderRadius.circular(14),
+          hoverColor: AppColors.primary.withOpacity(0.06),
+          splashColor: AppColors.primary.withOpacity(0.12),
+          child: Tooltip(
+            message: 'Settings',
+            preferBelow: false,
+            child: const SizedBox(
+              width: 48,
+              height: 48,
+              child: Icon(
+                Icons.settings_outlined,
+                color: AppColors.textTertiary,
+                size: 22,
+              ),
             ),
           ),
         ),
