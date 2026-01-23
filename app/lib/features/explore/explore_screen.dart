@@ -4,9 +4,13 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
-/// 🧭 EXPLORE SCREEN - 2025 PREMIUM
+/// 🧭 EXPLORE SCREEN - 2025 CINEMATIC DARK THEME
 ///
-/// Discovery hub with modern cards and clear hierarchy.
+/// Visual discovery gallery with:
+/// - Banner logo header
+/// - Visual species tiles with images
+/// - Quick link cards
+/// - Trending section
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({super.key});
 
@@ -15,70 +19,81 @@ class ExploreScreen extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-    return Column(
-      children: [
-        // Top bar (web only)
-        if (isWide)
-          AppTopBar(
-            title: 'Explore',
-            subtitle: 'Discover species, regions & more',
-            onSearch: () {},
-          ),
+    return CustomScrollView(
+      slivers: [
+        // Banner header
+        SliverToBoxAdapter(
+          child: _buildHeader(context, isWide),
+        ),
 
-        // Content
-        Expanded(
-          child: CustomScrollView(
-            slivers: [
-              // Mobile header
-              if (!isWide)
-                const SliverToBoxAdapter(
-                  child: AppPageHeader(
-                    title: 'Explore',
-                    subtitle: 'Discover species, regions & more',
-                  ),
-                ),
-
-              // Species section
-              SliverToBoxAdapter(
-                child: _SectionHeader(
-                  title: 'Browse by Species',
-                  onSeeAll: () {},
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _SpeciesGrid(isWide: isWide),
-              ),
-
-              // Quick links section
-              SliverToBoxAdapter(
-                child: _SectionHeader(
-                  title: 'Quick Links',
-                  onSeeAll: null,
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _QuickLinksGrid(isWide: isWide),
-              ),
-
-              // Trending section
-              SliverToBoxAdapter(
-                child: _SectionHeader(
-                  title: 'Trending This Week',
-                  onSeeAll: () {},
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _TrendingList(),
-              ),
-
-              // Bottom padding
-              const SliverToBoxAdapter(
-                child: SizedBox(height: 100),
-              ),
-            ],
+        // Species section - visual tiles
+        SliverToBoxAdapter(
+          child: _SectionHeader(
+            title: 'Browse by Species',
+            onSeeAll: () {},
           ),
         ),
+        SliverToBoxAdapter(
+          child: _SpeciesGrid(isWide: isWide),
+        ),
+
+        // Quick links section
+        SliverToBoxAdapter(
+          child: _SectionHeader(
+            title: 'Quick Links',
+            onSeeAll: null,
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _QuickLinksGrid(isWide: isWide),
+        ),
+
+        // Trending section
+        SliverToBoxAdapter(
+          child: _SectionHeader(
+            title: 'Trending This Week',
+            trailing: _TrendingBadge(),
+            onSeeAll: () {},
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _TrendingList(),
+        ),
+
+        // Bottom padding
+        const SliverToBoxAdapter(
+          child: SizedBox(height: 100),
+        ),
       ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, bool isWide) {
+    return Container(
+      padding: EdgeInsets.only(
+        top: isWide ? AppSpacing.xxl : MediaQuery.of(context).padding.top + AppSpacing.lg,
+        bottom: AppSpacing.lg,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.background,
+            AppColors.backgroundAlt,
+          ],
+        ),
+      ),
+      child: Column(
+        children: [
+          // Banner
+          AppBannerLogo(
+            size: isWide ? AppBannerSize.medium : AppBannerSize.small,
+            showSubtitle: true,
+            subtitle: 'Discover Species, Regions & More',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -86,10 +101,12 @@ class ExploreScreen extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
+    this.trailing,
     this.onSeeAll,
   });
 
   final String title;
+  final Widget? trailing;
   final VoidCallback? onSeeAll;
 
   @override
@@ -105,14 +122,77 @@ class _SectionHeader extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: AppSpacing.sm),
+            trailing!,
+          ],
           const Spacer(),
           if (onSeeAll != null)
-            TextButton(
-              onPressed: onSeeAll,
-              child: const Text('See all'),
+            GestureDetector(
+              onTap: onSeeAll,
+              child: Row(
+                children: [
+                  Text(
+                    'See all',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: AppColors.accent,
+                  ),
+                ],
+              ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrendingBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(
+          color: AppColors.accent.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.local_fire_department_rounded,
+            size: 14,
+            color: AppColors.accent,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Hot',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.accent,
+            ),
+          ),
         ],
       ),
     );
@@ -129,27 +209,31 @@ class _SpeciesGrid extends StatelessWidget {
     final species = [
       _SpeciesData(
         name: 'Whitetail Deer',
-        icon: Icons.pets_rounded,
+        icon: Icons.nature_rounded,
         color: AppColors.categoryDeer,
         count: 1247,
+        imageHint: 'deer',
       ),
       _SpeciesData(
         name: 'Turkey',
-        icon: Icons.flutter_dash_rounded,
+        icon: Icons.egg_rounded,
         color: AppColors.categoryTurkey,
         count: 856,
+        imageHint: 'turkey',
       ),
       _SpeciesData(
         name: 'Largemouth Bass',
         icon: Icons.water_rounded,
         color: AppColors.categoryBass,
         count: 623,
+        imageHint: 'bass',
       ),
       _SpeciesData(
         name: 'Other Game',
         icon: Icons.forest_rounded,
         color: AppColors.categoryOtherGame,
         count: 412,
+        imageHint: 'game',
       ),
     ];
 
@@ -162,7 +246,7 @@ class _SpeciesGrid extends StatelessWidget {
           crossAxisCount: isWide ? 4 : 2,
           mainAxisSpacing: AppSpacing.gridGap,
           crossAxisSpacing: AppSpacing.gridGap,
-          childAspectRatio: isWide ? 1.3 : 1.1,
+          childAspectRatio: isWide ? 1.0 : 0.9,
         ),
         itemCount: species.length,
         itemBuilder: (context, index) => _SpeciesCard(data: species[index]),
@@ -177,12 +261,14 @@ class _SpeciesData {
     required this.icon,
     required this.color,
     required this.count,
+    required this.imageHint,
   });
 
   final String name;
   final IconData icon;
   final Color color;
   final int count;
+  final String imageHint;
 }
 
 class _SpeciesCard extends StatefulWidget {
@@ -206,31 +292,76 @@ class _SpeciesCardState extends State<_SpeciesCard> {
       child: GestureDetector(
         onTap: () {},
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 250),
           transform: _isHovered
-              ? (Matrix4.identity()..scale(1.02))
+              ? (Matrix4.identity()..translate(0.0, -4.0))
               : Matrix4.identity(),
-          transformAlignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             border: Border.all(
-              color: _isHovered ? widget.data.color.withOpacity(0.3) : AppColors.borderSubtle,
+              color: _isHovered
+                  ? widget.data.color.withOpacity(0.5)
+                  : AppColors.borderSubtle,
+              width: _isHovered ? 1.5 : 1,
             ),
-            boxShadow: _isHovered ? AppColors.shadowElevated : AppColors.shadowCard,
+            boxShadow: _isHovered
+                ? [
+                    BoxShadow(
+                      color: widget.data.color.withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : AppColors.shadowCard,
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Icon
-                Container(
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Background gradient (simulating image)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      widget.data.color.withOpacity(0.3),
+                      AppColors.surface,
+                      AppColors.background,
+                    ],
+                  ),
+                ),
+              ),
+
+              // Pattern overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        AppColors.background.withOpacity(0.9),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Icon (top)
+              Positioned(
+                top: AppSpacing.lg,
+                right: AppSpacing.lg,
+                child: Container(
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: widget.data.color.withOpacity(0.12),
+                    color: widget.data.color.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    border: Border.all(
+                      color: widget.data.color.withOpacity(0.3),
+                    ),
                   ),
                   child: Icon(
                     widget.data.icon,
@@ -238,24 +369,53 @@ class _SpeciesCardState extends State<_SpeciesCard> {
                     size: 24,
                   ),
                 ),
-                const Spacer(),
+              ),
 
-                // Name
-                Text(
-                  widget.data.name,
-                  style: Theme.of(context).textTheme.titleSmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              // Content (bottom)
+              Positioned(
+                bottom: AppSpacing.cardPadding,
+                left: AppSpacing.cardPadding,
+                right: AppSpacing.cardPadding,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.data.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm,
+                            vertical: AppSpacing.xxs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: widget.data.color.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                          ),
+                          child: Text(
+                            '${widget.data.count} posts',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: widget.data.color,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-
-                // Count
-                Text(
-                  '${widget.data.count} posts',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -368,12 +528,13 @@ class _QuickLinkCardState extends State<_QuickLinkCard> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    gradient: _isHovered ? AppColors.accentGradient : null,
+                    color: _isHovered ? null : AppColors.accent.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                   ),
                   child: Icon(
                     widget.data.icon,
-                    color: AppColors.primary,
+                    color: _isHovered ? AppColors.textInverse : AppColors.accent,
                     size: 20,
                   ),
                 ),
@@ -387,13 +548,20 @@ class _QuickLinkCardState extends State<_QuickLinkCard> {
                     children: [
                       Text(
                         widget.data.title,
-                        style: Theme.of(context).textTheme.titleSmall,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         widget.data.subtitle,
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textTertiary,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -404,7 +572,7 @@ class _QuickLinkCardState extends State<_QuickLinkCard> {
                 // Arrow
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: _isHovered ? AppColors.textPrimary : AppColors.textTertiary,
+                  color: _isHovered ? AppColors.accent : AppColors.textTertiary,
                   size: 20,
                 ),
               ],
@@ -424,16 +592,19 @@ class _TrendingList extends StatelessWidget {
         title: '12-Point Buck in Texas',
         subtitle: 'Posted by @hunter_joe',
         likes: 234,
+        species: 'Whitetail Deer',
       ),
       _TrendingItem(
         title: 'Opening Day Turkey',
         subtitle: 'Posted by @wild_tom',
         likes: 189,
+        species: 'Turkey',
       ),
       _TrendingItem(
         title: 'Personal Best Bass',
         subtitle: 'Posted by @bass_master',
         likes: 156,
+        species: 'Bass',
       ),
     ];
 
@@ -453,11 +624,13 @@ class _TrendingItem {
     required this.title,
     required this.subtitle,
     required this.likes,
+    required this.species,
   });
 
   final String title;
   final String subtitle;
   final int likes;
+  final String species;
 }
 
 class _TrendingCard extends StatefulWidget {
@@ -471,6 +644,19 @@ class _TrendingCard extends StatefulWidget {
 
 class _TrendingCardState extends State<_TrendingCard> {
   bool _isHovered = false;
+
+  Color get _speciesColor {
+    switch (widget.data.species.toLowerCase()) {
+      case 'whitetail deer':
+        return AppColors.categoryDeer;
+      case 'turkey':
+        return AppColors.categoryTurkey;
+      case 'bass':
+        return AppColors.categoryBass;
+      default:
+        return AppColors.categoryOtherGame;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -490,20 +676,31 @@ class _TrendingCardState extends State<_TrendingCard> {
             border: Border.all(
               color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
             ),
+            boxShadow: _isHovered ? AppColors.shadowCard : null,
           ),
           child: Row(
             children: [
-              // Thumbnail placeholder
+              // Thumbnail
               Container(
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: AppColors.backgroundAlt,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      _speciesColor.withOpacity(0.3),
+                      AppColors.surface,
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  border: Border.all(
+                    color: _speciesColor.withOpacity(0.2),
+                  ),
                 ),
-                child: const Icon(
-                  Icons.image_outlined,
-                  color: AppColors.textTertiary,
+                child: Icon(
+                  Icons.image_rounded,
+                  color: _speciesColor.withOpacity(0.5),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -515,33 +712,54 @@ class _TrendingCardState extends State<_TrendingCard> {
                   children: [
                     Text(
                       widget.data.title,
-                      style: Theme.of(context).textTheme.titleSmall,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       widget.data.subtitle,
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              // Likes
-              Row(
-                children: [
-                  const Icon(
-                    Icons.favorite_rounded,
-                    size: 16,
-                    color: AppColors.error,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    widget.data.likes.toString(),
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ],
+              // Likes pill
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.favorite_rounded,
+                      size: 14,
+                      color: AppColors.error,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.data.likes.toString(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

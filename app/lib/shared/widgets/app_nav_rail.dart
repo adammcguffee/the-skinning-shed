@@ -3,20 +3,27 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/branding_assets.dart';
 
-/// A modern, slim navigation rail for web/tablet.
+/// 🧭 PREMIUM NAVIGATION RAIL - 2025 DARK THEME
+///
+/// Slim, icon-based nav rail with:
+/// - Minimal chrome
+/// - Icon mark branding
+/// - Floating post button
+/// - Active pill indicator
+/// - Hover effects
 class AppNavRail extends StatelessWidget {
   const AppNavRail({
     super.key,
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.destinations,
-    this.onPostTap,
+    required this.onPostTap,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final List<AppNavDestination> destinations;
-  final VoidCallback? onPostTap;
+  final VoidCallback onPostTap;
 
   @override
   Widget build(BuildContext context) {
@@ -28,61 +35,57 @@ class AppNavRail extends StatelessWidget {
           right: BorderSide(color: AppColors.borderSubtle),
         ),
       ),
-      child: Column(
-        children: [
-          // Logo
-          const SizedBox(height: AppSpacing.lg),
-          _NavLogo(),
-          const SizedBox(height: AppSpacing.xxl),
+      child: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: AppSpacing.xl),
 
-          // Navigation items
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              itemCount: destinations.length,
-              itemBuilder: (context, index) {
-                final dest = destinations[index];
-                final isSelected = index == selectedIndex;
-                return _NavItem(
-                  icon: dest.icon,
-                  selectedIcon: dest.selectedIcon,
-                  label: dest.label,
-                  isSelected: isSelected,
-                  onTap: () => onDestinationSelected(index),
-                );
-              },
-            ),
-          ),
+            // Logo/Brand mark
+            _buildBrandMark(),
 
-          // Post FAB
-          if (onPostTap != null) ...[
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: _PostButton(onTap: onPostTap!),
+            const SizedBox(height: AppSpacing.xxxl),
+
+            // Navigation items
+            Expanded(
+              child: Column(
+                children: [
+                  for (int i = 0; i < destinations.length; i++)
+                    _NavItem(
+                      destination: destinations[i],
+                      isSelected: i == selectedIndex,
+                      onTap: () => onDestinationSelected(i),
+                    ),
+                ],
+              ),
             ),
+
+            // Post button
+            _PostButton(onTap: onPostTap),
+
+            const SizedBox(height: AppSpacing.xxl),
           ],
-
-          const SizedBox(height: AppSpacing.lg),
-        ],
+        ),
       ),
     );
   }
-}
 
-class _NavLogo extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildBrandMark() {
     return Container(
-      width: 44,
-      height: 44,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
-        color: AppColors.backgroundAlt,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withOpacity(0.2),
+            blurRadius: 16,
+            spreadRadius: 2,
+          ),
+        ],
       ),
-      padding: const EdgeInsets.all(6),
       child: Image.asset(
         BrandingAssets.markIcon,
         fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
       ),
     );
   }
@@ -90,16 +93,12 @@ class _NavLogo extends StatelessWidget {
 
 class _NavItem extends StatefulWidget {
   const _NavItem({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
+    required this.destination,
     required this.isSelected,
     required this.onTap,
   });
 
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
+  final AppNavDestination destination;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -112,35 +111,57 @@ class _NavItemState extends State<_NavItem> {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: widget.label,
-      waitDuration: const Duration(milliseconds: 500),
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppSpacing.xs,
+        horizontal: AppSpacing.sm,
+      ),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            margin: const EdgeInsets.only(bottom: AppSpacing.xs),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: widget.isSelected
-                  ? AppColors.primary.withOpacity(0.1)
-                  : _isHovered
-                      ? AppColors.surfaceHover
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            ),
-            child: Center(
-              child: Icon(
-                widget.isSelected ? widget.selectedIcon : widget.icon,
-                size: 22,
+        child: Tooltip(
+          message: widget.destination.label,
+          preferBelow: false,
+          waitDuration: const Duration(milliseconds: 500),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            boxShadow: AppColors.shadowCard,
+          ),
+          textStyle: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
                 color: widget.isSelected
-                    ? AppColors.primary
+                    ? AppColors.accent.withOpacity(0.15)
                     : _isHovered
-                        ? AppColors.textPrimary
-                        : AppColors.textTertiary,
+                        ? AppColors.surfaceHover
+                        : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: widget.isSelected
+                    ? Border.all(color: AppColors.accent.withOpacity(0.3))
+                    : null,
+              ),
+              child: Center(
+                child: Icon(
+                  widget.isSelected
+                      ? widget.destination.selectedIcon
+                      : widget.destination.icon,
+                  size: 22,
+                  color: widget.isSelected
+                      ? AppColors.accent
+                      : _isHovered
+                          ? AppColors.textPrimary
+                          : AppColors.textTertiary,
+                ),
               ),
             ),
           ),
@@ -170,20 +191,23 @@ class _PostButtonState extends State<_PostButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 200),
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            gradient: _isHovered ? AppColors.primaryGradient : null,
-            color: _isHovered ? null : AppColors.primary,
+            gradient: AppColors.accentGradient,
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            boxShadow: _isHovered ? AppColors.shadowButton : null,
+            boxShadow: _isHovered ? AppColors.shadowAccent : AppColors.shadowButton,
           ),
+          transform: _isHovered
+              ? (Matrix4.identity()..scale(1.05))
+              : Matrix4.identity(),
+          transformAlignment: Alignment.center,
           child: const Center(
             child: Icon(
               Icons.add_rounded,
-              color: AppColors.textInverse,
               size: 24,
+              color: AppColors.textInverse,
             ),
           ),
         ),
@@ -192,7 +216,7 @@ class _PostButtonState extends State<_PostButton> {
   }
 }
 
-/// Navigation destination data.
+/// Navigation destination data
 class AppNavDestination {
   const AppNavDestination({
     required this.icon,

@@ -4,21 +4,21 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 import 'app_spacing.dart';
 
-/// 🎨 2025 PREMIUM THEME
-/// 
-/// Modern, tech-forward design system using Inter font family.
-/// Clean, tight typography with clear hierarchy.
+/// 🎨 2025 PREMIUM DARK THEME - THE SKINNING SHED
+///
+/// Cinematic outdoor aesthetic with deep forest greens.
+/// Inter font family - clean, modern, highly legible.
 class AppTheme {
   AppTheme._();
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LIGHT THEME
+  // DARK THEME (PRIMARY)
   // ════════════════════════════════════════════════════════════════════════════
 
-  static ThemeData get light => ThemeData(
+  static ThemeData get dark => ThemeData(
     useMaterial3: true,
-    brightness: Brightness.light,
-    colorScheme: _lightColorScheme,
+    brightness: Brightness.dark,
+    colorScheme: _darkColorScheme,
     textTheme: _textTheme,
     scaffoldBackgroundColor: AppColors.background,
     appBarTheme: _appBarTheme,
@@ -36,15 +36,22 @@ class AppTheme {
     dialogTheme: _dialogThemeData,
     bottomSheetTheme: _bottomSheetTheme,
     snackBarTheme: _snackBarTheme,
+    iconTheme: const IconThemeData(
+      color: AppColors.textSecondary,
+      size: 22,
+    ),
   );
+
+  /// Legacy light theme - redirects to dark for consistency
+  static ThemeData get light => dark;
 
   // ════════════════════════════════════════════════════════════════════════════
   // COLOR SCHEME
   // ════════════════════════════════════════════════════════════════════════════
 
-  static const ColorScheme _lightColorScheme = ColorScheme.light(
+  static const ColorScheme _darkColorScheme = ColorScheme.dark(
     primary: AppColors.primary,
-    onPrimary: AppColors.textInverse,
+    onPrimary: AppColors.textPrimary,
     primaryContainer: AppColors.primaryMuted,
     secondary: AppColors.accent,
     onSecondary: AppColors.textInverse,
@@ -53,20 +60,20 @@ class AppTheme {
     onSurface: AppColors.textPrimary,
     surfaceContainerHighest: AppColors.surfaceHover,
     error: AppColors.error,
-    onError: AppColors.textInverse,
+    onError: AppColors.textPrimary,
     outline: AppColors.border,
     outlineVariant: AppColors.borderSubtle,
   );
 
   // ════════════════════════════════════════════════════════════════════════════
-  // TYPOGRAPHY (Inter - Modern, Clean)
+  // TYPOGRAPHY (Inter - Clean, Modern, Premium)
   // ════════════════════════════════════════════════════════════════════════════
 
   static TextTheme get _textTheme {
     final base = GoogleFonts.interTextTheme();
-    
+
     return base.copyWith(
-      // Display - Hero text
+      // Display - Hero text, banners
       displayLarge: GoogleFonts.inter(
         fontSize: 48,
         fontWeight: FontWeight.w700,
@@ -89,53 +96,53 @@ class AppTheme {
         color: AppColors.textPrimary,
       ),
 
-      // Headlines - Page titles
+      // Headlines - Page titles (28-32px semibold)
       headlineLarge: GoogleFonts.inter(
-        fontSize: 28,
+        fontSize: 32,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
-        height: 1.25,
+        height: 1.2,
         color: AppColors.textPrimary,
       ),
       headlineMedium: GoogleFonts.inter(
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.3,
-        height: 1.3,
+        height: 1.25,
         color: AppColors.textPrimary,
       ),
       headlineSmall: GoogleFonts.inter(
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.2,
-        height: 1.35,
+        height: 1.3,
         color: AppColors.textPrimary,
       ),
 
-      // Titles - Section headers
+      // Titles - Section headers (18-20px)
       titleLarge: GoogleFonts.inter(
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.1,
-        height: 1.4,
+        height: 1.35,
         color: AppColors.textPrimary,
       ),
       titleMedium: GoogleFonts.inter(
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         height: 1.4,
         color: AppColors.textPrimary,
       ),
       titleSmall: GoogleFonts.inter(
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         height: 1.4,
         color: AppColors.textPrimary,
       ),
 
-      // Body - Content text
+      // Body - Content text (14-16px)
       bodyLarge: GoogleFonts.inter(
         fontSize: 16,
         fontWeight: FontWeight.w400,
@@ -158,7 +165,7 @@ class AppTheme {
         color: AppColors.textTertiary,
       ),
 
-      // Labels - UI elements
+      // Labels - UI elements, metadata (12-13px)
       labelLarge: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w500,
@@ -188,13 +195,13 @@ class AppTheme {
   // ════════════════════════════════════════════════════════════════════════════
 
   static AppBarTheme get _appBarTheme => AppBarTheme(
-    backgroundColor: AppColors.surface,
+    backgroundColor: Colors.transparent,
     surfaceTintColor: Colors.transparent,
     elevation: 0,
     scrolledUnderElevation: 0,
     centerTitle: false,
     titleTextStyle: GoogleFonts.inter(
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: FontWeight.w600,
       color: AppColors.textPrimary,
     ),
@@ -217,7 +224,7 @@ class AppTheme {
   static ElevatedButtonThemeData get _elevatedButtonTheme => ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
       backgroundColor: AppColors.primary,
-      foregroundColor: AppColors.textInverse,
+      foregroundColor: AppColors.textPrimary,
       elevation: 0,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       minimumSize: const Size(0, AppSpacing.buttonHeightMd),
@@ -251,7 +258,7 @@ class AppTheme {
 
   static TextButtonThemeData get _textButtonTheme => TextButtonThemeData(
     style: TextButton.styleFrom(
-      foregroundColor: AppColors.primary,
+      foregroundColor: AppColors.accent,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
@@ -267,7 +274,7 @@ class AppTheme {
   static FilledButtonThemeData get _filledButtonTheme => FilledButtonThemeData(
     style: FilledButton.styleFrom(
       backgroundColor: AppColors.primary,
-      foregroundColor: AppColors.textInverse,
+      foregroundColor: AppColors.textPrimary,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       minimumSize: const Size(0, AppSpacing.buttonHeightMd),
       shape: RoundedRectangleBorder(
@@ -283,7 +290,7 @@ class AppTheme {
 
   static InputDecorationTheme get _inputDecorationTheme => InputDecorationTheme(
     filled: true,
-    fillColor: AppColors.surface,
+    fillColor: AppColors.surfaceElevated,
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -295,7 +302,7 @@ class AppTheme {
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+      borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
     ),
     errorBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -313,10 +320,11 @@ class AppTheme {
 
   static ChipThemeData get _chipTheme => ChipThemeData(
     backgroundColor: AppColors.surfaceHover,
-    selectedColor: AppColors.primary.withOpacity(0.12),
+    selectedColor: AppColors.accent.withOpacity(0.2),
     labelStyle: GoogleFonts.inter(
       fontSize: 13,
       fontWeight: FontWeight.w500,
+      color: AppColors.textPrimary,
     ),
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     shape: RoundedRectangleBorder(
@@ -333,7 +341,7 @@ class AppTheme {
 
   static BottomNavigationBarThemeData get _bottomNavTheme => BottomNavigationBarThemeData(
     backgroundColor: AppColors.surface,
-    selectedItemColor: AppColors.primary,
+    selectedItemColor: AppColors.accent,
     unselectedItemColor: AppColors.textTertiary,
     type: BottomNavigationBarType.fixed,
     elevation: 0,
@@ -349,26 +357,26 @@ class AppTheme {
 
   static NavigationRailThemeData get _navRailTheme => NavigationRailThemeData(
     backgroundColor: AppColors.surface,
-    selectedIconTheme: const IconThemeData(color: AppColors.primary, size: 22),
+    selectedIconTheme: const IconThemeData(color: AppColors.accent, size: 22),
     unselectedIconTheme: const IconThemeData(color: AppColors.textTertiary, size: 22),
     selectedLabelTextStyle: GoogleFonts.inter(
       fontSize: 11,
       fontWeight: FontWeight.w600,
-      color: AppColors.primary,
+      color: AppColors.accent,
     ),
     unselectedLabelTextStyle: GoogleFonts.inter(
       fontSize: 11,
       fontWeight: FontWeight.w500,
       color: AppColors.textTertiary,
     ),
-    indicatorColor: AppColors.primary.withOpacity(0.12),
+    indicatorColor: AppColors.accent.withOpacity(0.15),
     indicatorShape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
     ),
   );
 
   static FloatingActionButtonThemeData get _fabTheme => FloatingActionButtonThemeData(
-    backgroundColor: AppColors.primary,
+    backgroundColor: AppColors.accent,
     foregroundColor: AppColors.textInverse,
     elevation: 0,
     focusElevation: 0,
@@ -380,7 +388,7 @@ class AppTheme {
   );
 
   static DialogThemeData get _dialogThemeData => DialogThemeData(
-    backgroundColor: AppColors.surface,
+    backgroundColor: AppColors.surfaceElevated,
     elevation: 0,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
@@ -393,7 +401,7 @@ class AppTheme {
   );
 
   static BottomSheetThemeData get _bottomSheetTheme => BottomSheetThemeData(
-    backgroundColor: AppColors.surface,
+    backgroundColor: AppColors.surfaceElevated,
     elevation: 0,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusXl)),
@@ -401,10 +409,10 @@ class AppTheme {
   );
 
   static SnackBarThemeData get _snackBarTheme => SnackBarThemeData(
-    backgroundColor: AppColors.textPrimary,
+    backgroundColor: AppColors.surfaceElevated,
     contentTextStyle: GoogleFonts.inter(
       fontSize: 14,
-      color: AppColors.textInverse,
+      color: AppColors.textPrimary,
     ),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),

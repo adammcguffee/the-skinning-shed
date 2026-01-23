@@ -1,4 +1,5 @@
-// 2025 Premium Component System
+// 2025 Premium Dark Theme Component System
+export 'app_banner_logo.dart';
 export 'app_buttons.dart';
 export 'app_card.dart';
 export 'app_chip.dart';

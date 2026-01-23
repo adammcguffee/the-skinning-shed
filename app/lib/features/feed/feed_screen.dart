@@ -4,12 +4,16 @@ import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/trophy_service.dart';
-import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/shared/widgets/app_banner_logo.dart';
 
-/// 🏠 FEED SCREEN - 2025 PREMIUM
+/// 🏠 FEED SCREEN - 2025 CINEMATIC DARK THEME
 ///
-/// Image-first grid feed with modern cards.
+/// Image-first grid feed matching the premium reference:
+/// - Large banner logo at top
+/// - Category filter tabs
+/// - Cinematic image cards with overlays
+/// - Rich depth and hover effects
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -21,6 +25,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   List<Map<String, dynamic>> _trophies = [];
   bool _isLoading = true;
   String? _error;
+  String _selectedCategory = 'all';
+
+  final List<_CategoryTab> _categories = const [
+    _CategoryTab(id: 'all', label: 'All', icon: Icons.grid_view_rounded),
+    _CategoryTab(id: 'deer', label: 'Deer', icon: Icons.nature_rounded),
+    _CategoryTab(id: 'turkey', label: 'Turkey', icon: Icons.egg_rounded),
+    _CategoryTab(id: 'bass', label: 'Bass', icon: Icons.water_rounded),
+    _CategoryTab(id: 'other', label: 'Other', icon: Icons.more_horiz_rounded),
+  ];
 
   @override
   void initState() {
@@ -54,22 +67,80 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-    return Column(
-      children: [
-        // Top bar (web only)
-        if (isWide)
-          AppTopBar(
-            title: 'Feed',
-            subtitle: 'Latest from the community',
-            onSearch: () {},
-            onFilter: () => _showFilterSheet(context),
-          ),
+    return CustomScrollView(
+      slivers: [
+        // Banner header
+        SliverToBoxAdapter(
+          child: _buildHeader(context, isWide),
+        ),
+
+        // Category tabs
+        SliverToBoxAdapter(
+          child: _buildCategoryTabs(),
+        ),
 
         // Content
-        Expanded(
-          child: _buildContent(context, isWide),
+        _buildContent(context, isWide),
+
+        // Bottom spacing
+        const SliverToBoxAdapter(
+          child: SizedBox(height: 100),
         ),
       ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, bool isWide) {
+    return Container(
+      padding: EdgeInsets.only(
+        top: isWide ? AppSpacing.xxl : MediaQuery.of(context).padding.top + AppSpacing.lg,
+        bottom: AppSpacing.xl,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.background,
+            AppColors.backgroundAlt,
+          ],
+        ),
+      ),
+      child: Column(
+        children: [
+          // Banner logo
+          AppBannerLogo(
+            size: isWide ? AppBannerSize.large : AppBannerSize.medium,
+            showSubtitle: true,
+            subtitle: 'Your Trophy Community',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryTabs() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.md,
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final category in _categories)
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
+                child: _CategoryChip(
+                  category: category,
+                  isSelected: _selectedCategory == category.id,
+                  onTap: () => setState(() => _selectedCategory = category.id),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -79,43 +150,45 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }
 
     if (_error != null) {
-      return AppErrorState(
-        message: _error!,
-        onRetry: _loadTrophies,
+      return SliverFillRemaining(
+        child: AppErrorState(
+          message: _error!,
+          onRetry: _loadTrophies,
+        ),
       );
     }
 
     if (_trophies.isEmpty) {
-      return AppEmptyState(
-        icon: Icons.photo_camera_outlined,
-        title: 'No trophies yet',
-        message: 'Be the first to share your harvest with the community.',
-        actionLabel: 'Post Trophy',
-        onAction: () => context.push('/post'),
+      return SliverFillRemaining(
+        child: AppEmptyState(
+          icon: Icons.photo_camera_outlined,
+          title: 'No trophies yet',
+          message: 'Be the first to share your harvest with the community.',
+          actionLabel: 'Post Trophy',
+          onAction: () => context.push('/post'),
+        ),
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadTrophies,
-      color: AppColors.primary,
-      child: _buildGrid(context, isWide),
-    );
+    return _buildGrid(context, isWide);
   }
 
   Widget _buildLoadingState(bool isWide) {
-    final crossAxisCount = isWide ? 3 : 1;
+    final crossAxisCount = isWide ? 2 : 1;
 
-    return Padding(
+    return SliverPadding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: GridView.builder(
+      sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           mainAxisSpacing: AppSpacing.gridGap,
           crossAxisSpacing: AppSpacing.gridGap,
           childAspectRatio: 0.85,
         ),
-        itemCount: 6,
-        itemBuilder: (context, index) => const AppCardSkeleton(),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => const _FeedCardSkeleton(),
+          childCount: 6,
+        ),
       ),
     );
   }
@@ -128,62 +201,105 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ? 2
             : 1;
 
-    return CustomScrollView(
-      slivers: [
-        // Mobile header
-        if (!isWide)
-          SliverToBoxAdapter(
-            child: AppPageHeader(
-              title: 'Feed',
-              subtitle: 'Latest from the community',
-              trailing: AppIconButton(
-                icon: Icons.tune_rounded,
-                onPressed: () => _showFilterSheet(context),
-              ),
-            ),
-          ),
-
-        // Grid
-        SliverPadding(
-          padding: const EdgeInsets.all(AppSpacing.screenPadding),
-          sliver: SliverGrid(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              mainAxisSpacing: AppSpacing.gridGap,
-              crossAxisSpacing: AppSpacing.gridGap,
-              childAspectRatio: crossAxisCount == 1 ? 0.9 : 0.85,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => _FeedCard(
-                trophy: _trophies[index],
-                onTap: () => context.push('/trophy/${_trophies[index]['id']}'),
-              ),
-              childCount: _trophies.length,
-            ),
-          ),
+    return SliverPadding(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          mainAxisSpacing: AppSpacing.gridGap,
+          crossAxisSpacing: AppSpacing.gridGap,
+          childAspectRatio: crossAxisCount == 1 ? 0.9 : 0.85,
         ),
-
-        // Bottom padding
-        const SliverToBoxAdapter(
-          child: SizedBox(height: 100),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => _CinematicFeedCard(
+            trophy: _trophies[index],
+            onTap: () => context.push('/trophy/${_trophies[index]['id']}'),
+          ),
+          childCount: _trophies.length,
         ),
-      ],
-    );
-  }
-
-  void _showFilterSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => const _FilterSheet(),
+      ),
     );
   }
 }
 
-/// Modern feed card with image-first design.
-class _FeedCard extends StatefulWidget {
-  const _FeedCard({
+/// Category tab chip matching reference design
+class _CategoryChip extends StatefulWidget {
+  const _CategoryChip({
+    required this.category,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final _CategoryTab category;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  State<_CategoryChip> createState() => _CategoryChipState();
+}
+
+class _CategoryChipState extends State<_CategoryChip> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isSelected
+                ? AppColors.accent
+                : _isHovered
+                    ? AppColors.surfaceHover
+                    : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            border: Border.all(
+              color: widget.isSelected
+                  ? AppColors.accent
+                  : AppColors.borderSubtle,
+            ),
+            boxShadow: widget.isSelected ? AppColors.shadowAccent : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.category.icon,
+                size: 16,
+                color: widget.isSelected
+                    ? AppColors.textInverse
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                widget.category.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: widget.isSelected
+                      ? AppColors.textInverse
+                      : AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cinematic feed card - image-first with overlay chips
+class _CinematicFeedCard extends StatefulWidget {
+  const _CinematicFeedCard({
     required this.trophy,
     required this.onTap,
   });
@@ -192,10 +308,10 @@ class _FeedCard extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_FeedCard> createState() => _FeedCardState();
+  State<_CinematicFeedCard> createState() => _CinematicFeedCardState();
 }
 
-class _FeedCardState extends State<_FeedCard> {
+class _CinematicFeedCardState extends State<_CinematicFeedCard> {
   bool _isHovered = false;
   bool _isLiked = false;
 
@@ -212,6 +328,7 @@ class _FeedCardState extends State<_FeedCard> {
         : null;
     final likes = widget.trophy['likes_count'] ?? 0;
     final comments = widget.trophy['comments_count'] ?? 0;
+    final username = widget.trophy['profiles']?['username'] ?? 'Hunter';
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -220,15 +337,16 @@ class _FeedCardState extends State<_FeedCard> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 250),
           transform: _isHovered
-              ? (Matrix4.identity()..translate(0.0, -4.0))
+              ? (Matrix4.identity()..translate(0.0, -6.0))
               : Matrix4.identity(),
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             border: Border.all(
-              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+              color: _isHovered ? AppColors.borderAccent : AppColors.borderSubtle,
+              width: _isHovered ? 1.5 : 1,
             ),
             boxShadow: _isHovered ? AppColors.shadowElevated : AppColors.shadowCard,
           ),
@@ -236,7 +354,7 @@ class _FeedCardState extends State<_FeedCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Image section
+              // Image section with overlays
               Expanded(
                 flex: 3,
                 child: Stack(
@@ -252,96 +370,91 @@ class _FeedCardState extends State<_FeedCard> {
                     else
                       _buildPlaceholder(),
 
-                    // Gradient overlay
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      height: 100,
+                    // Top gradient overlay
+                    Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
+                            end: Alignment.center,
                             colors: [
+                              Colors.black.withOpacity(0.5),
                               Colors.transparent,
-                              Colors.black.withOpacity(0.6),
                             ],
                           ),
                         ),
                       ),
                     ),
 
-                    // Species chip
+                    // Bottom gradient overlay
                     Positioned(
-                      top: AppSpacing.md,
-                      left: AppSpacing.md,
-                      child: AppCategoryChip(
-                        category: species,
-                        size: AppChipSize.small,
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: 120,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.cardOverlay,
+                        ),
                       ),
                     ),
 
-                    // Location chip
+                    // Species chip (top left)
+                    Positioned(
+                      top: AppSpacing.md,
+                      left: AppSpacing.md,
+                      child: _SpeciesChip(species: species),
+                    ),
+
+                    // User info (top right)
+                    Positioned(
+                      top: AppSpacing.md,
+                      right: AppSpacing.md,
+                      child: _UserBadge(username: username),
+                    ),
+
+                    // Location chip (bottom left)
                     if (location.isNotEmpty)
                       Positioned(
                         bottom: AppSpacing.md,
                         left: AppSpacing.md,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.location_on_outlined,
-                                size: 14,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                location,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        child: _LocationChip(location: location),
+                      ),
+
+                    // Date (bottom right)
+                    if (date.isNotEmpty)
+                      Positioned(
+                        bottom: AppSpacing.md,
+                        right: AppSpacing.md,
+                        child: _DateBadge(date: date),
                       ),
                   ],
                 ),
               ),
 
               // Content section
-              Padding(
+              Container(
                 padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(
+                    top: BorderSide(color: AppColors.borderSubtle),
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Title
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-
-                    // Date
-                    if (date.isNotEmpty)
-                      Text(
-                        _formatDate(date),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
 
                     const SizedBox(height: AppSpacing.md),
 
@@ -354,9 +467,10 @@ class _FeedCardState extends State<_FeedCard> {
                               : Icons.favorite_outline_rounded,
                           label: likes.toString(),
                           isActive: _isLiked,
+                          activeColor: AppColors.error,
                           onTap: () => setState(() => _isLiked = !_isLiked),
                         ),
-                        const SizedBox(width: AppSpacing.md),
+                        const SizedBox(width: AppSpacing.lg),
                         _ActionButton(
                           icon: Icons.chat_bubble_outline_rounded,
                           label: comments.toString(),
@@ -365,6 +479,11 @@ class _FeedCardState extends State<_FeedCard> {
                         const Spacer(),
                         _ActionButton(
                           icon: Icons.share_outlined,
+                          onTap: () {},
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        _ActionButton(
+                          icon: Icons.bookmark_outline_rounded,
                           onTap: () {},
                         ),
                       ],
@@ -381,12 +500,217 @@ class _FeedCardState extends State<_FeedCard> {
 
   Widget _buildPlaceholder() {
     return Container(
-      color: AppColors.backgroundAlt,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.surfaceHover,
+            AppColors.surface,
+          ],
+        ),
+      ),
       child: const Center(
         child: Icon(
           Icons.image_outlined,
           size: 48,
           color: AppColors.textTertiary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Species chip with color coding
+class _SpeciesChip extends StatelessWidget {
+  const _SpeciesChip({required this.species});
+
+  final String species;
+
+  Color get _backgroundColor {
+    switch (species.toLowerCase()) {
+      case 'whitetail deer':
+      case 'deer':
+        return AppColors.categoryDeer;
+      case 'turkey':
+        return AppColors.categoryTurkey;
+      case 'bass':
+      case 'largemouth bass':
+        return AppColors.categoryBass;
+      default:
+        return AppColors.categoryOtherGame;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs + 2,
+      ),
+      decoration: BoxDecoration(
+        color: _backgroundColor,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        boxShadow: [
+          BoxShadow(
+            color: _backgroundColor.withOpacity(0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _getIcon(),
+            size: 14,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            species,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getIcon() {
+    switch (species.toLowerCase()) {
+      case 'whitetail deer':
+      case 'deer':
+        return Icons.nature_rounded;
+      case 'turkey':
+        return Icons.egg_rounded;
+      case 'bass':
+      case 'largemouth bass':
+        return Icons.water_rounded;
+      default:
+        return Icons.pets_rounded;
+    }
+  }
+}
+
+/// Location chip
+class _LocationChip extends StatelessWidget {
+  const _LocationChip({required this.location});
+
+  final String location;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs + 2,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.location_on_outlined,
+            size: 14,
+            color: AppColors.accent,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            location,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// User badge
+class _UserBadge extends StatelessWidget {
+  const _UserBadge({required this.username});
+
+  final String username;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 10,
+            backgroundColor: AppColors.accent,
+            child: Text(
+              username.isNotEmpty ? username[0].toUpperCase() : 'U',
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textInverse,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            username,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Date badge
+class _DateBadge extends StatelessWidget {
+  const _DateBadge({required this.date});
+
+  final String date;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+      ),
+      child: Text(
+        _formatDate(date),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: Colors.white70,
         ),
       ),
     );
@@ -400,26 +724,28 @@ class _FeedCardState extends State<_FeedCard> {
 
       if (diff.inDays == 0) return 'Today';
       if (diff.inDays == 1) return 'Yesterday';
-      if (diff.inDays < 7) return '${diff.inDays} days ago';
-      if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} weeks ago';
-      return '${parsed.month}/${parsed.day}/${parsed.year}';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${parsed.month}/${parsed.day}';
     } catch (_) {
       return date;
     }
   }
 }
 
+/// Action button
 class _ActionButton extends StatefulWidget {
   const _ActionButton({
     required this.icon,
     this.label,
     this.isActive = false,
+    this.activeColor,
     required this.onTap,
   });
 
   final IconData icon;
   final String? label;
   final bool isActive;
+  final Color? activeColor;
   final VoidCallback onTap;
 
   @override
@@ -438,7 +764,7 @@ class _ActionButtonState extends State<_ActionButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           decoration: BoxDecoration(
             color: _isHovered ? AppColors.surfaceHover : Colors.transparent,
             borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
@@ -450,7 +776,7 @@ class _ActionButtonState extends State<_ActionButton> {
                 widget.icon,
                 size: 18,
                 color: widget.isActive
-                    ? AppColors.error
+                    ? widget.activeColor ?? AppColors.accent
                     : _isHovered
                         ? AppColors.textPrimary
                         : AppColors.textTertiary,
@@ -476,144 +802,85 @@ class _ActionButtonState extends State<_ActionButton> {
   }
 }
 
-class _FilterSheet extends ConsumerStatefulWidget {
-  const _FilterSheet();
-
-  @override
-  ConsumerState<_FilterSheet> createState() => _FilterSheetState();
-}
-
-class _FilterSheetState extends ConsumerState<_FilterSheet> {
-  String? _selectedSpecies;
+/// Feed card skeleton for loading state
+class _FeedCardSkeleton extends StatelessWidget {
+  const _FeedCardSkeleton();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppSpacing.radiusXl),
-        ),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          // Image skeleton
+          Expanded(
+            flex: 3,
+            child: Container(
+              color: AppColors.surfaceHover,
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(
+                      AppColors.textTertiary.withOpacity(0.3),
+                    ),
+                  ),
                 ),
               ),
             ),
-
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenPadding),
-              child: Row(
-                children: [
-                  Text(
-                    'Filter Feed',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _selectedSpecies = null);
-                    },
-                    child: const Text('Reset'),
-                  ),
-                ],
+          ),
+          // Content skeleton
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: AppColors.borderSubtle),
               ),
             ),
-
-            const Divider(height: 1),
-
-            // Species filter
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Species',
-                    style: Theme.of(context).textTheme.titleSmall,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 16,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHover,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    children: [
-                      _FilterChip(
-                        label: 'All',
-                        isSelected: _selectedSpecies == null,
-                        onTap: () => setState(() => _selectedSpecies = null),
-                      ),
-                      _FilterChip(
-                        label: 'Deer',
-                        isSelected: _selectedSpecies == 'deer',
-                        onTap: () => setState(() => _selectedSpecies = 'deer'),
-                      ),
-                      _FilterChip(
-                        label: 'Turkey',
-                        isSelected: _selectedSpecies == 'turkey',
-                        onTap: () => setState(() => _selectedSpecies = 'turkey'),
-                      ),
-                      _FilterChip(
-                        label: 'Bass',
-                        isSelected: _selectedSpecies == 'bass',
-                        onTap: () => setState(() => _selectedSpecies = 'bass'),
-                      ),
-                      _FilterChip(
-                        label: 'Other Game',
-                        isSelected: _selectedSpecies == 'other_game',
-                        onTap: () => setState(() => _selectedSpecies = 'other_game'),
-                      ),
-                    ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  height: 12,
+                  width: 100,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHover,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-
-            // Apply button
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenPadding),
-              child: AppButtonPrimary(
-                label: 'Apply Filters',
-                onPressed: () => Navigator.pop(context),
-                isExpanded: true,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
+class _CategoryTab {
+  const _CategoryTab({
+    required this.id,
     required this.label,
-    required this.isSelected,
-    required this.onTap,
+    required this.icon,
   });
 
+  final String id;
   final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppChip(
-      label: label,
-      isSelected: isSelected,
-      onTap: onTap,
-    );
-  }
+  final IconData icon;
 }

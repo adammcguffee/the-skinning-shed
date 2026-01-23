@@ -5,13 +5,14 @@ import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/branding_assets.dart';
 import 'app_nav_rail.dart';
 
-/// 🏗️ 2025 PREMIUM APP SCAFFOLD
+/// 🏗️ 2025 PREMIUM APP SCAFFOLD - DARK THEME
 ///
 /// Responsive layout with:
 /// - Slim nav rail on web/tablet
 /// - Bottom nav on mobile
-/// - Floating post button
+/// - Floating post button (FAB)
 /// - Max-width content container
+/// - Dark forest-green aesthetic
 class AppScaffold extends StatelessWidget {
   const AppScaffold({
     super.key,
@@ -149,7 +150,7 @@ class AppScaffold extends StatelessWidget {
   }
 }
 
-/// Mobile bottom navigation bar.
+/// Mobile bottom navigation bar - Dark theme
 class _MobileBottomNav extends StatelessWidget {
   const _MobileBottomNav({
     required this.currentIndex,
@@ -169,9 +170,9 @@ class _MobileBottomNav extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
@@ -261,7 +262,7 @@ class _MobileNavItem extends StatelessWidget {
             Icon(
               isSelected ? selectedIcon : icon,
               size: 24,
-              color: isSelected ? AppColors.primary : AppColors.textTertiary,
+              color: isSelected ? AppColors.accent : AppColors.textTertiary,
             ),
             const SizedBox(height: 4),
             Text(
@@ -269,7 +270,7 @@ class _MobileNavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                color: isSelected ? AppColors.accent : AppColors.textTertiary,
               ),
             ),
           ],
@@ -291,9 +292,9 @@ class _MobilePostFab extends StatelessWidget {
       height: 56,
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
+        gradient: AppColors.accentGradient,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.shadowButton,
+        boxShadow: AppColors.shadowAccent,
       ),
       child: Material(
         color: Colors.transparent,
@@ -326,10 +327,11 @@ class _MoreSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surfaceElevated,
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppSpacing.radiusXl),
         ),
+        boxShadow: AppColors.shadowElevated,
       ),
       child: SafeArea(
         child: Column(
@@ -402,17 +404,17 @@ class _MoreSheetItem extends StatelessWidget {
     return ListTile(
       leading: Icon(
         icon,
-        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+        color: isSelected ? AppColors.accent : AppColors.textSecondary,
       ),
       title: Text(
         label,
         style: TextStyle(
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          color: isSelected ? AppColors.primary : AppColors.textPrimary,
+          color: isSelected ? AppColors.accent : AppColors.textPrimary,
         ),
       ),
       trailing: isSelected
-          ? const Icon(Icons.check_rounded, color: AppColors.primary, size: 20)
+          ? const Icon(Icons.check_rounded, color: AppColors.accent, size: 20)
           : null,
       onTap: onTap,
     );

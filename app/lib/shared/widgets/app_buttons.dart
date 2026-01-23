@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 
-/// Primary action button with modern styling.
+/// Primary action button with accent gradient (dark theme optimized).
 class AppButtonPrimary extends StatefulWidget {
   const AppButtonPrimary({
     super.key,
@@ -12,6 +12,7 @@ class AppButtonPrimary extends StatefulWidget {
     this.isLoading = false,
     this.isExpanded = false,
     this.size = AppButtonSize.medium,
+    this.useAccent = false,
   });
 
   final String label;
@@ -20,6 +21,7 @@ class AppButtonPrimary extends StatefulWidget {
   final bool isLoading;
   final bool isExpanded;
   final AppButtonSize size;
+  final bool useAccent;
 
   @override
   State<AppButtonPrimary> createState() => _AppButtonPrimaryState();
@@ -48,6 +50,11 @@ class _AppButtonPrimaryState extends State<AppButtonPrimary> {
       AppButtonSize.large => 32.0,
     };
 
+    final gradient = widget.useAccent ? AppColors.accentGradient : AppColors.primaryGradient;
+    final baseColor = widget.useAccent ? AppColors.accent : AppColors.primary;
+    final shadows = widget.useAccent ? AppColors.shadowAccent : AppColors.shadowButton;
+    final textColor = widget.useAccent ? AppColors.textInverse : AppColors.textPrimary;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -56,15 +63,13 @@ class _AppButtonPrimaryState extends State<AppButtonPrimary> {
         height: height,
         decoration: BoxDecoration(
           gradient: widget.onPressed != null
-              ? (_isHovered ? AppColors.primaryGradient : null)
+              ? (_isHovered ? gradient : null)
               : null,
           color: widget.onPressed != null
-              ? (_isHovered ? null : AppColors.primary)
+              ? (_isHovered ? null : baseColor)
               : AppColors.textDisabled,
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          boxShadow: widget.onPressed != null && _isHovered
-              ? AppColors.shadowButton
-              : null,
+          boxShadow: widget.onPressed != null && _isHovered ? shadows : null,
         ),
         child: Material(
           color: Colors.transparent,
@@ -86,12 +91,12 @@ class _AppButtonPrimaryState extends State<AppButtonPrimary> {
                       height: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(AppColors.textInverse),
+                        valueColor: AlwaysStoppedAnimation(textColor),
                       ),
                     ),
                     const SizedBox(width: 10),
                   ] else if (widget.icon != null) ...[
-                    Icon(widget.icon, size: 18, color: AppColors.textInverse),
+                    Icon(widget.icon, size: 18, color: textColor),
                     const SizedBox(width: 8),
                   ],
                   Text(
@@ -99,7 +104,7 @@ class _AppButtonPrimaryState extends State<AppButtonPrimary> {
                     style: TextStyle(
                       fontSize: fontSize,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textInverse,
+                      color: textColor,
                       letterSpacing: 0.1,
                     ),
                   ),
@@ -113,7 +118,7 @@ class _AppButtonPrimaryState extends State<AppButtonPrimary> {
   }
 }
 
-/// Secondary/outline button.
+/// Secondary/outline button (dark theme optimized).
 class AppButtonSecondary extends StatefulWidget {
   const AppButtonSecondary({
     super.key,
@@ -200,7 +205,7 @@ class _AppButtonSecondaryState extends State<AppButtonSecondary> {
   }
 }
 
-/// Icon-only button.
+/// Icon-only button (dark theme optimized).
 class AppIconButton extends StatefulWidget {
   const AppIconButton({
     super.key,
@@ -252,7 +257,9 @@ class _AppIconButtonState extends State<AppIconButton> {
               child: Icon(
                 widget.icon,
                 size: widget.iconSize,
-                color: widget.color ?? AppColors.textSecondary,
+                color: _isHovered
+                    ? (widget.color ?? AppColors.textPrimary)
+                    : (widget.color ?? AppColors.textSecondary),
               ),
             ),
           ),
@@ -263,6 +270,16 @@ class _AppIconButtonState extends State<AppIconButton> {
     if (widget.tooltip != null) {
       return Tooltip(
         message: widget.tooltip!,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          boxShadow: AppColors.shadowCard,
+        ),
+        textStyle: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
         child: button,
       );
     }

@@ -7,9 +7,13 @@ import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
-/// 🏆 TROPHY WALL SCREEN - 2025 PREMIUM
+/// 🏆 TROPHY WALL SCREEN - 2025 CINEMATIC DARK THEME
 ///
-/// Modern profile with stats and trophy grid.
+/// Premium profile with:
+/// - Dark themed profile header
+/// - Stats in bold accent pills
+/// - Trophy grid matching feed styling
+/// - Season filter tabs
 class TrophyWallScreen extends ConsumerStatefulWidget {
   const TrophyWallScreen({super.key, this.userId});
 
@@ -57,41 +61,14 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-    return Column(
-      children: [
-        // Top bar (web only)
-        if (isWide)
-          AppTopBar(
-            title: 'Trophy Wall',
-            actions: [
-              AppButtonSecondary(
-                label: 'Edit Profile',
-                icon: Icons.edit_outlined,
-                onPressed: () {},
-                size: AppButtonSize.small,
-              ),
-            ],
-          ),
-
-        // Content
-        Expanded(
-          child: _buildContent(context, isWide),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildContent(BuildContext context, bool isWide) {
     return CustomScrollView(
       slivers: [
-        // Profile header
+        // Profile header with banner
         SliverToBoxAdapter(
-          child: _ProfileHeader(isWide: isWide),
-        ),
-
-        // Stats
-        SliverToBoxAdapter(
-          child: _StatsSection(trophyCount: _trophies.length),
+          child: _ProfileHeader(
+            isWide: isWide,
+            trophyCount: _trophies.length,
+          ),
         ),
 
         // Season tabs
@@ -177,114 +154,148 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   }
 }
 
+/// Premium dark profile header with avatar, stats, and edit
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.isWide});
+  const _ProfileHeader({
+    required this.isWide,
+    required this.trophyCount,
+  });
 
   final bool isWide;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(isWide ? AppSpacing.xxl : AppSpacing.screenPadding),
-      child: Row(
-        children: [
-          // Avatar
-          Container(
-            width: isWide ? 100 : 80,
-            height: isWide ? 100 : 80,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.2),
-                width: 3,
-              ),
-            ),
-            child: const Center(
-              child: Icon(
-                Icons.person_rounded,
-                size: 40,
-                color: AppColors.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.lg),
-
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Hunter Name',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '@huntername',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 16,
-                      color: AppColors.textTertiary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Texas, USA',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Edit button (mobile)
-          if (!isWide)
-            AppIconButton(
-              icon: Icons.edit_outlined,
-              onPressed: () {},
-              tooltip: 'Edit Profile',
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatsSection extends StatelessWidget {
-  const _StatsSection({required this.trophyCount});
-
   final int trophyCount;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-      child: Row(
+    return Container(
+      padding: EdgeInsets.only(
+        top: isWide ? AppSpacing.xxl : MediaQuery.of(context).padding.top + AppSpacing.lg,
+        bottom: AppSpacing.lg,
+        left: AppSpacing.screenPadding,
+        right: AppSpacing.screenPadding,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.primary.withOpacity(0.2),
+            AppColors.background,
+          ],
+        ),
+      ),
+      child: Column(
         children: [
-          _StatPill(
-            label: 'Trophies',
-            value: trophyCount.toString(),
-            icon: Icons.emoji_events_rounded,
+          // Banner logo (compact)
+          const AppBannerCompact(),
+          const SizedBox(height: AppSpacing.xxl),
+
+          // Profile info row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Avatar with accent ring
+              Container(
+                width: isWide ? 100 : 80,
+                height: isWide ? 100 : 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: AppColors.accentGradient,
+                  boxShadow: AppColors.shadowAccent,
+                ),
+                padding: const EdgeInsets.all(3),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.surface,
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.person_rounded,
+                      size: 40,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
+
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Name
+                    const Text(
+                      'Hunter Name',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+
+                    // Handle
+                    const Text(
+                      '@huntername',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+
+                    // Location
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_rounded,
+                          size: 16,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Texas, USA',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Edit button
+              _EditProfileButton(),
+            ],
           ),
-          const SizedBox(width: AppSpacing.sm),
-          const _StatPill(
-            label: 'Seasons',
-            value: '3',
-            icon: Icons.calendar_today_rounded,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          const _StatPill(
-            label: 'Followers',
-            value: '124',
-            icon: Icons.people_rounded,
+          const SizedBox(height: AppSpacing.xl),
+
+          // Stats pills
+          Row(
+            children: [
+              _StatPill(
+                label: 'Trophies',
+                value: trophyCount.toString(),
+                icon: Icons.emoji_events_rounded,
+                isAccent: true,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              const _StatPill(
+                label: 'Seasons',
+                value: '3',
+                icon: Icons.calendar_today_rounded,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              const _StatPill(
+                label: 'Followers',
+                value: '124',
+                icon: Icons.people_rounded,
+              ),
+            ],
           ),
         ],
       ),
@@ -292,16 +303,72 @@ class _StatsSection extends StatelessWidget {
   }
 }
 
+class _EditProfileButton extends StatefulWidget {
+  @override
+  State<_EditProfileButton> createState() => _EditProfileButtonState();
+}
+
+class _EditProfileButtonState extends State<_EditProfileButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: () {},
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppColors.surfaceHover : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.edit_outlined,
+                size: 16,
+                color: _isHovered ? AppColors.textPrimary : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Edit',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: _isHovered ? AppColors.textPrimary : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Stat pill with bold accent styling
 class _StatPill extends StatelessWidget {
   const _StatPill({
     required this.label,
     required this.value,
     required this.icon,
+    this.isAccent = false,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final bool isAccent;
 
   @override
   Widget build(BuildContext context) {
@@ -311,9 +378,11 @@ class _StatPill extends StatelessWidget {
         vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: isAccent ? AppColors.accent.withOpacity(0.15) : AppColors.surface,
         borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-        border: Border.all(color: AppColors.borderSubtle),
+        border: Border.all(
+          color: isAccent ? AppColors.accent.withOpacity(0.3) : AppColors.borderSubtle,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -321,19 +390,24 @@ class _StatPill extends StatelessWidget {
           Icon(
             icon,
             size: 16,
-            color: AppColors.primary,
+            color: isAccent ? AppColors.accent : AppColors.textSecondary,
           ),
           const SizedBox(width: 6),
           Text(
             value,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: AppColors.primary,
-                ),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isAccent ? AppColors.accent : AppColors.textPrimary,
+            ),
           ),
           const SizedBox(width: 4),
           Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textTertiary,
+            ),
           ),
         ],
       ),
@@ -341,6 +415,7 @@ class _StatPill extends StatelessWidget {
   }
 }
 
+/// Season filter tabs
 class _SeasonTabs extends StatefulWidget {
   @override
   State<_SeasonTabs> createState() => _SeasonTabsState();
@@ -410,8 +485,9 @@ class _SeasonTabState extends State<_SeasonTab> {
             vertical: AppSpacing.sm,
           ),
           decoration: BoxDecoration(
+            gradient: widget.isSelected ? AppColors.accentGradient : null,
             color: widget.isSelected
-                ? AppColors.primary
+                ? null
                 : _isHovered
                     ? AppColors.surfaceHover
                     : AppColors.surface,
@@ -419,6 +495,7 @@ class _SeasonTabState extends State<_SeasonTab> {
             border: widget.isSelected
                 ? null
                 : Border.all(color: AppColors.borderSubtle),
+            boxShadow: widget.isSelected ? AppColors.shadowAccent : null,
           ),
           child: Text(
             widget.label,
@@ -436,6 +513,7 @@ class _SeasonTabState extends State<_SeasonTab> {
   }
 }
 
+/// Trophy grid item with cinematic styling
 class _TrophyGridItem extends StatefulWidget {
   const _TrophyGridItem({
     required this.trophy,
@@ -452,6 +530,14 @@ class _TrophyGridItem extends StatefulWidget {
 class _TrophyGridItemState extends State<_TrophyGridItem> {
   bool _isHovered = false;
 
+  Color get _speciesColor {
+    final species = (widget.trophy['species']?['name'] ?? '').toLowerCase();
+    if (species.contains('deer')) return AppColors.categoryDeer;
+    if (species.contains('turkey')) return AppColors.categoryTurkey;
+    if (species.contains('bass')) return AppColors.categoryBass;
+    return AppColors.categoryOtherGame;
+  }
+
   @override
   Widget build(BuildContext context) {
     final species = widget.trophy['species']?['name'] ?? 'Unknown';
@@ -466,18 +552,25 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 250),
           transform: _isHovered
-              ? (Matrix4.identity()..scale(1.03))
+              ? (Matrix4.identity()..translate(0.0, -4.0))
               : Matrix4.identity(),
-          transformAlignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             border: Border.all(
-              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+              color: _isHovered ? _speciesColor.withOpacity(0.5) : AppColors.borderSubtle,
+              width: _isHovered ? 1.5 : 1,
             ),
-            boxShadow: _isHovered ? AppColors.shadowElevated : AppColors.shadowCard,
+            boxShadow: _isHovered
+                ? [
+                    BoxShadow(
+                      color: _speciesColor.withOpacity(0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : AppColors.shadowCard,
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
@@ -494,11 +587,7 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
                 _buildPlaceholder(),
 
               // Gradient overlay
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: 60,
+              Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -506,8 +595,10 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withOpacity(0.6),
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.7),
                       ],
+                      stops: const [0.0, 0.5, 1.0],
                     ),
                   ),
                 ),
@@ -519,18 +610,25 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
                 left: AppSpacing.sm,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: _speciesColor,
                     borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _speciesColor.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Text(
                     species,
                     style: const TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
@@ -545,12 +643,21 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
 
   Widget _buildPlaceholder() {
     return Container(
-      color: AppColors.backgroundAlt,
-      child: const Center(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _speciesColor.withOpacity(0.2),
+            AppColors.surface,
+          ],
+        ),
+      ),
+      child: Center(
         child: Icon(
-          Icons.emoji_events_outlined,
+          Icons.emoji_events_rounded,
           size: 32,
-          color: AppColors.textTertiary,
+          color: _speciesColor.withOpacity(0.4),
         ),
       ),
     );
