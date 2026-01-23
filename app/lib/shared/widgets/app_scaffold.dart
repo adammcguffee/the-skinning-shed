@@ -108,7 +108,7 @@ class AppScaffold extends StatelessWidget {
             onPostTap: () => _onPostTap(context),
           ),
 
-          // Main content
+          // Main content - MUST give child space via Expanded
           Expanded(
             child: Container(
               decoration: const BoxDecoration(
@@ -117,24 +117,13 @@ class AppScaffold extends StatelessWidget {
               child: Column(
                 children: [
                   // Hero banner header at top of content area
-                  const SafeArea(
+                  SafeArea(
                     bottom: false,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                      child: BannerHeader.appTop(),
-                    ),
+                    child: const BannerHeader.appTop(),
                   ),
-                  // Page content
-                  Expanded(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: AppSpacing.maxContentWidth,
-                        ),
-                        child: child,
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 12),
+                  // Page content - REQUIRED: Expanded to give child vertical space
+                  Expanded(child: child),
                 ],
               ),
             ),
@@ -154,14 +143,12 @@ class AppScaffold extends StatelessWidget {
         child: Column(
           children: [
             // Hero banner header at top of content area
-            const SafeArea(
+            SafeArea(
               bottom: false,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                child: BannerHeader.appTop(),
-              ),
+              child: const BannerHeader.appTop(),
             ),
-            // Page content
+            const SizedBox(height: 12),
+            // Page content - REQUIRED: Expanded to give child vertical space
             Expanded(child: child),
           ],
         ),
