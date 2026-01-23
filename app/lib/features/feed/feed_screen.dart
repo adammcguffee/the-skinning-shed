@@ -91,30 +91,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   Widget _buildHeader(BuildContext context, bool isWide) {
-    return Container(
-      padding: EdgeInsets.only(
-        top: isWide ? AppSpacing.xxl : MediaQuery.of(context).padding.top + AppSpacing.lg,
-        bottom: AppSpacing.xl,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.background,
-            AppColors.backgroundAlt,
-          ],
-        ),
-      ),
-      child: Column(
-        children: [
-          // Banner logo
-          AppBannerLogo(
-            size: isWide ? AppBannerSize.large : AppBannerSize.medium,
-            showSubtitle: true,
-            subtitle: 'Your Trophy Community',
-          ),
-        ],
+    return SafeArea(
+      bottom: false,
+      child: BannerHeader(
+        size: isWide ? BannerSize.large : BannerSize.medium,
+        showSubtitle: true,
+        subtitle: 'Your Trophy Community',
       ),
     );
   }

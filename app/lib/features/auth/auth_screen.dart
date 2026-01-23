@@ -4,6 +4,7 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/auth_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/shared/widgets/app_banner_logo.dart';
 
 /// 🔐 AUTH SCREEN - 2025 CINEMATIC DARK THEME
 ///
@@ -119,12 +120,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Hero banner logo
-                      const AppBannerLogo(
-                        size: AppBannerSize.large,
+                      const BannerHeader(
+                        size: BannerSize.hero,
                         showSubtitle: true,
                         subtitle: 'Your Trophy Community',
                       ),
-                      const SizedBox(height: AppSpacing.xxxxl),
+                      const SizedBox(height: AppSpacing.xxxl),
 
                       // Form card
                       _buildFormCard(),

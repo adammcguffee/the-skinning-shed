@@ -4,14 +4,226 @@ import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/branding_assets.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// 🏆 PREMIUM BANNER LOGO - THE SKINNING SHED
+/// 🏆 BANNER HEADER - THE SKINNING SHED
 ///
-/// Large hero banner for key pages (Feed, Explore, Auth).
+/// Large, premium, cinematic banner matching the reference design.
 /// Features:
-/// - "THE SKINNING SHED" lettering prominently
-/// - Icon mark with decorative styling
-/// - Rich textures and depth
-/// - Engraved, premium outdoor feel
+/// - Full illustrated badge with antlers + wordmark
+/// - Textured dark forest background
+/// - Proper scale and visual impact
+/// - Used on Feed, Explore, Trophy Wall, Auth
+class BannerHeader extends StatelessWidget {
+  const BannerHeader({
+    super.key,
+    this.size = BannerSize.large,
+    this.showSubtitle = false,
+    this.subtitle,
+  });
+
+  final BannerSize size;
+  final bool showSubtitle;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final config = _getConfig();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.primary.withOpacity(0.4),
+            AppColors.background,
+          ],
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Subtle texture overlay
+          Positioned.fill(
+            child: _buildTextureOverlay(),
+          ),
+
+          // Vignette effect
+          Positioned.fill(
+            child: _buildVignetteOverlay(),
+          ),
+
+          // Main content
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: AppSpacing.screenPadding,
+              vertical: config.verticalPadding,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Badge with glow effect
+                _buildBadge(config),
+
+                // Subtitle (optional)
+                if (showSubtitle || subtitle != null) ...[
+                  SizedBox(height: config.subtitleSpacing),
+                  _buildSubtitle(config),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextureOverlay() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.5,
+          colors: [
+            Colors.transparent,
+            AppColors.primary.withOpacity(0.1),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVignetteOverlay() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.2,
+          colors: [
+            Colors.transparent,
+            AppColors.background.withOpacity(0.6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBadge(_BannerConfig config) {
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: config.badgeMaxWidth,
+        maxHeight: config.badgeMaxHeight,
+      ),
+      decoration: BoxDecoration(
+        boxShadow: [
+          // Glow effect behind badge
+          BoxShadow(
+            color: AppColors.accent.withOpacity(0.2),
+            blurRadius: 40,
+            spreadRadius: 10,
+          ),
+        ],
+      ),
+      child: Image.asset(
+        BrandingAssets.bannerBadge,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
+    );
+  }
+
+  Widget _buildSubtitle(_BannerConfig config) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(
+          color: AppColors.accent.withOpacity(0.2),
+        ),
+      ),
+      child: Text(
+        subtitle ?? 'Your Trophy Community',
+        style: GoogleFonts.inter(
+          fontSize: config.subtitleFontSize,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 1.5,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  _BannerConfig _getConfig() {
+    switch (size) {
+      case BannerSize.compact:
+        return const _BannerConfig(
+          badgeMaxWidth: 200,
+          badgeMaxHeight: 100,
+          verticalPadding: 16,
+          subtitleSpacing: 8,
+          subtitleFontSize: 11,
+        );
+      case BannerSize.medium:
+        return const _BannerConfig(
+          badgeMaxWidth: 300,
+          badgeMaxHeight: 150,
+          verticalPadding: 24,
+          subtitleSpacing: 12,
+          subtitleFontSize: 12,
+        );
+      case BannerSize.large:
+        return const _BannerConfig(
+          badgeMaxWidth: 400,
+          badgeMaxHeight: 200,
+          verticalPadding: 32,
+          subtitleSpacing: 16,
+          subtitleFontSize: 13,
+        );
+      case BannerSize.hero:
+        return const _BannerConfig(
+          badgeMaxWidth: 500,
+          badgeMaxHeight: 250,
+          verticalPadding: 48,
+          subtitleSpacing: 20,
+          subtitleFontSize: 14,
+        );
+    }
+  }
+}
+
+/// Banner size variants
+enum BannerSize {
+  compact, // Weather, smaller pages
+  medium,  // Trophy Wall
+  large,   // Feed, Explore
+  hero,    // Auth (full hero treatment)
+}
+
+class _BannerConfig {
+  const _BannerConfig({
+    required this.badgeMaxWidth,
+    required this.badgeMaxHeight,
+    required this.verticalPadding,
+    required this.subtitleSpacing,
+    required this.subtitleFontSize,
+  });
+
+  final double badgeMaxWidth;
+  final double badgeMaxHeight;
+  final double verticalPadding;
+  final double subtitleSpacing;
+  final double subtitleFontSize;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LEGACY COMPATIBILITY (Redirects to new BannerHeader)
+// ════════════════════════════════════════════════════════════════════════════
+
+/// @deprecated Use BannerHeader instead
 class AppBannerLogo extends StatelessWidget {
   const AppBannerLogo({
     super.key,
@@ -26,234 +238,36 @@ class AppBannerLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final config = _getConfig();
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: config.horizontalPadding,
-        vertical: config.verticalPadding,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Icon mark with glow
-          _buildIconMark(config),
-
-          SizedBox(height: config.iconTextSpacing),
-
-          // Main title with decorative lines
-          _buildTitle(config),
-
-          // Subtitle (optional)
-          if (showSubtitle || subtitle != null) ...[
-            SizedBox(height: config.subtitleSpacing),
-            _buildSubtitle(config),
-          ],
-        ],
-      ),
+    return BannerHeader(
+      size: _convertSize(),
+      showSubtitle: showSubtitle,
+      subtitle: subtitle,
     );
   }
 
-  Widget _buildIconMark(_BannerConfig config) {
-    return Container(
-      width: config.iconSize,
-      height: config.iconSize,
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accent.withOpacity(0.25),
-            blurRadius: 32,
-            spreadRadius: 4,
-          ),
-        ],
-      ),
-      child: Image.asset(
-        BrandingAssets.markIcon,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-      ),
-    );
-  }
-
-  Widget _buildTitle(_BannerConfig config) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Left decorative line
-        _DecorativeLine(width: config.lineWidth, isLeft: true),
-
-        SizedBox(width: config.lineSpacing),
-
-        // Title text
-        Column(
-          children: [
-            Text(
-              'THE',
-              style: GoogleFonts.inter(
-                fontSize: config.theFontSize,
-                fontWeight: FontWeight.w500,
-                letterSpacing: config.theLetterSpacing,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            Text(
-              'SKINNING SHED',
-              style: GoogleFonts.inter(
-                fontSize: config.titleFontSize,
-                fontWeight: FontWeight.w700,
-                letterSpacing: config.titleLetterSpacing,
-                color: AppColors.textPrimary,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withOpacity(0.5),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-
-        SizedBox(width: config.lineSpacing),
-
-        // Right decorative line
-        _DecorativeLine(width: config.lineWidth, isLeft: false),
-      ],
-    );
-  }
-
-  Widget _buildSubtitle(_BannerConfig config) {
-    return Text(
-      subtitle ?? 'Your Trophy Community',
-      style: GoogleFonts.inter(
-        fontSize: config.subtitleFontSize,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 1,
-        color: AppColors.textTertiary,
-      ),
-    );
-  }
-
-  _BannerConfig _getConfig() {
+  BannerSize _convertSize() {
     switch (size) {
       case AppBannerSize.small:
-        return _BannerConfig(
-          iconSize: 48,
-          titleFontSize: 18,
-          theFontSize: 10,
-          subtitleFontSize: 11,
-          horizontalPadding: AppSpacing.lg,
-          verticalPadding: AppSpacing.md,
-          iconTextSpacing: AppSpacing.sm,
-          subtitleSpacing: AppSpacing.xs,
-          lineWidth: 24,
-          lineSpacing: AppSpacing.sm,
-          titleLetterSpacing: 2,
-          theLetterSpacing: 4,
-        );
+        return BannerSize.compact;
       case AppBannerSize.medium:
-        return _BannerConfig(
-          iconSize: 64,
-          titleFontSize: 24,
-          theFontSize: 12,
-          subtitleFontSize: 12,
-          horizontalPadding: AppSpacing.xl,
-          verticalPadding: AppSpacing.lg,
-          iconTextSpacing: AppSpacing.md,
-          subtitleSpacing: AppSpacing.sm,
-          lineWidth: 32,
-          lineSpacing: AppSpacing.md,
-          titleLetterSpacing: 3,
-          theLetterSpacing: 5,
-        );
+        return BannerSize.medium;
       case AppBannerSize.large:
-        return _BannerConfig(
-          iconSize: 80,
-          titleFontSize: 32,
-          theFontSize: 14,
-          subtitleFontSize: 14,
-          horizontalPadding: AppSpacing.xxl,
-          verticalPadding: AppSpacing.xl,
-          iconTextSpacing: AppSpacing.lg,
-          subtitleSpacing: AppSpacing.md,
-          lineWidth: 48,
-          lineSpacing: AppSpacing.lg,
-          titleLetterSpacing: 4,
-          theLetterSpacing: 6,
-        );
+        return BannerSize.large;
       case AppBannerSize.hero:
-        return _BannerConfig(
-          iconSize: 100,
-          titleFontSize: 40,
-          theFontSize: 16,
-          subtitleFontSize: 15,
-          horizontalPadding: AppSpacing.xxxl,
-          verticalPadding: AppSpacing.xxl,
-          iconTextSpacing: AppSpacing.xl,
-          subtitleSpacing: AppSpacing.md,
-          lineWidth: 64,
-          lineSpacing: AppSpacing.xl,
-          titleLetterSpacing: 5,
-          theLetterSpacing: 8,
-        );
+        return BannerSize.hero;
     }
   }
 }
 
-/// Decorative line element for banner
-class _DecorativeLine extends StatelessWidget {
-  const _DecorativeLine({
-    required this.width,
-    required this.isLeft,
-  });
-
-  final double width;
-  final bool isLeft;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: 2,
-      child: CustomPaint(
-        painter: _LinePainter(isLeft: isLeft),
-      ),
-    );
-  }
+/// @deprecated Use BannerSize instead
+enum AppBannerSize {
+  small,
+  medium,
+  large,
+  hero,
 }
 
-class _LinePainter extends CustomPainter {
-  _LinePainter({required this.isLeft});
-
-  final bool isLeft;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..shader = LinearGradient(
-        colors: isLeft
-            ? [Colors.transparent, AppColors.accent]
-            : [AppColors.accent, Colors.transparent],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    canvas.drawLine(
-      Offset(0, size.height / 2),
-      Offset(size.width, size.height / 2),
-      paint,
-    );
-
-    // Accent dot at the end
-    final dotPaint = Paint()..color = AppColors.accent;
-    final dotX = isLeft ? size.width : 0.0;
-    canvas.drawCircle(Offset(dotX, size.height / 2), 2, dotPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Compact banner for inline usage (mobile headers, etc.)
+/// Compact banner for inline usage (Trophy Wall profile header, etc.)
 class AppBannerCompact extends StatelessWidget {
   const AppBannerCompact({super.key});
 
@@ -262,13 +276,14 @@ class AppBannerCompact extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Icon
+        // Icon mark
         SizedBox(
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           child: Image.asset(
             BrandingAssets.markIcon,
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
@@ -280,20 +295,20 @@ class AppBannerCompact extends StatelessWidget {
             Text(
               'THE SKINNING',
               style: GoogleFonts.inter(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 1,
+                letterSpacing: 1.5,
                 color: AppColors.textSecondary,
-                height: 1.1,
+                height: 1.2,
               ),
             ),
             Text(
               'SHED',
               style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
                 letterSpacing: 2,
-                color: AppColors.textPrimary,
+                color: AppColors.accent,
                 height: 1.1,
               ),
             ),
@@ -302,42 +317,4 @@ class AppBannerCompact extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Banner size variants
-enum AppBannerSize {
-  small,
-  medium,
-  large,
-  hero,
-}
-
-class _BannerConfig {
-  const _BannerConfig({
-    required this.iconSize,
-    required this.titleFontSize,
-    required this.theFontSize,
-    required this.subtitleFontSize,
-    required this.horizontalPadding,
-    required this.verticalPadding,
-    required this.iconTextSpacing,
-    required this.subtitleSpacing,
-    required this.lineWidth,
-    required this.lineSpacing,
-    required this.titleLetterSpacing,
-    required this.theLetterSpacing,
-  });
-
-  final double iconSize;
-  final double titleFontSize;
-  final double theFontSize;
-  final double subtitleFontSize;
-  final double horizontalPadding;
-  final double verticalPadding;
-  final double iconTextSpacing;
-  final double subtitleSpacing;
-  final double lineWidth;
-  final double lineSpacing;
-  final double titleLetterSpacing;
-  final double theLetterSpacing;
 }

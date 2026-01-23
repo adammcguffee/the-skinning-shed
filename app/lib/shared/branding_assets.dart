@@ -1,23 +1,29 @@
-/// 🎨 BRANDING ASSETS - 2025 MODERN SYSTEM
+/// 🎨 BRANDING ASSETS - THE SKINNING SHED
 ///
-/// RULES:
-/// - Use markIcon for all in-app UI (nav, headers, splash)
-/// - Use wordmark ONLY if text branding is needed
-/// - NEVER use the illustrated badge in app UI (marketing only)
-/// - All logos render with BoxFit.contain
-/// - All logos have explicit size constraints
+/// USAGE RULES:
+/// - BannerHeader: Use badgeDark for hero banners (Feed, Explore, Auth, Trophy Wall)
+/// - Navigation: Use markIcon for nav rail, mobile nav, small UI elements
+/// - Marketing: Use badgePrimary for external marketing materials only
 abstract final class BrandingAssets {
   BrandingAssets._();
 
   // ════════════════════════════════════════════════════════════════════════════
-  // PRIMARY APP ASSETS (USE THESE)
+  // BANNER ASSETS (Hero Headers)
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// The primary icon mark - use for nav rail, headers, splash, app icon
-  static const String markIcon = 'assets/branding/mark_icon.png';
+  /// Full illustrated badge for dark backgrounds - use in BannerHeader
+  /// Features antlers, "THE SKINNING SHED" lettering, premium engraved style
+  static const String bannerBadge = 'assets/branding/v3/badge_dark.png';
 
-  /// Text wordmark - use sparingly for auth screens or web headers
+  /// Text wordmark only - for smaller banner variants
   static const String wordmark = 'assets/branding/v3/wordmark.png';
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // UI ICON ASSETS (Navigation, Small Elements)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /// The primary icon mark - use for nav rail, mobile nav, buttons, app icon
+  static const String markIcon = 'assets/branding/mark_icon.png';
 
   // ════════════════════════════════════════════════════════════════════════════
   // APP ICONS
@@ -27,34 +33,28 @@ abstract final class BrandingAssets {
   static const String appIcon512 = 'assets/branding/app_icon_512.png';
 
   // ════════════════════════════════════════════════════════════════════════════
-  // MARKETING ONLY (DO NOT USE IN APP UI)
+  // MARKETING ONLY
   // ════════════════════════════════════════════════════════════════════════════
 
-  @Deprecated('Marketing only - use markIcon for app UI')
+  /// Full badge for light backgrounds (marketing materials only)
   static const String badgePrimary = 'assets/branding/v3/badge_primary.png';
 
-  @Deprecated('Marketing only - use markIcon for app UI')
-  static const String badgeDark = 'assets/branding/v3/badge_dark.png';
-
-  @Deprecated('Marketing only - use markIcon for app UI')
+  /// Monochrome stamp (watermarks, merch)
   static const String stampMono = 'assets/branding/v3/stamp_mono.png';
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LEGACY (DEPRECATED)
+  // LEGACY (Deprecated)
   // ════════════════════════════════════════════════════════════════════════════
 
-  @Deprecated('Use markIcon instead')
+  @Deprecated('Use bannerBadge for banners, markIcon for UI')
   static const String primary = 'assets/branding/logo_primary.png';
 
   @Deprecated('Use wordmark instead')
   static const String horizontal = 'assets/branding/logo_horizontal.png';
 
-  @Deprecated('Use markIcon instead')
+  @Deprecated('Use bannerBadge instead')
   static const String dark = 'assets/branding/logo_dark.png';
 
   @Deprecated('Use markIcon instead')
   static const String icon = 'assets/branding/logo_icon.png';
-
-  @Deprecated('Use markIcon instead')
-  static const String stampMonoV1 = 'assets/branding/logo_stamp_mono.png';
 }

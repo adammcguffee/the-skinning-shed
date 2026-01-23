@@ -6,6 +6,7 @@ import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/shared/widgets/app_banner_logo.dart';
 
 /// 🏆 TROPHY WALL SCREEN - 2025 CINEMATIC DARK THEME
 ///
@@ -154,7 +155,7 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   }
 }
 
-/// Premium dark profile header with avatar, stats, and edit
+/// Premium dark profile header with banner, avatar, stats, and edit
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.isWide,
@@ -166,139 +167,148 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(
-        top: isWide ? AppSpacing.xxl : MediaQuery.of(context).padding.top + AppSpacing.lg,
-        bottom: AppSpacing.lg,
-        left: AppSpacing.screenPadding,
-        right: AppSpacing.screenPadding,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.primary.withOpacity(0.2),
-            AppColors.background,
-          ],
+    return Column(
+      children: [
+        // Banner at very top
+        SafeArea(
+          bottom: false,
+          child: BannerHeader(
+            size: isWide ? BannerSize.medium : BannerSize.compact,
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          // Banner logo (compact)
-          const AppBannerCompact(),
-          const SizedBox(height: AppSpacing.xxl),
 
-          // Profile info row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        // Profile content with gradient
+        Container(
+          padding: EdgeInsets.only(
+            top: AppSpacing.lg,
+            bottom: AppSpacing.lg,
+            left: AppSpacing.screenPadding,
+            right: AppSpacing.screenPadding,
+          ),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.primary.withOpacity(0.15),
+                AppColors.background,
+              ],
+            ),
+          ),
+          child: Column(
             children: [
-              // Avatar with accent ring
-              Container(
-                width: isWide ? 100 : 80,
-                height: isWide ? 100 : 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: AppColors.accentGradient,
-                  boxShadow: AppColors.shadowAccent,
-                ),
-                padding: const EdgeInsets.all(3),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.surface,
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.person_rounded,
-                      size: 40,
-                      color: AppColors.textSecondary,
+              // Profile info row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Avatar with accent ring
+                  Container(
+                    width: isWide ? 100 : 80,
+                    height: isWide ? 100 : 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.accentGradient,
+                      boxShadow: AppColors.shadowAccent,
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Name
-                    const Text(
-                      'Hunter Name',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                    padding: const EdgeInsets.all(3),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.surface,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-
-                    // Handle
-                    const Text(
-                      '@huntername',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-
-                    // Location
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_rounded,
-                          size: 16,
-                          color: AppColors.textTertiary,
+                      child: const Center(
+                        child: Icon(
+                          Icons.person_rounded,
+                          size: 40,
+                          color: AppColors.textSecondary,
                         ),
-                        const SizedBox(width: 4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+
+                  // Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Name
                         const Text(
-                          'Texas, USA',
+                          'Hunter Name',
                           style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textTertiary,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
                           ),
+                        ),
+                        const SizedBox(height: 4),
+
+                        // Handle
+                        const Text(
+                          '@huntername',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+
+                        // Location
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_rounded,
+                              size: 16,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            const Text(
+                              'Texas, USA',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              // Edit button
-              _EditProfileButton(),
+                  // Edit button
+                  _EditProfileButton(),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xl),
+
+              // Stats pills
+              Row(
+                children: [
+                  _StatPill(
+                    label: 'Trophies',
+                    value: trophyCount.toString(),
+                    icon: Icons.emoji_events_rounded,
+                    isAccent: true,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  const _StatPill(
+                    label: 'Seasons',
+                    value: '3',
+                    icon: Icons.calendar_today_rounded,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  const _StatPill(
+                    label: 'Followers',
+                    value: '124',
+                    icon: Icons.people_rounded,
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xl),
-
-          // Stats pills
-          Row(
-            children: [
-              _StatPill(
-                label: 'Trophies',
-                value: trophyCount.toString(),
-                icon: Icons.emoji_events_rounded,
-                isAccent: true,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              const _StatPill(
-                label: 'Seasons',
-                value: '3',
-                icon: Icons.calendar_today_rounded,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              const _StatPill(
-                label: 'Followers',
-                value: '124',
-                icon: Icons.people_rounded,
-              ),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
