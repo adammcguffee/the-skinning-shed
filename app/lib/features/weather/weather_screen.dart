@@ -34,6 +34,19 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
 
     return CustomScrollView(
       slivers: [
+        // Page banner
+        const SliverToBoxAdapter(
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                BannerHeader.page(),
+                SizedBox(height: AppSpacing.md),
+              ],
+            ),
+          ),
+        ),
+
         // Header
         SliverToBoxAdapter(
           child: _buildHeader(context, isWide),
@@ -97,8 +110,7 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
 
   Widget _buildHeader(BuildContext context, bool isWide) {
     return Container(
-      padding: EdgeInsets.only(
-        top: isWide ? AppSpacing.xxl : MediaQuery.of(context).padding.top + AppSpacing.lg,
+      padding: const EdgeInsets.only(
         bottom: AppSpacing.md,
         left: AppSpacing.screenPadding,
         right: AppSpacing.screenPadding,

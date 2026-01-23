@@ -34,6 +34,16 @@ class _LandScreenState extends State<LandScreen> with SingleTickerProviderStateM
 
     return Column(
       children: [
+        const SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              BannerHeader.page(),
+              SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+
         // Top bar (web only)
         if (isWide)
           AppTopBar(

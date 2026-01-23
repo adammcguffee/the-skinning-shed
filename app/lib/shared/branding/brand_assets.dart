@@ -17,11 +17,11 @@ abstract final class BrandAssets {
   // ════════════════════════════════════════════════════════════════════════════
 
   /// Large hero banner for Auth screen - full ornate design
-  /// Use with BannerHeader.variantAuthHero
+  /// Use with BannerHeader.authHero
   static const String heroBanner = 'assets/branding/banner_v2/hero_banner.png';
 
   /// Smaller banner for Feed, Explore, Trophy Wall pages
-  /// Use with BannerHeader.variantPage
+  /// Use with BannerHeader.page
   static const String pageBanner = 'assets/branding/banner_v2/page_banner.png';
 
   /// Text wordmark only - "THE SKINNING SHED"

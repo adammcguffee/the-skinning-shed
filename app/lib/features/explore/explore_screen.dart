@@ -71,9 +71,11 @@ class ExploreScreen extends StatelessWidget {
   Widget _buildHeader(BuildContext context, bool isWide) {
     return SafeArea(
       bottom: false,
-      child: const BannerHeader.variantPage(
-        showSubtitle: true,
-        subtitle: 'Discover Species, Regions & More',
+      child: Column(
+        children: const [
+          BannerHeader.page(),
+          SizedBox(height: AppSpacing.md),
+        ],
       ),
     );
   }

@@ -171,7 +171,12 @@ class _ProfileHeader extends StatelessWidget {
         // Banner at very top
         SafeArea(
           bottom: false,
-          child: const BannerHeader.variantPage(),
+          child: Column(
+            children: const [
+              BannerHeader.page(),
+              SizedBox(height: AppSpacing.md),
+            ],
+          ),
         ),
 
         // Profile content with gradient

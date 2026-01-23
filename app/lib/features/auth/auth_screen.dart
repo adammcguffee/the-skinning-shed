@@ -9,7 +9,7 @@ import 'package:shed/shared/widgets/widgets.dart';
 ///
 /// REQUIREMENTS:
 /// - FULL viewport height (no half screen)
-/// - Hero banner at top using BannerHeader.variantAuthHero
+/// - Hero banner at top using BannerHeader.authHero
 /// - Centered sign-in card below
 /// - Maintain full height layout on desktop
 class AuthScreen extends ConsumerStatefulWidget {
@@ -127,10 +127,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Hero banner at top - large and dominant
-            const BannerHeader.variantAuthHero(
-              showSubtitle: true,
-              subtitle: 'Your Trophy Community',
-            ),
+            const BannerHeader.authHero(),
 
             const Spacer(),
 

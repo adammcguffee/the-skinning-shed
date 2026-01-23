@@ -16,6 +16,16 @@ class SettingsScreen extends ConsumerWidget {
 
     return Column(
       children: [
+        const SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              BannerHeader.page(),
+              SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+
         // Top bar (web only)
         if (isWide)
           const AppTopBar(

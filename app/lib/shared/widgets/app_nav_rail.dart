@@ -70,19 +70,9 @@ class AppNavRail extends StatelessWidget {
   }
 
   Widget _buildBrandMark() {
-    return Container(
-      width: 52,
-      height: 52,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accent.withOpacity(0.15),
-            blurRadius: 20,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
+    return SizedBox(
+      width: 48,
+      height: 48,
       child: Image.asset(
         BrandAssets.crest,
         fit: BoxFit.contain,

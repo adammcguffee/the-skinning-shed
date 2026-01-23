@@ -92,9 +92,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Widget _buildHeader(BuildContext context, bool isWide) {
     return SafeArea(
       bottom: false,
-      child: const BannerHeader.variantPage(
-        showSubtitle: true,
-        subtitle: 'Your Trophy Community',
+      child: Column(
+        children: const [
+          BannerHeader.page(),
+          SizedBox(height: AppSpacing.md),
+        ],
       ),
     );
   }
