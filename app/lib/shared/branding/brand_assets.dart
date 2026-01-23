@@ -18,16 +18,16 @@ abstract final class BrandAssets {
 
   /// Large hero banner for Auth screen - full ornate design
   /// Use with BannerHeader.variantAuthHero
-  static const String heroBanner = 'assets/branding/banner/hero_banner.png';
+  static const String heroBanner = 'assets/branding/banner_v2/hero_banner.png';
 
   /// Smaller banner for Feed, Explore, Trophy Wall pages
   /// Use with BannerHeader.variantPage
-  static const String pageBanner = 'assets/branding/banner/small_banner.png';
+  static const String pageBanner = 'assets/branding/banner_v2/page_banner.png';
 
   /// Text wordmark only - "THE SKINNING SHED"
-  static const String wordmark = 'assets/branding/banner/wordmark.png';
+  static const String wordmark = 'assets/branding/banner_v2/wordmark.png';
 
   /// Crest/icon mark for nav rail
   /// Size: 52px with padding
-  static const String crest = 'assets/branding/banner/crest.png';
+  static const String crest = 'assets/branding/banner_v2/crest.png';
 }

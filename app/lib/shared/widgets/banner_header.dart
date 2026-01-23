@@ -7,8 +7,8 @@ import 'package:shed/shared/branding/brand_assets.dart';
 ///
 /// Premium banner widget using official brand assets.
 /// Two variants:
-/// - variantAuthHero: Large hero banner for Auth screen (260/230/200px)
-/// - variantPage: Page banner for Feed/Explore/Trophy (180/160/135px)
+/// - variantAuthHero: Large hero banner for Auth screen (260/220/190px)
+/// - variantPage: Page banner for Feed/Explore/Trophy (180/160/140px)
 ///
 /// RULES (NON-NEGOTIABLE):
 /// - Uses ONLY official assets from BrandAssets
@@ -74,34 +74,39 @@ class BannerHeader extends StatelessWidget {
               // Subtle radial glow behind banner
               _buildGlow(config),
 
-              // Banner content
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  vertical: config.verticalPadding,
-                  horizontal: AppSpacing.screenPadding,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Banner image - explicit height, no clipping
-                    Center(
-                      child: SizedBox(
-                        height: config.bannerHeight,
-                        child: Image.asset(
-                          config.assetPath,
-                          fit: BoxFit.contain,
-                          alignment: Alignment.center,
-                          filterQuality: FilterQuality.high,
-                        ),
-                      ),
+              // Banner content (max width, full-width background)
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: config.maxWidth),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      vertical: config.verticalPadding,
+                      horizontal: AppSpacing.screenPadding,
                     ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Banner image - explicit height, no clipping
+                        Center(
+                          child: SizedBox(
+                            height: config.bannerHeight,
+                            child: Image.asset(
+                              config.assetPath,
+                              fit: BoxFit.contain,
+                              alignment: Alignment.center,
+                              filterQuality: FilterQuality.high,
+                            ),
+                          ),
+                        ),
 
-                    // Subtitle (optional)
-                    if (showSubtitle || subtitle != null) ...[
-                      SizedBox(height: config.subtitleSpacing),
-                      _buildSubtitle(config),
-                    ],
-                  ],
+                        // Subtitle (optional)
+                        if (showSubtitle || subtitle != null) ...[
+                          SizedBox(height: config.subtitleSpacing),
+                          _buildSubtitle(config),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -152,22 +157,24 @@ class BannerHeader extends StatelessWidget {
       case _BannerVariant.authHero:
         return _BannerConfig(
           assetPath: BrandAssets.heroBanner,
-          bannerHeight: isWide ? 260 : (isMedium ? 230 : 200),
-          verticalPadding: isWide ? 48 : (isMedium ? 40 : 32),
+          bannerHeight: isWide ? 260 : (isMedium ? 220 : 190),
+          verticalPadding: isWide ? 44 : (isMedium ? 36 : 28),
           subtitleSpacing: 20,
           subtitleFontSize: isWide ? 15 : 13,
           glowWidth: isWide ? 600 : 400,
           glowHeight: isWide ? 400 : 300,
+          maxWidth: isWide ? 1280 : 1100,
         );
       case _BannerVariant.page:
         return _BannerConfig(
           assetPath: BrandAssets.pageBanner,
-          bannerHeight: isWide ? 180 : (isMedium ? 160 : 135),
-          verticalPadding: isWide ? 32 : (isMedium ? 24 : 20),
+          bannerHeight: isWide ? 180 : (isMedium ? 160 : 140),
+          verticalPadding: isWide ? 28 : (isMedium ? 24 : 20),
           subtitleSpacing: 16,
           subtitleFontSize: isWide ? 14 : 12,
           glowWidth: isWide ? 500 : 350,
           glowHeight: isWide ? 300 : 220,
+          maxWidth: isWide ? 1200 : 1100,
         );
     }
   }
@@ -187,6 +194,7 @@ class _BannerConfig {
     required this.subtitleFontSize,
     required this.glowWidth,
     required this.glowHeight,
+    required this.maxWidth,
   });
 
   final String assetPath;
@@ -196,4 +204,5 @@ class _BannerConfig {
   final double subtitleFontSize;
   final double glowWidth;
   final double glowHeight;
+  final double maxWidth;
 }
