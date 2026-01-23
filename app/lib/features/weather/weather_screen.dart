@@ -385,17 +385,17 @@ class _QuickStat extends StatelessWidget {
 class _HourlyForecast extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Mock hourly data
+    // Mock hourly data with full details
     final hours = [
-      _HourData(time: 'Now', temp: 58, icon: Icons.cloud_outlined, precip: 10, wind: 12),
-      _HourData(time: '1PM', temp: 60, icon: Icons.wb_sunny_outlined, precip: 5, wind: 14),
-      _HourData(time: '2PM', temp: 62, icon: Icons.wb_sunny_outlined, precip: 0, wind: 15),
-      _HourData(time: '3PM', temp: 63, icon: Icons.wb_sunny_outlined, precip: 0, wind: 16),
-      _HourData(time: '4PM', temp: 61, icon: Icons.cloud_outlined, precip: 5, wind: 14),
-      _HourData(time: '5PM', temp: 58, icon: Icons.cloud_outlined, precip: 15, wind: 12),
-      _HourData(time: '6PM', temp: 54, icon: Icons.wb_twilight_rounded, precip: 20, wind: 10),
-      _HourData(time: '7PM', temp: 50, icon: Icons.nightlight_round, precip: 25, wind: 8),
-      _HourData(time: '8PM', temp: 48, icon: Icons.nightlight_round, precip: 30, wind: 7),
+      _HourData(time: 'Now', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 10, wind: 12, windDir: 225, windDirText: 'SW', gusts: 18, humidity: 65, pressure: 30.12, visibility: 10, condition: 'Partly Cloudy'),
+      _HourData(time: '1PM', temp: 60, feelsLike: 58, icon: Icons.wb_sunny_outlined, precip: 5, wind: 14, windDir: 230, windDirText: 'SW', gusts: 20, humidity: 60, pressure: 30.10, visibility: 10, condition: 'Mostly Sunny'),
+      _HourData(time: '2PM', temp: 62, feelsLike: 60, icon: Icons.wb_sunny_outlined, precip: 0, wind: 15, windDir: 235, windDirText: 'SW', gusts: 22, humidity: 55, pressure: 30.08, visibility: 10, condition: 'Sunny'),
+      _HourData(time: '3PM', temp: 63, feelsLike: 61, icon: Icons.wb_sunny_outlined, precip: 0, wind: 16, windDir: 240, windDirText: 'WSW', gusts: 24, humidity: 52, pressure: 30.06, visibility: 10, condition: 'Sunny'),
+      _HourData(time: '4PM', temp: 61, feelsLike: 59, icon: Icons.cloud_outlined, precip: 5, wind: 14, windDir: 245, windDirText: 'WSW', gusts: 21, humidity: 58, pressure: 30.04, visibility: 10, condition: 'Partly Cloudy'),
+      _HourData(time: '5PM', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 15, wind: 12, windDir: 250, windDirText: 'W', gusts: 18, humidity: 62, pressure: 30.02, visibility: 9, condition: 'Cloudy'),
+      _HourData(time: '6PM', temp: 54, feelsLike: 51, icon: Icons.wb_twilight_rounded, precip: 20, wind: 10, windDir: 255, windDirText: 'W', gusts: 15, humidity: 68, pressure: 30.00, visibility: 8, condition: 'Evening Clouds'),
+      _HourData(time: '7PM', temp: 50, feelsLike: 47, icon: Icons.nightlight_round, precip: 25, wind: 8, windDir: 260, windDirText: 'W', gusts: 12, humidity: 72, pressure: 29.98, visibility: 8, condition: 'Partly Cloudy'),
+      _HourData(time: '8PM', temp: 48, feelsLike: 44, icon: Icons.nightlight_round, precip: 30, wind: 7, windDir: 265, windDirText: 'W', gusts: 10, humidity: 75, pressure: 29.96, visibility: 7, condition: 'Scattered Showers'),
     ];
 
     return Padding(
@@ -417,7 +417,7 @@ class _HourlyForecast extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  'Next 9 hours',
+                  'Tap for details',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textTertiary,
@@ -428,7 +428,7 @@ class _HourlyForecast extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           SizedBox(
-            height: 140,
+            height: 160,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
@@ -436,6 +436,7 @@ class _HourlyForecast extends StatelessWidget {
               itemBuilder: (context, index) => _HourCard(
                 data: hours[index],
                 isFirst: index == 0,
+                onTap: () => _showHourlyDetails(context, hours[index]),
               ),
             ),
           ),
@@ -443,100 +444,393 @@ class _HourlyForecast extends StatelessWidget {
       ),
     );
   }
+
+  void _showHourlyDetails(BuildContext context, _HourData data) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _HourlyDetailSheet(data: data),
+    );
+  }
 }
 
+/// Full hourly data model with all weather details
 class _HourData {
   const _HourData({
     required this.time,
     required this.temp,
+    required this.feelsLike,
     required this.icon,
     required this.precip,
     required this.wind,
+    required this.windDir,
+    required this.windDirText,
+    required this.gusts,
+    required this.humidity,
+    required this.pressure,
+    required this.visibility,
+    required this.condition,
   });
 
   final String time;
   final int temp;
+  final int feelsLike;
   final IconData icon;
   final int precip;
   final int wind;
+  final int windDir; // degrees (0-360)
+  final String windDirText; // N, NE, E, SE, S, SW, W, NW
+  final int gusts;
+  final int humidity;
+  final double pressure;
+  final int visibility;
+  final String condition;
 }
 
-class _HourCard extends StatelessWidget {
+/// Hourly card with wind direction arrow
+class _HourCard extends StatefulWidget {
   const _HourCard({
     required this.data,
+    required this.onTap,
     this.isFirst = false,
   });
 
   final _HourData data;
+  final VoidCallback onTap;
   final bool isFirst;
+
+  @override
+  State<_HourCard> createState() => _HourCardState();
+}
+
+class _HourCardState extends State<_HourCard> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 80,
+          margin: const EdgeInsets.only(right: AppSpacing.sm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isFirst 
+                ? AppColors.accent.withOpacity(0.15) 
+                : _isHovered || _isPressed
+                    ? AppColors.surfaceHover
+                    : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: widget.isFirst 
+                  ? AppColors.accent.withOpacity(0.3) 
+                  : _isHovered
+                      ? AppColors.borderStrong
+                      : AppColors.borderSubtle,
+            ),
+            boxShadow: _isPressed ? null : (_isHovered ? AppColors.shadowCard : null),
+          ),
+          transform: _isPressed 
+              ? (Matrix4.identity()..scale(0.95)) 
+              : Matrix4.identity(),
+          transformAlignment: Alignment.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Time
+              Text(
+                widget.data.time,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: widget.isFirst ? FontWeight.w600 : FontWeight.w500,
+                  color: widget.isFirst ? AppColors.accent : AppColors.textSecondary,
+                ),
+              ),
+
+              // Icon
+              Icon(
+                widget.data.icon,
+                size: 24,
+                color: widget.isFirst ? AppColors.accent : AppColors.textSecondary,
+              ),
+
+              // Temperature
+              Text(
+                '${widget.data.temp}°',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: widget.isFirst ? AppColors.accent : AppColors.textPrimary,
+                ),
+              ),
+
+              // Wind with direction arrow
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Wind direction arrow rotated by degrees
+                  Transform.rotate(
+                    angle: (widget.data.windDir + 180) * 3.14159 / 180,
+                    child: Icon(
+                      Icons.navigation_rounded,
+                      size: 10,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${widget.data.wind}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  Text(
+                    ' ${widget.data.windDirText}',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+
+              // Precip
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.water_drop_outlined,
+                    size: 10,
+                    color: widget.data.precip > 20 ? AppColors.info : AppColors.textTertiary,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${widget.data.precip}%',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: widget.data.precip > 20 ? AppColors.info : AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Detail sheet shown when tapping an hourly card
+class _HourlyDetailSheet extends StatelessWidget {
+  const _HourlyDetailSheet({required this.data});
+
+  final _HourData data;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 72,
-      margin: const EdgeInsets.only(right: AppSpacing.sm),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.md,
-      ),
-      decoration: BoxDecoration(
-        color: isFirst ? AppColors.accent.withOpacity(0.15) : AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(
-          color: isFirst ? AppColors.accent.withOpacity(0.3) : AppColors.borderSubtle,
-        ),
-      ),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Time
-          Text(
-            data.time,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: isFirst ? FontWeight.w600 : FontWeight.w500,
-              color: isFirst ? AppColors.accent : AppColors.textSecondary,
-            ),
-          ),
-
-          // Icon
-          Icon(
-            data.icon,
-            size: 24,
-            color: isFirst ? AppColors.accent : AppColors.textSecondary,
-          ),
-
-          // Temperature
-          Text(
-            '${data.temp}°',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: isFirst ? AppColors.accent : AppColors.textPrimary,
-            ),
-          ),
-
-          // Precip & wind
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.water_drop_outlined,
-                size: 10,
-                color: data.precip > 20 ? AppColors.info : AppColors.textTertiary,
+          // Handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(width: 2),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Header
+          Row(
+            children: [
+              Icon(data.icon, size: 32, color: AppColors.accent),
+              const SizedBox(width: AppSpacing.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data.time,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    data.condition,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
               Text(
-                '${data.precip}%',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: data.precip > 20 ? AppColors.info : AppColors.textTertiary,
+                '${data.temp}°F',
+                style: const TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.xl),
+
+          // Details grid
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            ),
+            child: Column(
+              children: [
+                // Row 1: Feels Like + Humidity
+                Row(
+                  children: [
+                    Expanded(child: _DetailItem(
+                      icon: Icons.thermostat_outlined,
+                      label: 'Feels Like',
+                      value: '${data.feelsLike}°F',
+                    )),
+                    Expanded(child: _DetailItem(
+                      icon: Icons.water_drop_outlined,
+                      label: 'Humidity',
+                      value: '${data.humidity}%',
+                    )),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
+                // Row 2: Wind Speed + Gusts
+                Row(
+                  children: [
+                    Expanded(child: _DetailItem(
+                      icon: Icons.air_rounded,
+                      label: 'Wind Speed',
+                      value: '${data.wind} mph ${data.windDirText}',
+                      valueColor: AppColors.accent,
+                    )),
+                    Expanded(child: _DetailItem(
+                      icon: Icons.speed_rounded,
+                      label: 'Gusts',
+                      value: '${data.gusts} mph',
+                      valueColor: AppColors.accent,
+                    )),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
+                // Row 3: Wind Direction + Precip
+                Row(
+                  children: [
+                    Expanded(child: _DetailItem(
+                      icon: Icons.explore_outlined,
+                      label: 'Wind Direction',
+                      value: '${data.windDir}° (${data.windDirText})',
+                      valueColor: AppColors.accent,
+                    )),
+                    Expanded(child: _DetailItem(
+                      icon: Icons.umbrella_outlined,
+                      label: 'Precipitation',
+                      value: '${data.precip}%',
+                      valueColor: data.precip > 20 ? AppColors.info : null,
+                    )),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
+                // Row 4: Pressure + Visibility
+                Row(
+                  children: [
+                    Expanded(child: _DetailItem(
+                      icon: Icons.compress_rounded,
+                      label: 'Pressure',
+                      value: '${data.pressure.toStringAsFixed(2)} in',
+                    )),
+                    Expanded(child: _DetailItem(
+                      icon: Icons.visibility_outlined,
+                      label: 'Visibility',
+                      value: '${data.visibility} mi',
+                    )),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
         ],
       ),
+    );
+  }
+}
+
+class _DetailItem extends StatelessWidget {
+  const _DetailItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppColors.textTertiary),
+        const SizedBox(width: AppSpacing.sm),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: valueColor ?? AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
