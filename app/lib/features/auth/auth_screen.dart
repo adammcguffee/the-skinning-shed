@@ -112,24 +112,37 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ),
         ),
         child: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Hero banner at top
-                    const BannerHeader.authHero(),
-
-                    const SizedBox(height: 20),
-
-                    // Form card
-                    _buildFormCard(),
-                  ],
-                ),
-              ),
+          child: ScrollConfiguration(
+            behavior: const _NoScrollbarScrollBehavior(),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 480),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 24,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Hero banner at top
+                              const BannerHeader.authHero(),
+                              const SizedBox(height: 20),
+                              _buildFormCard(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -434,5 +447,18 @@ class _KeepSignedInToggle extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _NoScrollbarScrollBehavior extends MaterialScrollBehavior {
+  const _NoScrollbarScrollBehavior();
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
   }
 }
