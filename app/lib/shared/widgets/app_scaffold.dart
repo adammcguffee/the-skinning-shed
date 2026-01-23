@@ -183,13 +183,13 @@ class AppScaffold extends StatelessWidget {
               children: [
                 const SizedBox(height: 12),
                 
-                // Logo icon at top of rail
+                // Mark icon at top of rail (v3 - with built-in padding)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Image.asset(
-                    BrandingAssets.icon,
-                    width: 56,
-                    height: 56,
+                    BrandingAssets.markIcon,
+                    width: 64,
+                    height: 64,
                     fit: BoxFit.contain,
                   ),
                 ),

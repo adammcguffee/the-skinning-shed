@@ -56,21 +56,23 @@ class _FeedScreenState extends State<FeedScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Show horizontal logo on wide screens, icon on narrow
+        // Show wordmark on wide screens, mark icon + text on narrow
         if (isWide)
-          Image.asset(
-            BrandingAssets.horizontal,
-            height: 36,
-            fit: BoxFit.contain,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200, maxHeight: 40),
+            child: Image.asset(
+              BrandingAssets.wordmark,
+              fit: BoxFit.contain,
+            ),
           )
         else ...[
           Image.asset(
-            BrandingAssets.icon,
-            width: 32,
-            height: 32,
+            BrandingAssets.markIcon,
+            width: 36,
+            height: 36,
             fit: BoxFit.contain,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           const Text('The Skinning Shed'),
         ],
       ],

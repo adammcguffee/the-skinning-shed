@@ -212,15 +212,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Widget _buildHeader() {
     return Column(
       children: [
-        // Primary logo with illustration
+        // Wordmark logo (text-first, clean)
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 280, maxHeight: 220),
+          constraints: const BoxConstraints(maxWidth: 320, maxHeight: 80),
           child: Image.asset(
-            BrandingAssets.primary,
+            BrandingAssets.wordmark,
             fit: BoxFit.contain,
           ),
         ),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
+        // Small badge for visual interest
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 160, maxHeight: 140),
+          child: Image.asset(
+            BrandingAssets.badgePrimary,
+            fit: BoxFit.contain,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
         Text(
           'Your hunting & fishing trophy journal',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
