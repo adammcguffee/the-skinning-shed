@@ -1,12 +1,89 @@
-﻿# Secrets
+﻿# Environment files - NEVER COMMIT
 .env
+.env.local
+.env.*.local
+*.env
 
-# Cursor workspace/settings
+# Cursor IDE
 .cursor/
 
-# OS junk
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.log
+
+# Android
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.*
+**/android/key.properties
+*.jks
+*.keystore
+
+# iOS/macOS
+**/ios/.symlinks/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Pods/
+**/macos/Flutter/ephemeral
+**/macos/Pods/
+
+# Web
+lib/generated_plugin_registrant.dart
+
+# Windows
+**/windows/flutter/ephemeral/
+
+# Linux
+**/linux/flutter/ephemeral/
+
+# IDE
+.idea/
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+.test_coverage.dart
+
+# Firebase (if used)
+.firebase/
+firebase-debug.log
+firestore-debug.log
+pubspec-debug.log
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Symbolication
+app.*.symbols
+
+# Obfuscation
+app.*.map.json
+
+# Supabase local
+**/supabase/.temp/
+**/supabase/.branches/
+
+# OS files
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
+*.bak
