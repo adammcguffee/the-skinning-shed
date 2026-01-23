@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router.dart';
 import 'theme/app_theme.dart';
+import '../shared/widgets/no_scrollbar_scroll_behavior.dart';
 
 /// The root widget for The Skinning Shed application.
 class SkinningApp extends ConsumerWidget {
@@ -19,6 +20,7 @@ class SkinningApp extends ConsumerWidget {
       // Dark theme uses same light theme for now (2025 premium light-first design)
       darkTheme: AppTheme.light,
       themeMode: ThemeMode.light,
+      scrollBehavior: const NoScrollbarScrollBehavior(),
       routerConfig: router,
     );
   }

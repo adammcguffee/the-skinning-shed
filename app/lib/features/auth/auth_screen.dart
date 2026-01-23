@@ -4,6 +4,7 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/auth_service.dart';
 import 'package:shed/services/auth_preferences.dart';
+import 'package:shed/shared/widgets/no_scrollbar_scroll_behavior.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// 🔐 AUTH SCREEN - FULLSCREEN HERO LAYOUT
@@ -113,7 +114,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         ),
         child: SafeArea(
           child: ScrollConfiguration(
-            behavior: const _NoScrollbarScrollBehavior(),
+            behavior: const NoScrollbarScrollBehavior(),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 return SingleChildScrollView(
@@ -447,18 +448,5 @@ class _KeepSignedInToggle extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-class _NoScrollbarScrollBehavior extends MaterialScrollBehavior {
-  const _NoScrollbarScrollBehavior();
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
   }
 }

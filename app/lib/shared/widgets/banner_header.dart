@@ -45,6 +45,7 @@ class BannerHeader extends StatelessWidget {
             child: Center(
               child: SizedBox(
                 height: config.bannerHeight,
+                width: double.infinity,
                 child: Image.asset(
                   config.assetPath,
                   fit: BoxFit.contain,

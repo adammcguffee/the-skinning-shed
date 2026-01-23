@@ -25,7 +25,6 @@ All finalized brand assets are in:
 ```
 app/assets/branding/banner_v2/
 ├── hero_banner.png   # Auth screen hero (wide, transparent)
-├── page_banner.png   # Page headers (unused - use heroBanner via appTop)
 ├── wordmark.png      # Text-only logo
 └── crest.png         # Icon mark for nav rail (48px)
 ```
@@ -35,7 +34,6 @@ app/assets/branding/banner_v2/
 // app/lib/shared/branding/brand_assets.dart
 abstract final class BrandAssets {
   static const String heroBanner = 'assets/branding/banner_v2/hero_banner.png';
-  static const String pageBanner = 'assets/branding/banner_v2/page_banner.png';
   static const String wordmark = 'assets/branding/banner_v2/wordmark.png';
   static const String crest = 'assets/branding/banner_v2/crest.png';
 }
@@ -60,7 +58,6 @@ Three variants:
 |---------|-------|----------|------------------------------|
 | `authHero()` | heroBanner | Auth screen | 260 / 230 / 200 |
 | `appTop()` | heroBanner | In-app pages | 170 / 150 / 130 |
-| `page()` | pageBanner | (deprecated) | 180 / 160 / 140 |
 
 Breakpoints:
 - Large: ≥1024px
