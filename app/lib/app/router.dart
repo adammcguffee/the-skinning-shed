@@ -9,6 +9,7 @@ import '../features/feed/feed_screen.dart';
 import '../features/land/land_detail_screen.dart';
 import '../features/land/land_screen.dart';
 import '../features/post/post_screen.dart';
+import '../features/research/research_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/swap_shop/swap_shop_screen.dart';
 import '../features/trophy_wall/trophy_detail_screen.dart';
@@ -148,6 +149,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: SettingsScreen(),
+            ),
+          ),
+          
+          // Research / Patterns
+          GoRoute(
+            path: '/research',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: ResearchScreen(),
             ),
           ),
         ],

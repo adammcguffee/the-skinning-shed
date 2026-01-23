@@ -118,7 +118,7 @@ class TrophyService {
     return List<Map<String, dynamic>>.from(response);
   }
   
-  /// Create a new trophy post.
+  /// Create a new trophy post with optional weather/moon data.
   Future<String?> createTrophy({
     required String category,
     required String state,
@@ -132,6 +132,10 @@ class TrophyService {
     String? privateNotes,
     Map<String, dynamic>? stats,
     String visibility = 'public',
+    Map<String, dynamic>? weatherSnapshot,
+    Map<String, dynamic>? moonSnapshot,
+    String weatherSource = 'auto',
+    bool weatherEdited = false,
   }) async {
     if (_client == null) return null;
     
@@ -145,6 +149,8 @@ class TrophyService {
       'county': county,
       'harvest_date': harvestDate.toIso8601String().split('T')[0],
       'visibility': visibility,
+      'weather_source': weatherSource,
+      'weather_edited': weatherEdited,
       if (harvestTime != null) 'harvest_time': harvestTime,
       if (harvestTimeBucket != null) 'harvest_time_bucket': harvestTimeBucket,
       if (speciesId != null) 'species_id': speciesId,
@@ -160,7 +166,111 @@ class TrophyService {
         .select('id')
         .single();
     
-    return response['id'] as String?;
+    final trophyId = response['id'] as String?;
+    
+    if (trophyId != null) {
+      // Save weather snapshot if provided
+      if (weatherSnapshot != null) {
+        await _client.from('weather_snapshots').insert({
+          'post_id': trophyId,
+          ...weatherSnapshot,
+        });
+      }
+      
+      // Save moon snapshot if provided
+      if (moonSnapshot != null) {
+        await _client.from('moon_snapshots').insert({
+          'post_id': trophyId,
+          ...moonSnapshot,
+        });
+      }
+      
+      // Create analytics bucket for research queries
+      await _createAnalyticsBucket(
+        postId: trophyId,
+        category: category,
+        state: state,
+        county: county,
+        harvestDate: harvestDate,
+        harvestTime: harvestTime,
+        weatherSnapshot: weatherSnapshot,
+        moonSnapshot: moonSnapshot,
+      );
+    }
+    
+    return trophyId;
+  }
+  
+  /// Create analytics bucket for aggregation queries.
+  Future<void> _createAnalyticsBucket({
+    required String postId,
+    required String category,
+    required String state,
+    required String county,
+    required DateTime harvestDate,
+    String? harvestTime,
+    Map<String, dynamic>? weatherSnapshot,
+    Map<String, dynamic>? moonSnapshot,
+  }) async {
+    if (_client == null) return;
+    
+    // Determine time of day bucket
+    String? todBucket;
+    if (harvestTime != null) {
+      final parts = harvestTime.split(':');
+      if (parts.isNotEmpty) {
+        final hour = int.tryParse(parts[0]) ?? 0;
+        if (hour >= 5 && hour < 10) todBucket = 'morning';
+        else if (hour >= 10 && hour < 14) todBucket = 'midday';
+        else if (hour >= 14 && hour < 19) todBucket = 'evening';
+        else todBucket = 'night';
+      }
+    }
+    
+    // Determine pressure bucket (0.5 inHg bins)
+    String? pressureBucket;
+    if (weatherSnapshot != null && weatherSnapshot['pressure_inhg'] != null) {
+      final pressure = (weatherSnapshot['pressure_inhg'] as num).toDouble();
+      final bucket = (pressure * 2).round() / 2; // Round to nearest 0.5
+      pressureBucket = bucket.toStringAsFixed(1);
+    }
+    
+    // Determine temp bucket (5°F bins)
+    String? tempBucket;
+    if (weatherSnapshot != null && weatherSnapshot['temp_f'] != null) {
+      final temp = (weatherSnapshot['temp_f'] as num).toDouble();
+      final bucket = ((temp / 5).round() * 5);
+      tempBucket = '$bucket';
+    }
+    
+    // Determine moon phase bucket
+    String? moonPhaseBucket;
+    if (moonSnapshot != null && moonSnapshot['phase_name'] != null) {
+      moonPhaseBucket = moonSnapshot['phase_name'] as String;
+    }
+    
+    // Determine wind direction bucket
+    String? windDirBucket;
+    if (weatherSnapshot != null && weatherSnapshot['wind_dir_text'] != null) {
+      windDirBucket = weatherSnapshot['wind_dir_text'] as String;
+      if (!['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].contains(windDirBucket)) {
+        windDirBucket = 'VAR';
+      }
+    }
+    
+    await _client.from('analytics_buckets').insert({
+      'post_id': postId,
+      'category': category,
+      'state': state,
+      'county': county,
+      'season_year': harvestDate.year,
+      'dow': harvestDate.weekday,
+      if (todBucket != null) 'tod_bucket': todBucket,
+      if (tempBucket != null) 'temp_bucket': tempBucket,
+      if (pressureBucket != null) 'pressure_bucket': pressureBucket,
+      if (moonPhaseBucket != null) 'moon_phase_bucket': moonPhaseBucket,
+      if (windDirBucket != null) 'wind_dir_bucket': windDirBucket,
+    });
   }
   
   /// Upload a trophy photo.
