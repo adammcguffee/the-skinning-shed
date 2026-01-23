@@ -3,6 +3,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_preferences.dart';
 
+/// Initialization status for Supabase.
+enum InitStatus {
+  /// Not yet attempted initialization.
+  idle,
+  /// Currently initializing.
+  loading,
+  /// Successfully initialized.
+  success,
+  /// Failed to initialize (missing credentials or error).
+  failure,
+}
+
 /// Supabase client singleton.
 /// 
 /// Credentials are provided via --dart-define at build/run time:
@@ -16,12 +28,18 @@ class SupabaseService {
   static SupabaseService? _instance;
   static SupabaseService get instance => _instance ??= SupabaseService._();
   
-  bool _initialized = false;
+  InitStatus _status = InitStatus.idle;
+  String? _errorMessage;
   
   /// Initialize Supabase client.
   /// Call once at app startup from main.dart.
-  Future<void> initialize() async {
-    if (_initialized) return;
+  /// Returns true if successful, false if failed.
+  Future<bool> initialize() async {
+    if (_status == InitStatus.success) return true;
+    if (_status == InitStatus.loading) return false;
+    
+    _status = InitStatus.loading;
+    _errorMessage = null;
     
     const supabaseUrl = String.fromEnvironment(
       'SUPABASE_URL',
@@ -33,40 +51,55 @@ class SupabaseService {
     );
     
     if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-      // In development without credentials, log warning but don't crash
-      print('⚠️ Supabase credentials not provided via --dart-define');
-      print('   Run with: --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...');
-      return;
+      _status = InitStatus.failure;
+      _errorMessage = 'Supabase credentials not provided.\n\n'
+          'Run with:\n'
+          '--dart-define=SUPABASE_URL=your_url\n'
+          '--dart-define=SUPABASE_ANON_KEY=your_key';
+      return false;
     }
     
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
-      authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.pkce,
-      ),
-    );
+    try {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
+      );
 
-    final keepSignedIn = await AuthPreferences.getKeepSignedIn();
-    if (!keepSignedIn) {
-      final client = Supabase.instance.client;
-      if (client.auth.currentSession != null) {
-        await client.auth.signOut();
+      final keepSignedIn = await AuthPreferences.getKeepSignedIn();
+      if (!keepSignedIn) {
+        final client = Supabase.instance.client;
+        if (client.auth.currentSession != null) {
+          await client.auth.signOut();
+        }
       }
+      
+      _status = InitStatus.success;
+      return true;
+    } catch (e) {
+      _status = InitStatus.failure;
+      _errorMessage = 'Failed to initialize Supabase: $e';
+      return false;
     }
-    
-    _initialized = true;
   }
   
   /// Get Supabase client instance.
   /// Returns null if not initialized.
   SupabaseClient? get client {
-    if (!_initialized) return null;
+    if (_status != InitStatus.success) return null;
     return Supabase.instance.client;
   }
   
+  /// Current initialization status.
+  InitStatus get status => _status;
+  
+  /// Error message if initialization failed.
+  String? get errorMessage => _errorMessage;
+  
   /// Check if Supabase is initialized.
-  bool get isInitialized => _initialized;
+  bool get isInitialized => _status == InitStatus.success;
   
   /// Get current user (null if not authenticated).
   User? get currentUser => client?.auth.currentUser;

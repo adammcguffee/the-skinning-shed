@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
-import 'services/supabase_service.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Supabase
-  await SupabaseService.instance.initialize();
+  // Supabase initialization is handled by BootstrapScreen
+  // to show proper loading/error states in the UI.
   
   runApp(
     const ProviderScope(
