@@ -21,6 +21,7 @@ class TrophyService {
   }) async {
     if (_client == null) return [];
     
+    // Build filter query first, then apply transforms
     var query = _client
         .from('trophy_posts')
         .select('''
@@ -36,10 +37,9 @@ class TrophyService {
             scientific_name
           )
         ''')
-        .eq('visibility', 'public')
-        .order('posted_at', ascending: false)
-        .range(offset, offset + limit - 1);
+        .eq('visibility', 'public');
     
+    // Apply filters before transforms
     if (category != null) {
       query = query.eq('category', category);
     }
@@ -50,7 +50,11 @@ class TrophyService {
       query = query.eq('county', county);
     }
     
-    final response = await query;
+    // Apply transforms last
+    final response = await query
+        .order('posted_at', ascending: false)
+        .range(offset, offset + limit - 1);
+    
     return List<Map<String, dynamic>>.from(response);
   }
   
@@ -187,7 +191,7 @@ class TrophyService {
         .from('trophy_posts')
         .update({'cover_photo_path': storagePath})
         .eq('id', trophyId)
-        .is_('cover_photo_path', null);
+        .isFilter('cover_photo_path', null);
     
     return storagePath;
   }
