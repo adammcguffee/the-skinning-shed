@@ -451,11 +451,10 @@ class _HourlyForecast extends StatelessWidget {
   void _showHourlyDetails(BuildContext context, _HourData data) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => _HourlyDetailSheet(data: data),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _HourlyDetailSheet(data: data),
     );
   }
 }
@@ -649,9 +648,126 @@ class _HourCardState extends State<_HourCard> {
   }
 }
 
-/// Detail sheet shown when tapping an hourly card
+/// Detail sheet shown when tapping an hourly card.
+/// Uses DraggableScrollableSheet for responsive scroll behavior.
 class _HourlyDetailSheet extends StatelessWidget {
   const _HourlyDetailSheet({required this.data});
+
+  final _HourData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.35,
+      maxChildSize: 0.90,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Grab handle
+                  _GrabHandle(),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // Header row
+                  _HeaderRow(data: data),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Details grid
+                  _MetricsGrid(data: data),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Grab handle for the bottom sheet.
+class _GrabHandle extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 40,
+        height: 4,
+        decoration: BoxDecoration(
+          color: AppColors.border,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+/// Header row with icon, time, condition, and temperature.
+class _HeaderRow extends StatelessWidget {
+  const _HeaderRow({required this.data});
+
+  final _HourData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(data.icon, size: 32, color: AppColors.accent),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data.time,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                data.condition ?? '—',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Text(
+          _formatTempF(data.temp),
+          style: const TextStyle(
+            fontSize: 36,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Metrics grid with all weather details.
+class _MetricsGrid extends StatelessWidget {
+  const _MetricsGrid({required this.data});
 
   final _HourData data;
 
@@ -663,161 +779,98 @@ class _HourlyDetailSheet extends StatelessWidget {
     );
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      ),
+      child: Wrap(
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.lg,
         children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
+          // Row 1: Feels Like + Humidity
+          _MetricRow(
+            item1: _DetailItem(
+              icon: Icons.thermostat_outlined,
+              label: 'Feels Like',
+              value: _formatTempF(data.feelsLike),
+            ),
+            item2: _DetailItem(
+              icon: Icons.water_drop_outlined,
+              label: 'Humidity',
+              value: _formatPercent(data.humidity),
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
 
-          // Header
-          Row(
-            children: [
-              Icon(data.icon, size: 32, color: AppColors.accent),
-              const SizedBox(width: AppSpacing.md),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data.time,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    data.condition ?? '—',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                _formatTempF(data.temp),
-                style: const TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xl),
-
-          // Details grid
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          // Row 2: Wind Speed + Gusts
+          _MetricRow(
+            item1: _DetailItem(
+              icon: Icons.air_rounded,
+              label: 'Wind Speed',
+              value: _formatMph(data.windSpeed, suffix: ' $windDirectionText'),
+              valueColor: AppColors.accent,
             ),
-            child: Column(
-              children: [
-                // Row 1: Feels Like + Humidity
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.thermostat_outlined,
-                        label: 'Feels Like',
-                        value: _formatTempF(data.feelsLike),
-                      ),
-                    ),
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.water_drop_outlined,
-                        label: 'Humidity',
-                        value: _formatPercent(data.humidity),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.lg),
-
-                // Row 2: Wind Speed + Gusts
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.air_rounded,
-                        label: 'Wind Speed',
-                        value: _formatMph(data.windSpeed, suffix: ' $windDirectionText'),
-                        valueColor: AppColors.accent,
-                      ),
-                    ),
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.speed_rounded,
-                        label: 'Gusts',
-                        value: _formatMph(data.gusts),
-                        valueColor: AppColors.accent,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.lg),
-
-                // Row 3: Wind Direction + Precip
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.explore_outlined,
-                        label: 'Wind Direction',
-                        value: _formatDirection(data.windDirectionDegrees, windDirectionText),
-                        valueColor: AppColors.accent,
-                      ),
-                    ),
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.umbrella_outlined,
-                        label: 'Precipitation',
-                        value: _formatPercent(data.precip),
-                        valueColor: (data.precip ?? 0) > 20 ? AppColors.info : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.lg),
-
-                // Row 4: Pressure + Visibility
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.compress_rounded,
-                        label: 'Pressure',
-                        value: _formatPressure(data.pressure),
-                      ),
-                    ),
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.visibility_outlined,
-                        label: 'Visibility',
-                        value: _formatMiles(data.visibility),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            item2: _DetailItem(
+              icon: Icons.speed_rounded,
+              label: 'Gusts',
+              value: _formatMph(data.gusts),
+              valueColor: AppColors.accent,
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
+
+          // Row 3: Wind Direction + Precip
+          _MetricRow(
+            item1: _DetailItem(
+              icon: Icons.explore_outlined,
+              label: 'Wind Direction',
+              value: _formatDirection(data.windDirectionDegrees, windDirectionText),
+              valueColor: AppColors.accent,
+            ),
+            item2: _DetailItem(
+              icon: Icons.umbrella_outlined,
+              label: 'Precipitation',
+              value: _formatPercent(data.precip),
+              valueColor: (data.precip ?? 0) > 20 ? AppColors.info : null,
+            ),
+          ),
+
+          // Row 4: Pressure + Visibility
+          _MetricRow(
+            item1: _DetailItem(
+              icon: Icons.compress_rounded,
+              label: 'Pressure',
+              value: _formatPressure(data.pressure),
+            ),
+            item2: _DetailItem(
+              icon: Icons.visibility_outlined,
+              label: 'Visibility',
+              value: _formatMiles(data.visibility),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A row of two metric items that adapts to available width.
+class _MetricRow extends StatelessWidget {
+  const _MetricRow({
+    required this.item1,
+    required this.item2,
+  });
+
+  final Widget item1;
+  final Widget item2;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        children: [
+          Expanded(child: item1),
+          Expanded(child: item2),
         ],
       ),
     );
@@ -843,25 +896,29 @@ class _DetailItem extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: AppColors.textTertiary),
         const SizedBox(width: AppSpacing.sm),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textTertiary,
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textTertiary,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: valueColor ?? AppColors.textPrimary,
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: valueColor ?? AppColors.textPrimary,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
