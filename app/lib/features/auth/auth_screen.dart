@@ -95,8 +95,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Robust overflow-safe auth layout:
-    // LayoutBuilder -> SingleChildScrollView -> ConstrainedBox(minHeight) -> IntrinsicHeight -> Column
+    // SAFE AUTH LAYOUT - NO IntrinsicHeight, NO Expanded, NO Spacer inside scroll
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(
@@ -112,45 +111,27 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             stops: const [0.0, 0.5, 1.0],
           ),
         ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: SafeArea(
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 24),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Hero banner at top
+                    const BannerHeader.authHero(),
 
-                        // Hero banner at top - large and dominant
-                        const BannerHeader.authHero(),
+                    const SizedBox(height: 20),
 
-                        const SizedBox(height: 16),
-
-                        // Form card centered - uses Expanded inside IntrinsicHeight
-                        Expanded(
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.screenPadding,
-                              ),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 440),
-                                child: _buildFormCard(),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-                      ],
-                    ),
-                  ),
+                    // Form card
+                    _buildFormCard(),
+                  ],
                 ),
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
