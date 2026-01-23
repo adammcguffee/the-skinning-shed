@@ -68,7 +68,7 @@ class BannerHeader extends StatelessWidget {
       case _BannerVariant.authHero:
         return _BannerConfig(
           assetPath: BrandAssets.heroBanner,
-          bannerHeight: isWide ? 260 : (isMedium ? 230 : 200),
+          bannerHeight: isWide ? 340 : (isMedium ? 300 : 260),
           verticalPadding: isWide ? 40 : (isMedium ? 32 : 24),
           horizontalPadding: AppSpacing.screenPadding,
         );
@@ -77,7 +77,7 @@ class BannerHeader extends StatelessWidget {
         // Do not process the image; replace the asset with a transparent PNG.
         return _BannerConfig(
           assetPath: BrandAssets.heroBanner,
-          bannerHeight: isWide ? 170 : (isMedium ? 150 : 130),
+          bannerHeight: isWide ? 190 : (isMedium ? 170 : 150),
           verticalPadding: 0,
           horizontalPadding: AppSpacing.sm,
         );

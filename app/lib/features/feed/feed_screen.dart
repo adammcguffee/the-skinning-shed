@@ -90,15 +90,42 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   Widget _buildHeader(BuildContext context, bool isWide) {
-    // Banner header is now rendered by AppScaffold
-    return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenPadding,
+        0,
+        AppSpacing.screenPadding,
+        AppSpacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'Trophy Feed',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Latest trophies from the community',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCategoryTabs() {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.screenPadding,
-        vertical: AppSpacing.md,
+        vertical: AppSpacing.xs,
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,

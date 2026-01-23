@@ -116,14 +116,49 @@ class AppScaffold extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  // Hero banner header at top of content area
-                  SafeArea(
-                    bottom: false,
-                    child: const BannerHeader.appTop(),
+                  // Header zone
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12, left: 16, right: 16),
+                    child: BannerHeader.appTop(),
                   ),
                   const SizedBox(height: 12),
-                  // Page content - REQUIRED: Expanded to give child vertical space
-                  Expanded(child: child),
+                  // Subtle divider
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Container(
+                      height: 1,
+                      color: Colors.white.withOpacity(0.06),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Content frame
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1100),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.06),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: child,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -142,14 +177,52 @@ class AppScaffold extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // Hero banner header at top of content area
+            // Header zone
             SafeArea(
               bottom: false,
-              child: const BannerHeader.appTop(),
+              child: const Padding(
+                padding: EdgeInsets.only(top: 12, left: 16, right: 16),
+                child: BannerHeader.appTop(),
+              ),
             ),
             const SizedBox(height: 12),
-            // Page content - REQUIRED: Expanded to give child vertical space
-            Expanded(child: child),
+            // Subtle divider
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                height: 1,
+                color: Colors.white.withOpacity(0.06),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Content frame
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.06),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: child,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
