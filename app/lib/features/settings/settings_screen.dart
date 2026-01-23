@@ -9,6 +9,15 @@ import 'package:shed/shared/widgets/widgets.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature coming soon!'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -44,17 +53,17 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsItem(
                       icon: Icons.person_outline_rounded,
                       title: 'Edit Profile',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Edit Profile'),
                     ),
                     _SettingsItem(
                       icon: Icons.notifications_outlined,
                       title: 'Notifications',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Notifications'),
                     ),
                     _SettingsItem(
                       icon: Icons.lock_outline_rounded,
                       title: 'Privacy',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Privacy settings'),
                     ),
                   ],
                 ),
@@ -69,13 +78,13 @@ class SettingsScreen extends ConsumerWidget {
                       icon: Icons.location_on_outlined,
                       title: 'Default Location',
                       subtitle: 'Texas',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Default Location'),
                     ),
                     _SettingsItem(
                       icon: Icons.straighten_outlined,
                       title: 'Units',
                       subtitle: 'Imperial',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Units'),
                     ),
                   ],
                 ),
@@ -89,18 +98,18 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsItem(
                       icon: Icons.help_outline_rounded,
                       title: 'Help Center',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Help Center'),
                     ),
                     _SettingsItem(
                       icon: Icons.feedback_outlined,
                       title: 'Send Feedback',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Send Feedback'),
                     ),
                     _SettingsItem(
                       icon: Icons.info_outline_rounded,
                       title: 'About',
                       subtitle: 'Version 1.0.0',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'About'),
                     ),
                   ],
                 ),

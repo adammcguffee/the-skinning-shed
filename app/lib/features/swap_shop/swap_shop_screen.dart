@@ -125,7 +125,22 @@ class _ListingCardState extends State<_ListingCard> {
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {},
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Viewing ${listing['title']}'),
+              duration: const Duration(seconds: 1),
+              action: SnackBarAction(
+                label: 'Contact',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Contact seller coming soon!')),
+                  );
+                },
+              ),
+            ),
+          );
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           transform: _isHovered

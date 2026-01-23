@@ -317,6 +317,15 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
   bool _isHovered = false;
   bool _isLiked = false;
 
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature coming soon!'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final species = widget.trophy['species']?['name'] ?? 'Unknown';
@@ -481,12 +490,12 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
                         const Spacer(),
                         _ActionButton(
                           icon: Icons.share_outlined,
-                          onTap: () {},
+                          onTap: () => _showComingSoon(context, 'Share'),
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         _ActionButton(
                           icon: Icons.bookmark_outline_rounded,
-                          onTap: () {},
+                          onTap: () => _showComingSoon(context, 'Save'),
                         ),
                       ],
                     ),

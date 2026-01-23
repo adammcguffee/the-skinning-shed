@@ -281,6 +281,7 @@ class TrophyService {
   }
   
   /// Upload a trophy photo.
+  /// Works cross-platform by accepting bytes.
   Future<String?> uploadPhoto({
     required String trophyId,
     required String filePath,
@@ -293,24 +294,75 @@ class TrophyService {
     
     final storagePath = '$userId/$trophyId/$fileName';
     
-    await _client.storage
-        .from('trophy_photos')
-        .upload(storagePath, File(filePath));
+    try {
+      // Read file and upload as bytes (cross-platform)
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      
+      await _client.storage
+          .from('trophy_photos')
+          .uploadBinary(storagePath, bytes, fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+          ));
+      
+      // Add photo record
+      await _client.from('trophy_photos').insert({
+        'post_id': trophyId,
+        'storage_path': storagePath,
+      });
+      
+      // Update cover photo if this is the first
+      await _client
+          .from('trophy_posts')
+          .update({'cover_photo_path': storagePath})
+          .eq('id', trophyId)
+          .isFilter('cover_photo_path', null);
+      
+      return storagePath;
+    } catch (e) {
+      print('Photo upload error: $e');
+      return null;
+    }
+  }
+  
+  /// Upload a trophy photo from bytes (for web support).
+  Future<String?> uploadPhotoBytes({
+    required String trophyId,
+    required List<int> bytes,
+    required String fileName,
+  }) async {
+    if (_client == null) return null;
     
-    // Add photo record
-    await _client.from('trophy_photos').insert({
-      'post_id': trophyId,
-      'storage_path': storagePath,
-    });
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
     
-    // Update cover photo if this is the first
-    await _client
-        .from('trophy_posts')
-        .update({'cover_photo_path': storagePath})
-        .eq('id', trophyId)
-        .isFilter('cover_photo_path', null);
+    final storagePath = '$userId/$trophyId/$fileName';
     
-    return storagePath;
+    try {
+      await _client.storage
+          .from('trophy_photos')
+          .uploadBinary(storagePath, bytes, fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+          ));
+      
+      // Add photo record
+      await _client.from('trophy_photos').insert({
+        'post_id': trophyId,
+        'storage_path': storagePath,
+      });
+      
+      // Update cover photo if this is the first
+      await _client
+          .from('trophy_posts')
+          .update({'cover_photo_path': storagePath})
+          .eq('id', trophyId)
+          .isFilter('cover_photo_path', null);
+      
+      return storagePath;
+    } catch (e) {
+      print('Photo upload error: $e');
+      return null;
+    }
   }
   
   /// Get public URL for a photo.

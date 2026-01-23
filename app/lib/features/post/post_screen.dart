@@ -198,7 +198,7 @@ class _PostScreenState extends ConsumerState<PostScreen> {
           'humidity_pct': humidity,
           'cloud_pct': _cloudPct ?? _weatherSnapshot?.cloudPct ?? 0,
           'condition_text': _conditionText ?? _weatherSnapshot?.conditionText ?? 'Unknown',
-          'condition_code': _weatherSnapshot?.conditionCode ?? 0,
+          'condition_code': (_weatherSnapshot?.conditionCode ?? 0).toString(),
           'precip_mm': _weatherSnapshot?.precipMm ?? 0,
           'is_hourly': true,
           'source': _weatherSource,
@@ -223,7 +223,7 @@ class _PostScreenState extends ConsumerState<PostScreen> {
         else harvestTimeBucket = 'night';
       }
       
-      await trophyService.createTrophy(
+      final trophyId = await trophyService.createTrophy(
         category: _selectedSpecies!,
         state: _selectedState?.name ?? '',
         county: _selectedCounty ?? '',
@@ -238,6 +238,22 @@ class _PostScreenState extends ConsumerState<PostScreen> {
         weatherSource: _weatherSource,
         weatherEdited: _weatherEdited,
       );
+
+      // Upload photos if trophy was created successfully
+      if (trophyId != null && _selectedPhotos.isNotEmpty) {
+        for (int i = 0; i < _selectedPhotos.length; i++) {
+          final photo = _selectedPhotos[i];
+          final fileName = 'photo_${i}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          
+          // Read bytes from XFile (cross-platform)
+          final bytes = await photo.readAsBytes();
+          await trophyService.uploadPhotoBytes(
+            trophyId: trophyId,
+            bytes: bytes,
+            fileName: fileName,
+          );
+        }
+      }
 
       if (mounted) {
         context.go('/');

@@ -137,18 +137,39 @@ class TrophyDetailScreen extends StatelessWidget {
                         _ActionButton(
                           icon: Icons.favorite_outline_rounded,
                           label: '234',
-                          onTap: () {},
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Reactions coming soon!'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(width: AppSpacing.lg),
                         _ActionButton(
                           icon: Icons.chat_bubble_outline_rounded,
                           label: '18',
-                          onTap: () {},
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Comments coming soon!'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
                         ),
                         const Spacer(),
                         _ActionButton(
                           icon: Icons.bookmark_outline_rounded,
-                          onTap: () {},
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Save coming soon!'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),

@@ -266,7 +266,16 @@ class _SpeciesCardState extends State<_SpeciesCard> {
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {},
+        onTap: () {
+          // Navigate to feed (species filtering coming soon)
+          context.go('/');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Browsing ${widget.data.name}'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           transform: _isHovered
@@ -641,7 +650,10 @@ class _TrendingCardState extends State<_TrendingCard> {
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {},
+        onTap: () {
+          // Navigate to feed to view trophy
+          context.go('/');
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           margin: const EdgeInsets.only(bottom: AppSpacing.sm),
