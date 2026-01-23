@@ -180,30 +180,19 @@ app/
 
 ---
 
-## Git Status (as of last check)
+## Checkpoints
+
+| Date | Commit | Description |
+|------|--------|-------------|
+| 2026-01-23 | `00ea8b9` | Pre-trophy-post-fix checkpoint. Weather auto-fill, county FIPS, 3-tier weather API, responsive bottom sheet all complete. |
+
+## Recent Commits
 
 ```
-## main...origin/main [ahead 1]
- M app/lib/features/auth/auth_screen.dart
- M app/lib/features/explore/explore_screen.dart
- M app/lib/features/feed/feed_screen.dart
- M app/lib/features/land/land_screen.dart
- M app/lib/features/settings/settings_screen.dart
- M app/lib/features/swap_shop/swap_shop_screen.dart
- M app/lib/features/trophy_wall/trophy_wall_screen.dart
- M app/lib/features/weather/weather_screen.dart
- M app/lib/services/supabase_service.dart
- M app/lib/shared/branding/brand_assets.dart
- M app/lib/shared/widgets/banner_header.dart
- M app/pubspec.yaml
-?? app/lib/services/auth_preferences.dart
-```
-
-### Suggested Commit
-```bash
-git add -A
-git commit -m "fix: use hero banner for in-app header + add keep signed in toggle"
-git push origin main
+00ea8b9 fix: make hourly detail sheet scroll-safe and responsive
+6ef8dea fix: trophy weather autofill uses forecast recent + historical forecast 2022+ + archive older
+29da3d7 feat: full US county centroid coverage via Census Gazetteer import
+e09a2b6 feat: auto-fill historical weather and moon for trophy posts
 ```
 
 ---
