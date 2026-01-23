@@ -9,9 +9,14 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../data/us_counties.dart';
 import '../../data/us_states.dart';
-import '../../shared/widgets/widgets.dart';
 
-/// Post trophy screen - create a new trophy post.
+/// 📝 MODERN POST TROPHY SCREEN
+/// 
+/// Features:
+/// - Clear step hierarchy
+/// - Modern dropdown sheets with search
+/// - Photo picker with preview grid
+/// - Anchored, obvious CTA
 class PostScreen extends StatefulWidget {
   const PostScreen({super.key});
 
@@ -26,11 +31,9 @@ class _PostScreenState extends State<PostScreen> {
   DateTime? _harvestDate;
   final _storyController = TextEditingController();
   bool _isLoading = false;
-  
-  // Photo handling
+
   final _imagePicker = ImagePicker();
   final List<XFile> _selectedPhotos = [];
-
   final _categories = ['Deer', 'Turkey', 'Bass', 'Other Game', 'Other Fishing'];
 
   @override
@@ -50,6 +53,18 @@ class _PostScreenState extends State<PostScreen> {
       initialDate: DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: AppColors.surface,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() => _harvestDate = picked);
@@ -63,11 +78,9 @@ class _PostScreenState extends State<PostScreen> {
         maxHeight: 1920,
         imageQuality: 85,
       );
-      
       if (images.isNotEmpty) {
         setState(() {
           _selectedPhotos.addAll(images);
-          // Limit to 5 photos
           if (_selectedPhotos.length > 5) {
             _selectedPhotos.removeRange(5, _selectedPhotos.length);
           }
@@ -76,19 +89,14 @@ class _PostScreenState extends State<PostScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to pick images: $e'),
-            backgroundColor: AppColors.error,
-          ),
+          SnackBar(content: Text('Failed to pick images: $e'), backgroundColor: AppColors.error),
         );
       }
     }
   }
 
   void _removePhoto(int index) {
-    setState(() {
-      _selectedPhotos.removeAt(index);
-    });
+    setState(() => _selectedPhotos.removeAt(index));
   }
 
   Future<void> _submit() async {
@@ -100,19 +108,13 @@ class _PostScreenState extends State<PostScreen> {
     }
 
     setState(() => _isLoading = true);
-
-    // TODO: Actually create trophy with Supabase and upload photos
     await Future.delayed(const Duration(seconds: 1));
-
     setState(() => _isLoading = false);
 
     if (mounted) {
       context.pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Trophy posted successfully!'),
-          backgroundColor: AppColors.success,
-        ),
+        const SnackBar(content: Text('Trophy posted successfully!'), backgroundColor: AppColors.success),
       );
     }
   }
@@ -122,326 +124,354 @@ class _PostScreenState extends State<PostScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Post Trophy'),
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.pop(),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton(
-              onPressed: _isLoading ? null : _submit,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      'Post',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-            ),
+        title: Text(
+          'Post Trophy',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
-        ],
+        ),
+        centerTitle: true,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      body: Column(
         children: [
-          // Photo upload section
-          _PhotoUploadSection(
-            photos: _selectedPhotos,
-            onAddPhotos: _pickPhotos,
-            onRemovePhoto: _removePhoto,
+          // Progress indicator
+          _StepIndicator(
+            currentStep: _calculateStep(),
+            totalSteps: 4,
           ),
-          const SizedBox(height: AppSpacing.xl),
-          
-          // Category selection
-          PremiumDropdown<String>(
-            label: 'Category *',
-            items: _categories,
-            value: _selectedCategory,
-            onChanged: (value) {
-              setState(() => _selectedCategory = value);
-            },
-            itemLabel: (item) => item,
-            hint: 'Select species category',
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          
-          // State selection - with search
-          _buildStateDropdown(),
-          const SizedBox(height: AppSpacing.lg),
-          
-          // County selection
-          _buildCountyDropdown(),
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Harvest date
-          _buildDatePicker(),
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Story
-          TextField(
-            controller: _storyController,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Story (optional)',
-              hintText: 'Share the story behind this trophy...',
-              alignLabelWithHint: true,
+          // Form content
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                // Step 1: Photos
+                _SectionCard(
+                  number: 1,
+                  title: 'Add Photos',
+                  subtitle: 'Up to 5 photos',
+                  isComplete: _selectedPhotos.isNotEmpty,
+                  child: _PhotoGrid(
+                    photos: _selectedPhotos,
+                    onAddPhotos: _pickPhotos,
+                    onRemovePhoto: _removePhoto,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Step 2: Category
+                _SectionCard(
+                  number: 2,
+                  title: 'Species Category',
+                  isComplete: _selectedCategory != null,
+                  child: _CategorySelector(
+                    selected: _selectedCategory,
+                    onChanged: (v) => setState(() => _selectedCategory = v),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Step 3: Location
+                _SectionCard(
+                  number: 3,
+                  title: 'Location',
+                  subtitle: 'County level only - we respect your privacy',
+                  isComplete: _selectedState != null && _selectedCounty != null,
+                  child: Column(
+                    children: [
+                      _SelectField(
+                        label: 'State',
+                        value: _selectedState?.name,
+                        hint: 'Select state',
+                        onTap: _showStateSelector,
+                      ),
+                      const SizedBox(height: 12),
+                      _SelectField(
+                        label: 'County',
+                        value: _selectedCounty,
+                        hint: _selectedState == null ? 'Select state first' : 'Select county',
+                        enabled: _selectedState != null,
+                        onTap: _showCountySelector,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Step 4: Date & Story
+                _SectionCard(
+                  number: 4,
+                  title: 'Details',
+                  isComplete: _harvestDate != null,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SelectField(
+                        label: 'Harvest Date',
+                        value: _harvestDate != null
+                            ? '${_harvestDate!.month}/${_harvestDate!.day}/${_harvestDate!.year}'
+                            : null,
+                        hint: 'Select date',
+                        icon: Icons.calendar_today_rounded,
+                        onTap: _selectDate,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Story (optional)',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _storyController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Share the story behind this trophy...',
+                          filled: true,
+                          fillColor: AppColors.surfaceAlt,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ],
             ),
           ),
-          const SizedBox(height: AppSpacing.xxl),
-          
-          // Species-specific stats placeholder
-          _buildStatsSection(),
-          const SizedBox(height: AppSpacing.xxxl),
-          
           // Submit button
-          PremiumButton(
-            label: 'Post Trophy',
-            onPressed: _submit,
+          _SubmitBar(
             isLoading: _isLoading,
-            isExpanded: true,
+            isEnabled: _canSubmit,
+            onSubmit: _submit,
           ),
-          const SizedBox(height: AppSpacing.xl),
         ],
       ),
     );
   }
 
-  Widget _buildStateDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'State *',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        InkWell(
-          onTap: () => _showStateSelector(),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _selectedState?.name ?? 'Select state',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: _selectedState == null
-                          ? AppColors.textSecondary
-                          : AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  color: AppColors.textSecondary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+  int _calculateStep() {
+    if (_selectedPhotos.isEmpty) return 1;
+    if (_selectedCategory == null) return 2;
+    if (_selectedState == null || _selectedCounty == null) return 3;
+    return 4;
   }
+
+  bool get _canSubmit =>
+      _selectedPhotos.isNotEmpty &&
+      _selectedCategory != null &&
+      _selectedState != null &&
+      _selectedCounty != null &&
+      _harvestDate != null;
 
   Future<void> _showStateSelector() async {
     final selected = await showModalBottomSheet<USState>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _SearchableStateSheet(
-        selectedState: _selectedState,
+      builder: (context) => _SearchableSheet<USState>(
+        title: 'Select State',
+        items: USStates.all,
+        selected: _selectedState,
+        itemLabel: (s) => s.name,
+        searchFilter: (s, q) => s.name.toLowerCase().contains(q.toLowerCase()),
       ),
     );
-    
     if (selected != null && selected != _selectedState) {
       setState(() {
         _selectedState = selected;
-        _selectedCounty = null; // Reset county when state changes
+        _selectedCounty = null;
       });
     }
   }
 
-  Widget _buildCountyDropdown() {
-    final counties = _availableCounties;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'County *',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        InkWell(
-          onTap: _selectedState == null ? null : () => _showCountySelector(),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
-            decoration: BoxDecoration(
-              color: _selectedState == null 
-                  ? AppColors.surfaceAlt 
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _selectedState == null
-                        ? 'Select state first'
-                        : _selectedCounty ?? 'Select county',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: _selectedCounty == null
-                          ? AppColors.textSecondary
-                          : AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  color: _selectedState == null 
-                      ? AppColors.border 
-                      : AppColors.textSecondary,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_selectedState != null && counties.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              'County data loading...',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-          ),
-      ],
-    );
-  }
-
   Future<void> _showCountySelector() async {
+    if (_selectedState == null) return;
     final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _SearchableCountySheet(
-        counties: _availableCounties,
-        selectedCounty: _selectedCounty,
-        stateName: _selectedState?.name ?? '',
+      builder: (context) => _SearchableSheet<String>(
+        title: 'Select County',
+        items: _availableCounties,
+        selected: _selectedCounty,
+        itemLabel: (c) => c,
+        searchFilter: (c, q) => c.toLowerCase().contains(q.toLowerCase()),
       ),
     );
-    
     if (selected != null) {
       setState(() => _selectedCounty = selected);
     }
   }
+}
 
-  Widget _buildDatePicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Harvest Date *',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        InkWell(
-          onTap: _selectDate,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.calendar_today_rounded, 
-                     color: AppColors.textSecondary, size: 20),
-                const SizedBox(width: AppSpacing.md),
-                Text(
-                  _harvestDate != null
-                      ? '${_harvestDate!.month}/${_harvestDate!.day}/${_harvestDate!.year}'
-                      : 'Select date',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: _harvestDate == null
-                        ? AppColors.textSecondary
-                        : AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+// ═══════════════════════════════════════════════════════════════════════════════
+// STEP INDICATOR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _StepIndicator extends StatelessWidget {
+  const _StepIndicator({required this.currentStep, required this.totalSteps});
+  final int currentStep;
+  final int totalSteps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      color: AppColors.surface,
+      child: Row(
+        children: List.generate(totalSteps * 2 - 1, (index) {
+          if (index.isOdd) {
+            // Connector
+            final stepBefore = (index ~/ 2) + 1;
+            return Expanded(
+              child: Container(
+                height: 2,
+                color: stepBefore < currentStep 
+                    ? AppColors.primary 
+                    : AppColors.border,
+              ),
+            );
+          } else {
+            // Step dot
+            final step = (index ~/ 2) + 1;
+            final isComplete = step < currentStep;
+            final isCurrent = step == currentStep;
+            return Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isComplete ? AppColors.primary 
+                    : isCurrent ? AppColors.primary.withOpacity(0.15)
+                    : AppColors.surfaceAlt,
+                shape: BoxShape.circle,
+                border: isCurrent 
+                    ? Border.all(color: AppColors.primary, width: 2)
+                    : null,
+              ),
+              child: Center(
+                child: isComplete
+                    ? const Icon(Icons.check, size: 16, color: Colors.white)
+                    : Text(
+                        '$step',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isCurrent ? AppColors.primary : AppColors.textTertiary,
+                        ),
+                      ),
+              ),
+            );
+          }
+        }),
+      ),
     );
   }
+}
 
-  Widget _buildStatsSection() {
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.number,
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.isComplete = false,
+  });
+
+  final int number;
+  final String title;
+  final String? subtitle;
+  final bool isComplete;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-        border: Border.all(color: AppColors.border),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isComplete 
+              ? AppColors.success.withOpacity(0.3) 
+              : AppColors.border.withOpacity(0.5),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.analytics_outlined, 
-                   color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Species Stats',
-                style: Theme.of(context).textTheme.titleMedium,
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: isComplete ? AppColors.success : AppColors.primary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: isComplete
+                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      : Text(
+                          '$number',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            _selectedCategory != null
-                ? 'Add ${_selectedCategory!}-specific stats like score, weight, etc.'
-                : 'Select a category to see specific stat fields.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
+          const SizedBox(height: 16),
+          child,
         ],
       ),
     );
   }
 }
 
-// Photo upload section with preview
-class _PhotoUploadSection extends StatelessWidget {
-  const _PhotoUploadSection({
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHOTO GRID
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _PhotoGrid extends StatelessWidget {
+  const _PhotoGrid({
     required this.photos,
     required this.onAddPhotos,
     required this.onRemovePhoto,
@@ -453,343 +483,311 @@ class _PhotoUploadSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (photos.isEmpty) {
-      return _buildEmptyState(context);
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return SizedBox(
+      height: 100,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          // Add button
+          if (photos.length < 5)
+            GestureDetector(
+              onTap: onAddPhotos,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primary.withOpacity(0.3),
+                    width: 2,
+                    strokeAlign: BorderSide.strokeAlignInside,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.add_photo_alternate_rounded,
+                      color: AppColors.primary,
+                      size: 28,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Add',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          // Photo thumbnails
+          ...photos.asMap().entries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: _PhotoThumbnail(
+                file: entry.value,
+                onRemove: () => onRemovePhoto(entry.key),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoThumbnail extends StatelessWidget {
+  const _PhotoThumbnail({required this.file, required this.onRemove});
+  final XFile file;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
       children: [
-        Text(
-          'Photos (${photos.length}/5)',
-          style: Theme.of(context).textTheme.labelLarge,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: 100,
+            height: 100,
+            child: kIsWeb
+                ? Image.network(file.path, fit: BoxFit.cover)
+                : Image.file(File(file.path), fit: BoxFit.cover),
+          ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        SizedBox(
-          height: 140,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: photos.length + (photos.length < 5 ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index == photos.length) {
-                return _buildAddButton(context);
-              }
-              return _buildPhotoTile(context, index);
-            },
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, size: 16, color: Colors.white),
+            ),
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Container(
-      height: 180,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.border,
-          width: 2,
-          strokeAlign: BorderSide.strokeAlignInside,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onAddPhotos,
-          borderRadius: BorderRadius.circular(20),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+// ═══════════════════════════════════════════════════════════════════════════════
+// CATEGORY SELECTOR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _CategorySelector extends StatelessWidget {
+  const _CategorySelector({required this.selected, required this.onChanged});
+  final String? selected;
+  final ValueChanged<String> onChanged;
+
+  static const _categories = [
+    ('🦌', 'Deer', AppColors.categoryDeer),
+    ('🦃', 'Turkey', AppColors.categoryTurkey),
+    ('🐟', 'Bass', AppColors.categoryBass),
+    ('🎯', 'Other Game', AppColors.categoryOtherGame),
+    ('🎣', 'Other Fishing', AppColors.categoryOtherFishing),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _categories.map((cat) {
+        final isSelected = selected == cat.$2;
+        return GestureDetector(
+          onTap: () => onChanged(cat.$2),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected ? cat.$3.withOpacity(0.15) : AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? cat.$3 : AppColors.border,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryContainer.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.add_a_photo_rounded,
-                    size: 28,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
+                Text(cat.$1, style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
                 Text(
-                  'Add Photos',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Tap to select trophy photos',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
+                  cat.$2,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected ? cat.$3 : AppColors.textPrimary,
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPhotoTile(BuildContext context, int index) {
-    final photo = photos[index];
-    
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: kIsWeb
-                ? Image.network(
-                    photo.path,
-                    width: 140,
-                    height: 140,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 140,
-                      height: 140,
-                      color: AppColors.surfaceAlt,
-                      child: Icon(Icons.image, color: AppColors.textSecondary),
-                    ),
-                  )
-                : Image.file(
-                    File(photo.path),
-                    width: 140,
-                    height: 140,
-                    fit: BoxFit.cover,
-                  ),
-          ),
-          Positioned(
-            top: 6,
-            right: 6,
-            child: Material(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                onTap: () => onRemovePhoto(index),
-                borderRadius: BorderRadius.circular(16),
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (index == 0)
-            Positioned(
-              bottom: 6,
-              left: 6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Cover',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAddButton(BuildContext context) {
-    return Container(
-      width: 140,
-      height: 140,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border, width: 2),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onAddPhotos,
-          borderRadius: BorderRadius.circular(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.add_rounded,
-                size: 32,
-                color: AppColors.primary,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Add More',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+        );
+      }).toList(),
     );
   }
 }
 
-// Searchable state selector sheet
-class _SearchableStateSheet extends StatefulWidget {
-  const _SearchableStateSheet({this.selectedState});
+// ═══════════════════════════════════════════════════════════════════════════════
+// SELECT FIELD
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  final USState? selectedState;
+class _SelectField extends StatelessWidget {
+  const _SelectField({
+    required this.label,
+    required this.value,
+    required this.hint,
+    required this.onTap,
+    this.icon,
+    this.enabled = true,
+  });
 
-  @override
-  State<_SearchableStateSheet> createState() => _SearchableStateSheetState();
-}
-
-class _SearchableStateSheetState extends State<_SearchableStateSheet> {
-  final _searchController = TextEditingController();
-  List<USState> _filteredStates = USStates.all;
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _filterStates(String query) {
-    setState(() {
-      _filteredStates = USStates.search(query);
-    });
-  }
+  final String label;
+  final String? value;
+  final String hint;
+  final IconData? icon;
+  final bool enabled;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.9,
-      minChildSize: 0.4,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Handle
-              Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 8),
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              
-              // Title
-              Text(
-                'Select State',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 16),
-              
-              // Search field
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _filterStates,
-                  decoration: InputDecoration(
-                    hintText: 'Search states...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              _filterStates('');
-                            },
-                          )
-                        : null,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              
-              // States list
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: _filteredStates.length,
-                  itemBuilder: (context, index) {
-                    final state = _filteredStates[index];
-                    final isSelected = state == widget.selectedState;
-                    
-                    return ListTile(
-                      title: Text(state.name),
-                      subtitle: Text(state.code),
-                      trailing: isSelected
-                          ? Icon(Icons.check_circle, color: AppColors.primary)
-                          : null,
-                      selected: isSelected,
-                      onTap: () => Navigator.pop(context, state),
-                    );
-                  },
-                ),
-              ),
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 20, color: AppColors.textSecondary),
+              const SizedBox(width: 12),
             ],
-          ),
-        );
-      },
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value ?? hint,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// Searchable county selector sheet
-class _SearchableCountySheet extends StatefulWidget {
-  const _SearchableCountySheet({
-    required this.counties,
-    required this.selectedCounty,
-    required this.stateName,
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUBMIT BAR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _SubmitBar extends StatelessWidget {
+  const _SubmitBar({
+    required this.isLoading,
+    required this.isEnabled,
+    required this.onSubmit,
   });
 
-  final List<String> counties;
-  final String? selectedCounty;
-  final String stateName;
+  final bool isLoading;
+  final bool isEnabled;
+  final VoidCallback onSubmit;
 
   @override
-  State<_SearchableCountySheet> createState() => _SearchableCountySheetState();
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border.withOpacity(0.5))),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: isEnabled && !isLoading ? onSubmit : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            disabledBackgroundColor: AppColors.primary.withOpacity(0.3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          child: isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text(
+                  'Post Trophy',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+        ),
+      ),
+    );
+  }
 }
 
-class _SearchableCountySheetState extends State<_SearchableCountySheet> {
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEARCHABLE SHEET
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _SearchableSheet<T> extends StatefulWidget {
+  const _SearchableSheet({
+    required this.title,
+    required this.items,
+    required this.selected,
+    required this.itemLabel,
+    required this.searchFilter,
+  });
+
+  final String title;
+  final List<T> items;
+  final T? selected;
+  final String Function(T) itemLabel;
+  final bool Function(T, String) searchFilter;
+
+  @override
+  State<_SearchableSheet<T>> createState() => _SearchableSheetState<T>();
+}
+
+class _SearchableSheetState<T> extends State<_SearchableSheet<T>> {
   final _searchController = TextEditingController();
-  late List<String> _filteredCounties;
+  late List<T> _filteredItems;
 
   @override
   void initState() {
     super.initState();
-    _filteredCounties = widget.counties;
+    _filteredItems = widget.items;
+    _searchController.addListener(_filterItems);
   }
 
   @override
@@ -798,114 +796,87 @@ class _SearchableCountySheetState extends State<_SearchableCountySheet> {
     super.dispose();
   }
 
-  void _filterCounties(String query) {
+  void _filterItems() {
+    final query = _searchController.text;
     setState(() {
-      if (query.isEmpty) {
-        _filteredCounties = widget.counties;
-      } else {
-        _filteredCounties = widget.counties
-            .where((c) => c.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-      }
+      _filteredItems = query.isEmpty
+          ? widget.items
+          : widget.items.where((i) => widget.searchFilter(i, query)).toList();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.9,
-      minChildSize: 0.4,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          child: Column(
-            children: [
-              // Handle
-              Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 8),
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2),
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
-              
-              // Title
-              Text(
-                'Select County',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              Text(
-                widget.stateName,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Search field
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
+                const SizedBox(height: 16),
+                TextField(
                   controller: _searchController,
-                  onChanged: _filterCounties,
                   decoration: InputDecoration(
-                    hintText: 'Search counties...',
+                    hintText: 'Search...',
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              _filterCounties('');
-                            },
-                          )
-                        : null,
+                    filled: true,
+                    fillColor: AppColors.surfaceAlt,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              
-              // Counties list
-              Expanded(
-                child: _filteredCounties.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No counties found',
-                          style: TextStyle(color: AppColors.textSecondary),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: scrollController,
-                        itemCount: _filteredCounties.length,
-                        itemBuilder: (context, index) {
-                          final county = _filteredCounties[index];
-                          final isSelected = county == widget.selectedCounty;
-                          
-                          return ListTile(
-                            title: Text(county),
-                            trailing: isSelected
-                                ? Icon(Icons.check_circle, color: AppColors.primary)
-                                : null,
-                            selected: isSelected,
-                            onTap: () => Navigator.pop(context, county),
-                          );
-                        },
-                      ),
-              ),
-            ],
+              ],
+            ),
           ),
-        );
-      },
+          const Divider(height: 1),
+          // List
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filteredItems.length,
+              itemBuilder: (context, index) {
+                final item = _filteredItems[index];
+                final isSelected = item == widget.selected;
+                return ListTile(
+                  title: Text(widget.itemLabel(item)),
+                  trailing: isSelected
+                      ? const Icon(Icons.check, color: AppColors.primary)
+                      : null,
+                  tileColor: isSelected ? AppColors.primary.withOpacity(0.05) : null,
+                  onTap: () => Navigator.pop(context, item),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
