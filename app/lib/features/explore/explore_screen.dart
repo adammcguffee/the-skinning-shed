@@ -69,13 +69,8 @@ class ExploreScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context, bool isWide) {
-    return SafeArea(
-      bottom: false,
-      child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-        child: BannerHeader.appTop(),
-      ),
-    );
+    // Banner header is now rendered by AppScaffold
+    return const SizedBox.shrink();
   }
 }
 

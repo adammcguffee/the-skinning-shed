@@ -34,13 +34,7 @@ class _LandScreenState extends State<LandScreen> with SingleTickerProviderStateM
 
     return Column(
       children: [
-        const SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: BannerHeader.appTop(),
-          ),
-        ),
+        // Banner header is now rendered by AppScaffold
 
         // Top bar (web only)
         if (isWide)

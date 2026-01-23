@@ -166,17 +166,9 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Banner header is now rendered by AppScaffold
     return Column(
       children: [
-        // Banner at very top
-        SafeArea(
-          bottom: false,
-          child: const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: BannerHeader.appTop(),
-          ),
-        ),
-
         // Profile content with gradient
         Container(
           padding: EdgeInsets.only(

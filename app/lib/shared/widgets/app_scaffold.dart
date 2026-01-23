@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/shared/widgets/banner_header.dart';
 import 'app_nav_rail.dart';
 
 /// 🏗️ 2025 PREMIUM APP SCAFFOLD - DARK THEME
@@ -113,13 +114,28 @@ class AppScaffold extends StatelessWidget {
               decoration: const BoxDecoration(
                 gradient: AppColors.backgroundGradient,
               ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: AppSpacing.maxContentWidth,
+              child: Column(
+                children: [
+                  // Hero banner header at top of content area
+                  const SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                      child: BannerHeader.appTop(),
+                    ),
                   ),
-                  child: child,
-                ),
+                  // Page content
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: AppSpacing.maxContentWidth,
+                        ),
+                        child: child,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -135,7 +151,20 @@ class AppScaffold extends StatelessWidget {
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundGradient,
         ),
-        child: child,
+        child: Column(
+          children: [
+            // Hero banner header at top of content area
+            const SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                child: BannerHeader.appTop(),
+              ),
+            ),
+            // Page content
+            Expanded(child: child),
+          ],
+        ),
       ),
       bottomNavigationBar: _MobileBottomNav(
         currentIndex: currentIndex,

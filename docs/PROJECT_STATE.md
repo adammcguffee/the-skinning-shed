@@ -68,9 +68,10 @@ Breakpoints:
 - Small: <600px
 
 ### Current Usage
-- **Auth**: `BannerHeader.authHero()` - full viewport, card centered with Spacer
-- **Feed/Explore/Trophy Wall/Weather/Land/Settings**: `BannerHeader.appTop()` - top of content
-- **Nav Rail**: `BrandAssets.crest` at 48px
+- **Auth**: `BannerHeader.authHero()` - overflow-safe layout using LayoutBuilder → SingleChildScrollView → ConstrainedBox → IntrinsicHeight → Column pattern
+- **AppScaffold**: `BannerHeader.appTop()` is rendered ONCE centrally for all in-app pages (feed, explore, trophy_wall, weather, land, settings)
+- **Swap Shop**: Uses `BannerHeader.appTop()` directly (standalone route outside AppScaffold)
+- **Nav Rail**: `BrandAssets.crest` at 52px with BoxFit.contain
 
 ---
 
@@ -130,12 +131,11 @@ Defined in `app/lib/app/theme/app_colors.dart`:
 
 ## Pending Work
 
-1. **Commit needed**: Changes staged but not committed:
-   - Banner header `appTop()` variant
-   - "Keep me signed in" toggle
-   - All screens using `BannerHeader.appTop()`
-   - `auth_preferences.dart` (new file)
-   - Updated `supabase_service.dart`
+1. **Commit needed**: UI regression fixes applied:
+   - Crest icon restored in NavigationRail at 52px
+   - Hero banner header centralized in AppScaffold for all main pages
+   - Auth screen overflow-safe layout implemented
+   - All individual screen banner duplicates removed (except swap_shop standalone)
 
 2. **Checkerboard issue**: If hero_banner.png still shows checkerboard in-app, the PNG itself has baked pixels (not code issue). Verify asset transparency.
 

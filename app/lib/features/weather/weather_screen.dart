@@ -34,16 +34,7 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
 
     return CustomScrollView(
       slivers: [
-        // Page banner
-        const SliverToBoxAdapter(
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: BannerHeader.appTop(),
-            ),
-          ),
-        ),
+        // Banner header is now rendered by AppScaffold
 
         // Header
         SliverToBoxAdapter(

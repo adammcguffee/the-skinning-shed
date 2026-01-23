@@ -70,14 +70,17 @@ class AppNavRail extends StatelessWidget {
   }
 
   Widget _buildBrandMark() {
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: Image.asset(
-        BrandAssets.crest,
-        fit: BoxFit.contain,
-        alignment: Alignment.center,
-        filterQuality: FilterQuality.high,
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: SizedBox(
+        width: 52,
+        height: 52,
+        child: Image.asset(
+          BrandAssets.crest,
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          filterQuality: FilterQuality.high,
+        ),
       ),
     );
   }

@@ -20,6 +20,7 @@ class SwapShopScreen extends StatelessWidget {
         ),
         child: CustomScrollView(
           slivers: [
+            // Banner header for standalone route (not in AppScaffold)
             const SliverToBoxAdapter(
               child: SafeArea(
                 bottom: false,

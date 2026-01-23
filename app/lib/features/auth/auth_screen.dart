@@ -95,13 +95,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-
+    // Robust overflow-safe auth layout:
+    // LayoutBuilder -> SingleChildScrollView -> ConstrainedBox(minHeight) -> IntrinsicHeight -> Column
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(
-        // MUST fill full viewport height
-        constraints: BoxConstraints(minHeight: screenHeight),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -114,51 +112,45 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             stops: const [0.0, 0.5, 1.0],
           ),
         ),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final content = _buildFullscreenLayout(constraints);
-              if (constraints.maxHeight < 720) {
-                return SingleChildScrollView(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: content,
-                  ),
-                );
-              }
-              return content;
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFullscreenLayout(BoxConstraints constraints) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: constraints.maxHeight),
-      child: IntrinsicHeight(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Hero banner at top - large and dominant
-            const BannerHeader.authHero(),
-
-            const Spacer(),
-
-            // Form card centered
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenPadding,
-              ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: _buildFormCard(),
-              ),
-            ),
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 24),
 
-            const Spacer(),
-          ],
+                        // Hero banner at top - large and dominant
+                        const BannerHeader.authHero(),
+
+                        const SizedBox(height: 16),
+
+                        // Form card centered - uses Expanded inside IntrinsicHeight
+                        Expanded(
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.screenPadding,
+                              ),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 440),
+                                child: _buildFormCard(),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
