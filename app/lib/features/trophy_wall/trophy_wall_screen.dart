@@ -1,266 +1,256 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/trophy_service.dart';
+import 'package:shed/services/supabase_service.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-import '../../shared/widgets/animated_entry.dart';
-import '../../shared/widgets/state_widgets.dart';
-
-/// 🏆 PREMIUM TROPHY WALL
-/// 
-/// User's profile page with:
-/// - Modern avatar + name/handle header
-/// - Stat pills (trophies, species counts)
-/// - Season cards/timeline
-/// - Trophy grid
-class TrophyWallScreen extends StatefulWidget {
-  const TrophyWallScreen({
-    super.key,
-    this.userId,
-  });
+/// 🏆 TROPHY WALL SCREEN - 2025 PREMIUM
+///
+/// Modern profile with stats and trophy grid.
+class TrophyWallScreen extends ConsumerStatefulWidget {
+  const TrophyWallScreen({super.key, this.userId});
 
   final String? userId;
 
   @override
-  State<TrophyWallScreen> createState() => _TrophyWallScreenState();
+  ConsumerState<TrophyWallScreen> createState() => _TrophyWallScreenState();
 }
 
-class _TrophyWallScreenState extends State<TrophyWallScreen> {
-  final bool _isLoading = false;
-  final bool _hasError = false;
-  final List<_TrophyData> _trophies = const [
-    _TrophyData('🦌', 'Whitetail Deer', 'Texas • Travis County', 'Jan 15, 2026'),
-    _TrophyData('🦃', 'Eastern Turkey', 'Alabama • Jefferson County', 'Jan 12, 2026'),
-  ];
+class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
+  List<Map<String, dynamic>> _trophies = [];
+  bool _isLoading = true;
+  String? _error;
 
-  bool get _isCurrentUser => widget.userId == null;
+  @override
+  void initState() {
+    super.initState();
+    _loadTrophies();
+  }
+
+  Future<void> _loadTrophies() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final trophyService = ref.read(trophyServiceProvider);
+      final userId = widget.userId ?? ref.read(supabaseClientProvider)?.auth.currentUser?.id ?? '';
+      final trophies = await trophyService.fetchUserTrophies(userId);
+      setState(() {
+        _trophies = trophies;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          // App bar
-          SliverAppBar(
-            floating: true,
-            backgroundColor: AppColors.surface,
-            surfaceTintColor: Colors.transparent,
-            title: Text(
-              _isCurrentUser ? 'My Trophy Wall' : 'Trophy Wall',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= AppSpacing.breakpointTablet;
+
+    return Column(
+      children: [
+        // Top bar (web only)
+        if (isWide)
+          AppTopBar(
+            title: 'Trophy Wall',
             actions: [
-              if (_isCurrentUser)
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  onPressed: () => context.go('/settings'),
-                ),
-              const SizedBox(width: 8),
+              AppButtonSecondary(
+                label: 'Edit Profile',
+                icon: Icons.edit_outlined,
+                onPressed: () {},
+                size: AppButtonSize.small,
+              ),
             ],
           ),
-          // Profile header
-          SliverToBoxAdapter(child: _ProfileHeader(isCurrentUser: _isCurrentUser)),
-          // Stat pills
-          SliverToBoxAdapter(child: _StatPills()),
-          // Season selector
-          SliverToBoxAdapter(child: _SeasonSelector()),
-          // Trophy grid
-          if (_isLoading)
-            _buildLoadingGrid()
-          else if (_hasError)
-            _buildErrorState()
-          else if (_trophies.isEmpty)
-            _buildEmptyState()
-          else
-            _buildTrophyGrid(context),
-          // Bottom padding
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
-      floatingActionButton: _isCurrentUser
-          ? FloatingActionButton.extended(
-              onPressed: () => context.push('/post'),
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Post Trophy'),
-            )
-          : null,
+
+        // Content
+        Expanded(
+          child: _buildContent(context, isWide),
+        ),
+      ],
     );
   }
 
-  Widget _buildTrophyGrid(BuildContext context) {
+  Widget _buildContent(BuildContext context, bool isWide) {
+    return CustomScrollView(
+      slivers: [
+        // Profile header
+        SliverToBoxAdapter(
+          child: _ProfileHeader(isWide: isWide),
+        ),
+
+        // Stats
+        SliverToBoxAdapter(
+          child: _StatsSection(trophyCount: _trophies.length),
+        ),
+
+        // Season tabs
+        SliverToBoxAdapter(
+          child: _SeasonTabs(),
+        ),
+
+        // Content
+        if (_isLoading)
+          SliverToBoxAdapter(
+            child: _buildLoadingState(isWide),
+          )
+        else if (_error != null)
+          SliverToBoxAdapter(
+            child: AppErrorState(
+              message: _error!,
+              onRetry: _loadTrophies,
+            ),
+          )
+        else if (_trophies.isEmpty)
+          SliverToBoxAdapter(
+            child: AppEmptyState(
+              icon: Icons.emoji_events_outlined,
+              title: 'No trophies yet',
+              message: 'Start building your trophy wall by posting your first harvest.',
+              actionLabel: 'Post Trophy',
+              onAction: () => context.push('/post'),
+            ),
+          )
+        else
+          _buildTrophyGrid(context, isWide),
+
+        // Bottom padding
+        const SliverToBoxAdapter(
+          child: SizedBox(height: 100),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingState(bool isWide) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: isWide ? 3 : 2,
+          mainAxisSpacing: AppSpacing.gridGap,
+          crossAxisSpacing: AppSpacing.gridGap,
+          childAspectRatio: 1,
+        ),
+        itemCount: 6,
+        itemBuilder: (context, index) => const AppCardSkeleton(
+          aspectRatio: 1,
+          hasContent: false,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrophyGrid(BuildContext context, bool isWide) {
+    final crossAxisCount = isWide ? 3 : 2;
+
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
       sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 400,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          childAspectRatio: 1.1,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          mainAxisSpacing: AppSpacing.gridGap,
+          crossAxisSpacing: AppSpacing.gridGap,
+          childAspectRatio: 1,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => AnimatedEntry(
-            delay: Duration(milliseconds: 40 * index),
-            child: _TrophyCard(data: _trophies[index]),
+          (context, index) => _TrophyGridItem(
+            trophy: _trophies[index],
+            onTap: () => context.push('/trophy/${_trophies[index]['id']}'),
           ),
           childCount: _trophies.length,
         ),
       ),
     );
   }
-
-  Widget _buildLoadingGrid() {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 400,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          childAspectRatio: 1.1,
-        ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => const GridCardSkeleton(),
-          childCount: 4,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState() {
-    return SliverFillRemaining(
-      hasScrollBody: false,
-      child: AnimatedEntry(
-        child: ErrorState(
-          title: 'Could not load Trophy Wall',
-          message: 'Please check your connection and try again.',
-          onRetry: () {},
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return SliverFillRemaining(
-      hasScrollBody: false,
-      child: AnimatedEntry(
-        child: EmptyState(
-          icon: Icons.emoji_events_outlined,
-          title: 'No Trophies Yet',
-          message: _isCurrentUser
-              ? 'Post your first trophy to start building your wall.'
-              : 'This hunter hasn\'t posted any trophies yet.',
-          actionLabel: _isCurrentUser ? 'Post Trophy' : null,
-          onAction: _isCurrentUser ? () => context.push('/post') : null,
-        ),
-      ),
-    );
-  }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PROFILE HEADER
-// ═══════════════════════════════════════════════════════════════════════════════
-
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.isCurrentUser});
-  final bool isCurrentUser;
+  const _ProfileHeader({required this.isWide});
+
+  final bool isWide;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      padding: EdgeInsets.all(isWide ? AppSpacing.xxl : AppSpacing.screenPadding),
       child: Row(
         children: [
           // Avatar
           Container(
-            width: 72,
-            height: 72,
+            width: isWide ? 100 : 80,
+            height: isWide ? 100 : 80,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primary.withOpacity(0.2),
-                  AppColors.accent.withOpacity(0.2),
-                ],
-              ),
-              shape: BoxShape.circle,
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
               border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-                width: 2,
+                color: AppColors.primary.withOpacity(0.2),
+                width: 3,
               ),
             ),
-            child: const Icon(
-              Icons.person_rounded,
-              size: 36,
-              color: AppColors.primary,
+            child: const Center(
+              child: Icon(
+                Icons.person_rounded,
+                size: 40,
+                color: AppColors.primary,
+              ),
             ),
           ),
-          const SizedBox(width: 16),
-          // User info
+          const SizedBox(width: AppSpacing.lg),
+
+          // Info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isCurrentUser ? 'Your Name' : 'Hunter Name',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      '@username',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Pro Hunter',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  'Hunter Name',
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Member since Jan 2026',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
+                  '@huntername',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Texas, USA',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          // Edit button
-          if (isCurrentUser)
-            OutlinedButton(
+
+          // Edit button (mobile)
+          if (!isWide)
+            AppIconButton(
+              icon: Icons.edit_outlined,
               onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                side: const BorderSide(color: AppColors.border),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text('Edit'),
+              tooltip: 'Edit Profile',
             ),
         ],
       ),
@@ -268,22 +258,34 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// STAT PILLS
-// ═══════════════════════════════════════════════════════════════════════════════
+class _StatsSection extends StatelessWidget {
+  const _StatsSection({required this.trophyCount});
 
-class _StatPills extends StatelessWidget {
+  final int trophyCount;
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Row(
         children: [
-          _StatPill(value: '5', label: 'Trophies', color: AppColors.primary),
-          _StatPill(value: '2', label: 'Deer', emoji: '🦌', color: AppColors.categoryDeer),
-          _StatPill(value: '2', label: 'Turkey', emoji: '🦃', color: AppColors.categoryTurkey),
-          _StatPill(value: '1', label: 'Bass', emoji: '🐟', color: AppColors.categoryBass),
+          _StatPill(
+            label: 'Trophies',
+            value: trophyCount.toString(),
+            icon: Icons.emoji_events_rounded,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          const _StatPill(
+            label: 'Seasons',
+            value: '3',
+            icon: Icons.calendar_today_rounded,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          const _StatPill(
+            label: 'Followers',
+            value: '124',
+            icon: Icons.people_rounded,
+          ),
         ],
       ),
     );
@@ -292,52 +294,46 @@ class _StatPills extends StatelessWidget {
 
 class _StatPill extends StatelessWidget {
   const _StatPill({
-    required this.value,
     required this.label,
-    required this.color,
-    this.emoji,
+    required this.value,
+    required this.icon,
   });
 
-  final String value;
   final String label;
-  final Color color;
-  final String? emoji;
+  final String value;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (emoji != null) ...[
-            Text(emoji!, style: const TextStyle(fontSize: 18)),
-            const SizedBox(width: 8),
-          ],
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                  height: 1,
+          Icon(
+            icon,
+            size: 16,
+            color: AppColors.primary,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: AppColors.primary,
                 ),
-              ),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
@@ -345,72 +341,44 @@ class _StatPill extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SEASON SELECTOR
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SeasonSelector extends StatefulWidget {
+class _SeasonTabs extends StatefulWidget {
   @override
-  State<_SeasonSelector> createState() => _SeasonSelectorState();
+  State<_SeasonTabs> createState() => _SeasonTabsState();
 }
 
-class _SeasonSelectorState extends State<_SeasonSelector> {
-  int _selectedSeason = 0;
+class _SeasonTabsState extends State<_SeasonTabs> {
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
+    final seasons = ['All Time', '2024-25', '2023-24', '2022-23'];
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Seasons',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(
+            seasons.length,
+            (index) => Padding(
+              padding: EdgeInsets.only(
+                right: index < seasons.length - 1 ? AppSpacing.sm : 0,
               ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.calendar_month_rounded, size: 18),
-                label: const Text('View Timeline'),
+              child: _SeasonTab(
+                label: seasons[index],
+                isSelected: _selectedIndex == index,
+                onTap: () => setState(() => _selectedIndex = index),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _SeasonChip(
-                  label: '2025-26',
-                  isSelected: _selectedSeason == 0,
-                  onTap: () => setState(() => _selectedSeason = 0),
-                ),
-                _SeasonChip(
-                  label: '2024-25',
-                  isSelected: _selectedSeason == 1,
-                  onTap: () => setState(() => _selectedSeason = 1),
-                ),
-                _SeasonChip(
-                  label: '2023-24',
-                  isSelected: _selectedSeason == 2,
-                  onTap: () => setState(() => _selectedSeason = 2),
-                ),
-              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _SeasonChip extends StatelessWidget {
-  const _SeasonChip({
+class _SeasonTab extends StatefulWidget {
+  const _SeasonTab({
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -421,52 +389,10 @@ class _SeasonChip extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: isSelected ? AppColors.primary : AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textPrimary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  State<_SeasonTab> createState() => _SeasonTabState();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TROPHY CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _TrophyData {
-  const _TrophyData(this.emoji, this.species, this.location, this.date);
-  final String emoji;
-  final String species;
-  final String location;
-  final String date;
-}
-
-class _TrophyCard extends StatefulWidget {
-  const _TrophyCard({required this.data});
-  final _TrophyData data;
-
-  @override
-  State<_TrophyCard> createState() => _TrophyCardState();
-}
-
-class _TrophyCardState extends State<_TrophyCard> {
+class _SeasonTabState extends State<_SeasonTab> {
   bool _isHovered = false;
 
   @override
@@ -475,101 +401,33 @@ class _TrophyCardState extends State<_TrophyCard> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.push('/trophy/demo'),
-          borderRadius: BorderRadius.circular(16),
-          hoverColor: AppColors.primary.withOpacity(0.06),
-          splashColor: AppColors.primary.withOpacity(0.1),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _isHovered 
-                    ? AppColors.primary.withOpacity(0.3) 
-                    : AppColors.border.withOpacity(0.5),
-              ),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Image area
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    ),
-                    child: Center(
-                      child: AnimatedScale(
-                        duration: const Duration(milliseconds: 200),
-                        scale: _isHovered ? 1.1 : 1.0,
-                        child: Text(
-                          widget.data.emoji,
-                          style: const TextStyle(fontSize: 56),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Info
-                Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.data.species,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 12,
-                            color: AppColors.textTertiary,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              widget.data.location,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppColors.textTertiary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.data.date,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isSelected
+                ? AppColors.primary
+                : _isHovered
+                    ? AppColors.surfaceHover
+                    : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            border: widget.isSelected
+                ? null
+                : Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: widget.isSelected
+                  ? AppColors.textInverse
+                  : AppColors.textPrimary,
             ),
           ),
         ),
@@ -578,3 +436,123 @@ class _TrophyCardState extends State<_TrophyCard> {
   }
 }
 
+class _TrophyGridItem extends StatefulWidget {
+  const _TrophyGridItem({
+    required this.trophy,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> trophy;
+  final VoidCallback onTap;
+
+  @override
+  State<_TrophyGridItem> createState() => _TrophyGridItemState();
+}
+
+class _TrophyGridItemState extends State<_TrophyGridItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final species = widget.trophy['species']?['name'] ?? 'Unknown';
+    final imageUrl = widget.trophy['trophy_media']?.isNotEmpty == true
+        ? widget.trophy['trophy_media'][0]['url']
+        : null;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          transform: _isHovered
+              ? (Matrix4.identity()..scale(1.03))
+              : Matrix4.identity(),
+          transformAlignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+            ),
+            boxShadow: _isHovered ? AppColors.shadowElevated : AppColors.shadowCard,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Image
+              if (imageUrl != null)
+                Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                )
+              else
+                _buildPlaceholder(),
+
+              // Gradient overlay
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 60,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.6),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Species chip
+              Positioned(
+                bottom: AppSpacing.sm,
+                left: AppSpacing.sm,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                  ),
+                  child: Text(
+                    species,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      color: AppColors.backgroundAlt,
+      child: const Center(
+        child: Icon(
+          Icons.emoji_events_outlined,
+          size: 32,
+          color: AppColors.textTertiary,
+        ),
+      ),
+    );
+  }
+}

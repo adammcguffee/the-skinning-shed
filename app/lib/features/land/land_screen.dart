@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-import '../../data/us_states.dart';
-import '../../shared/widgets/widgets.dart';
-
-/// Land listings screen (Lease and Sale).
+/// 🏞️ LAND SCREEN - 2025 PREMIUM
 class LandScreen extends StatefulWidget {
   const LandScreen({super.key});
 
@@ -30,261 +29,281 @@ class _LandScreenState extends State<LandScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Land'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'For Lease'),
-            Tab(text: 'For Sale'),
-          ],
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textTertiary,
-          indicatorColor: AppColors.primary,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              _showFilters(context);
-            },
-          ),
-        ],
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _LandListingsList(type: 'lease'),
-          _LandListingsList(type: 'sale'),
-        ],
-      ),
-      floatingActionButton: PremiumFAB(
-        icon: Icons.add,
-        label: 'List Property',
-        isExtended: true,
-        onPressed: () {
-          // TODO: Create land listing
-        },
-      ),
-    );
-  }
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-  void _showFilters(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _LandFilterSheet(),
-    );
-  }
-}
-
-class _LandListingsList extends StatelessWidget {
-  const _LandListingsList({required this.type});
-
-  final String type;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+    return Column(
       children: [
-        _buildPlaceholderListing(
-          context,
-          title: '150 Acres ${type == 'lease' ? 'Hunting Lease' : 'For Sale'}',
-          location: 'Texas • Hill Country',
-          price: type == 'lease' ? '\$2,500/year' : '\$450,000',
-          acreage: '150 acres',
-          species: ['Deer', 'Turkey', 'Hog'],
-        ),
-        _buildPlaceholderListing(
-          context,
-          title: '80 Acres ${type == 'lease' ? 'Hunting Lease' : 'For Sale'}',
-          location: 'Alabama • Baldwin County',
-          price: type == 'lease' ? '\$1,200/year' : '\$180,000',
-          acreage: '80 acres',
-          species: ['Deer', 'Turkey'],
-        ),
-        
-        // Empty state message
-        const Padding(
-          padding: EdgeInsets.all(AppSpacing.xxl),
-          child: Text(
-            'More land listings will appear here.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textTertiary),
+        // Top bar (web only)
+        if (isWide)
+          AppTopBar(
+            title: 'Land Listings',
+            subtitle: 'Find hunting land',
+            onSearch: () {},
+            onFilter: () {},
+          ),
+
+        // Content
+        Expanded(
+          child: Column(
+            children: [
+              // Mobile header
+              if (!isWide)
+                const AppPageHeader(
+                  title: 'Land Listings',
+                  subtitle: 'Find hunting land',
+                ),
+
+              // Tabs
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHover,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicator: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                    boxShadow: AppColors.shadowCard,
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  labelColor: AppColors.textPrimary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  labelStyle: Theme.of(context).textTheme.labelLarge,
+                  tabs: const [
+                    Tab(text: 'For Lease'),
+                    Tab(text: 'For Sale'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              // Tab content
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _LandList(type: 'lease', isWide: isWide),
+                    _LandList(type: 'sale', isWide: isWide),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildPlaceholderListing(
-    BuildContext context, {
-    required String title,
-    required String location,
-    required String price,
-    required String acreage,
-    required List<String> species,
-  }) {
-    return PremiumCard(
-      placeholder: Container(
-        color: AppColors.surfaceAlt,
-        child: const Center(
+class _LandList extends StatelessWidget {
+  const _LandList({
+    required this.type,
+    required this.isWide,
+  });
+
+  final String type;
+  final bool isWide;
+
+  @override
+  Widget build(BuildContext context) {
+    // Demo data
+    final listings = [
+      _LandListing(
+        title: '500 Acre Deer Lease',
+        location: 'Hill Country, TX',
+        price: type == 'lease' ? '\$2,500/season' : '\$1,250,000',
+        acres: 500,
+        features: ['Whitetail', 'Turkey', 'Hog'],
+      ),
+      _LandListing(
+        title: 'Premium Duck Hunting',
+        location: 'East Texas',
+        price: type == 'lease' ? '\$1,800/season' : '\$850,000',
+        acres: 320,
+        features: ['Waterfowl', 'Deer'],
+      ),
+      _LandListing(
+        title: 'Family Hunting Ranch',
+        location: 'South Texas',
+        price: type == 'lease' ? '\$3,200/season' : '\$2,100,000',
+        acres: 750,
+        features: ['Whitetail', 'Exotics', 'Turkey'],
+      ),
+    ];
+
+    if (listings.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.landscape_outlined,
+        title: 'No listings yet',
+        message: 'Check back soon for new land listings.',
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      itemCount: listings.length,
+      itemBuilder: (context, index) => _LandCard(
+        listing: listings[index],
+        onTap: () => context.push('/land/demo-$index'),
+      ),
+    );
+  }
+}
+
+class _LandListing {
+  const _LandListing({
+    required this.title,
+    required this.location,
+    required this.price,
+    required this.acres,
+    required this.features,
+  });
+
+  final String title;
+  final String location;
+  final String price;
+  final int acres;
+  final List<String> features;
+}
+
+class _LandCard extends StatefulWidget {
+  const _LandCard({
+    required this.listing,
+    required this.onTap,
+  });
+
+  final _LandListing listing;
+  final VoidCallback onTap;
+
+  @override
+  State<_LandCard> createState() => _LandCardState();
+}
+
+class _LandCardState extends State<_LandCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+            ),
+            boxShadow: _isHovered ? AppColors.shadowElevated : AppColors.shadowCard,
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons.terrain, size: 48, color: AppColors.primary),
-              SizedBox(height: 8),
-              Text(
-                'Property Photo',
-                style: TextStyle(color: AppColors.textTertiary),
+              // Image placeholder
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Container(
+                  color: AppColors.backgroundAlt,
+                  child: Stack(
+                    children: [
+                      const Center(
+                        child: Icon(
+                          Icons.landscape_outlined,
+                          size: 48,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                      // Price badge
+                      Positioned(
+                        top: AppSpacing.md,
+                        right: AppSpacing.md,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                          ),
+                          child: Text(
+                            widget.listing.price,
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: AppColors.textInverse,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.listing.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 14,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          widget.listing.location,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        const Icon(
+                          Icons.straighten_outlined,
+                          size: 14,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${widget.listing.acres} acres',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    Wrap(
+                      spacing: AppSpacing.xs,
+                      runSpacing: AppSpacing.xs,
+                      children: widget.listing.features
+                          .map((f) => AppChip(
+                                label: f,
+                                size: AppChipSize.small,
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
-      aspectRatio: 16 / 9,
-      title: title,
-      subtitle: location,
-      metadata: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          StatsStrip(
-            items: [
-              StatsStripItem(label: price, icon: Icons.attach_money),
-              StatsStripItem(label: acreage, icon: Icons.square_foot),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.xs,
-            children: species.map((s) {
-              return Chip(
-                label: Text(s),
-                labelStyle: const TextStyle(fontSize: 11),
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                backgroundColor: AppColors.primaryContainer.withOpacity(0.1),
-                side: BorderSide.none,
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-      onTap: () {
-        // TODO: Navigate to land detail
-      },
-    );
-  }
-}
-
-class _LandFilterSheet extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.9,
-      minChildSize: 0.3,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppSpacing.radiusModal),
-            ),
-          ),
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              
-              Text(
-                'Filter Land Listings',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              
-              PremiumDropdown<USState>(
-                label: 'State',
-                items: USStates.all,
-                value: null,
-                onChanged: (value) {},
-                itemLabel: (item) => item.name,
-                allOptionLabel: 'All States',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              
-              PremiumDropdown<String>(
-                label: 'Price Range',
-                items: const [
-                  'Under \$100k',
-                  '\$100k - \$250k',
-                  '\$250k - \$500k',
-                  'Over \$500k',
-                ],
-                value: null,
-                onChanged: (value) {},
-                itemLabel: (item) => item,
-                allOptionLabel: 'Any Price',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              
-              PremiumDropdown<String>(
-                label: 'Acreage',
-                items: const [
-                  'Under 50 acres',
-                  '50-100 acres',
-                  '100-250 acres',
-                  'Over 250 acres',
-                ],
-                value: null,
-                onChanged: (value) {},
-                itemLabel: (item) => item,
-                allOptionLabel: 'Any Size',
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              
-              Text(
-                'Species Present',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: ['Deer', 'Turkey', 'Hog', 'Bass', 'Duck'].map((species) {
-                  return FilterChip(
-                    label: Text(species),
-                    selected: false,
-                    onSelected: (selected) {},
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: AppSpacing.xxl),
-              
-              PremiumButton(
-                label: 'Apply Filters',
-                onPressed: () => Navigator.pop(context),
-                isExpanded: true,
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

@@ -1,246 +1,348 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-import '../../shared/widgets/premium_button.dart';
-
-/// Land listing detail screen.
+/// 🏞️ LAND DETAIL SCREEN - 2025 PREMIUM
 class LandDetailScreen extends StatelessWidget {
-  const LandDetailScreen({
-    super.key,
-    required this.listingId,
-  });
+  const LandDetailScreen({super.key, required this.landId});
 
-  final String listingId;
+  final String landId;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // Hero image
+          // Image header
           SliverAppBar(
-            expandedHeight: 250,
+            expandedHeight: 300,
             pinned: true,
+            backgroundColor: AppColors.surface,
+            leading: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              ),
+              onPressed: () => context.pop(),
+            ),
+            actions: [
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.share_outlined, color: Colors.white),
+                ),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.bookmark_outline_rounded, color: Colors.white),
+                ),
+                onPressed: () {},
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                color: AppColors.surfaceAlt,
+                color: AppColors.backgroundAlt,
                 child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.terrain, size: 64, color: AppColors.primary),
-                      SizedBox(height: 8),
-                      Text(
-                        'Property Photo',
-                        style: TextStyle(color: AppColors.textTertiary),
-                      ),
-                    ],
+                  child: Icon(
+                    Icons.landscape_outlined,
+                    size: 64,
+                    color: AppColors.textTertiary,
                   ),
                 ),
               ),
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: () {},
-              ),
-              IconButton(
-                icon: const Icon(Icons.bookmark_border),
-                onPressed: () {},
-              ),
-            ],
           ),
-          
+
           // Content
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppColors.backgroundGradient,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Type badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
-                    ),
-                    child: Text(
-                      'FOR LEASE',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  
-                  // Title
-                  Text(
-                    '150 Acres Hill Country Ranch',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  
-                  // Location
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on, size: 18, color: AppColors.textTertiary),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text(
-                        'Texas • Travis County',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  
-                  // Price and details row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _DetailBox(
-                          label: 'Price',
-                          value: '\$2,500/year',
-                          icon: Icons.attach_money,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _DetailBox(
-                          label: 'Acreage',
-                          value: '150 acres',
-                          icon: Icons.square_foot,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  
-                  // Species present
-                  Text(
-                    'Species Present',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: AppSpacing.sm,
-                    children: ['Whitetail Deer', 'Turkey', 'Hog', 'Dove'].map((s) {
-                      return Chip(
-                        label: Text(s),
-                        backgroundColor: AppColors.primaryContainer.withOpacity(0.1),
-                        side: BorderSide.none,
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  
-                  // Description
-                  Text(
-                    'Description',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Beautiful 150-acre ranch in the heart of Texas Hill Country. '
-                    'Excellent deer and turkey hunting. Property features multiple '
-                    'food plots, blinds, and feeders. Creek runs through property. '
-                    'Cabin available for overnight stays.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  
-                  // Disclaimer
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-                      border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-                    ),
-                    child: Row(
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.info_outline, color: AppColors.warning),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Text(
-                            'Discovery only. The Skinning Shed does not handle contracts or payments.',
-                            style: Theme.of(context).textTheme.bodySmall,
+                        // Price badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
                           ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                          ),
+                          child: Text(
+                            '\$2,500/season',
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                  color: AppColors.textInverse,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+
+                        // Title
+                        Text(
+                          '500 Acre Deer Lease',
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+
+                        // Location
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_outlined,
+                              size: 16,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Hill Country, Texas',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.xxxl),
+
+                  // Quick stats
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Row(
+                      children: [
+                        _StatItem(
+                          icon: Icons.straighten_outlined,
+                          label: '500 acres',
+                        ),
+                        const SizedBox(width: AppSpacing.lg),
+                        _StatItem(
+                          icon: Icons.people_outline_rounded,
+                          label: '4 hunters max',
+                        ),
+                        const SizedBox(width: AppSpacing.lg),
+                        _StatItem(
+                          icon: Icons.calendar_today_outlined,
+                          label: 'Full season',
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Game available
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Game Available',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        Wrap(
+                          spacing: AppSpacing.sm,
+                          runSpacing: AppSpacing.sm,
+                          children: [
+                            AppCategoryChip(category: 'Whitetail'),
+                            AppCategoryChip(category: 'Turkey'),
+                            AppChip(label: 'Hog'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Description
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: AppSurface(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Description',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'Beautiful 500-acre property in the heart of Texas Hill Country. Excellent whitetail deer population with multiple mature bucks on camera. Property features rolling hills, oak motts, and several food plots. Includes a comfortable cabin with AC/heat, running water, and electricity. Perfect for a small group of serious hunters.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Amenities
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Amenities',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        _AmenityItem(icon: Icons.cabin_rounded, label: 'Cabin'),
+                        _AmenityItem(icon: Icons.water_drop_outlined, label: 'Running water'),
+                        _AmenityItem(icon: Icons.bolt_outlined, label: 'Electricity'),
+                        _AmenityItem(icon: Icons.local_parking_outlined, label: 'Parking'),
+                        _AmenityItem(icon: Icons.grass_outlined, label: 'Food plots'),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Contact
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: AppSurface(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                            ),
+                            child: const Icon(
+                              Icons.person_rounded,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Listed by John Smith',
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                                Text(
+                                  'Member since 2022',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          AppButtonPrimary(
+                            label: 'Contact',
+                            icon: Icons.message_outlined,
+                            onPressed: () {},
+                            size: AppButtonSize.small,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.screenPadding),
-          child: PremiumButton(
-            label: 'Contact Owner',
-            onPressed: () {
-              // TODO: Show contact options
-            },
-            icon: Icons.mail_outline,
-            isExpanded: true,
-          ),
-        ),
-      ),
     );
   }
 }
 
-class _DetailBox extends StatelessWidget {
-  const _DetailBox({
-    required this.label,
-    required this.value,
+class _StatItem extends StatelessWidget {
+  const _StatItem({
     required this.icon,
+    required this.label,
   });
 
-  final String label;
-  final String value;
   final IconData icon;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusButton),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: AppColors.textTertiary,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+}
+
+class _AmenityItem extends StatelessWidget {
+  const _AmenityItem({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: AppColors.textTertiary),
-              const SizedBox(width: AppSpacing.xs),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: AppColors.primary,
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
             ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: AppColors.success,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodyLarge,
           ),
         ],
       ),

@@ -16,7 +16,8 @@ class SkinningApp extends ConsumerWidget {
       title: 'The Skinning Shed',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      // Dark theme uses same light theme for now (2025 premium light-first design)
+      darkTheme: AppTheme.light,
       themeMode: ThemeMode.light,
       routerConfig: router,
     );

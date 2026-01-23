@@ -1,94 +1,172 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/shared/branding_assets.dart';
+import 'app_nav_rail.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-import '../branding_assets.dart';
-
-/// 🏛️ MODERN RESPONSIVE SCAFFOLD
-/// 
-/// - Mobile: Bottom nav + floating Post FAB
-/// - Web/Tablet: Slim nav rail with pill highlights
-/// - Icons muted → accent when active
+/// 🏗️ 2025 PREMIUM APP SCAFFOLD
+///
+/// Responsive layout with:
+/// - Slim nav rail on web/tablet
+/// - Bottom nav on mobile
+/// - Floating post button
+/// - Max-width content container
 class AppScaffold extends StatelessWidget {
   const AppScaffold({
     super.key,
     required this.child,
+    required this.currentIndex,
   });
 
   final Widget child;
+  final int currentIndex;
 
-  static const _navItems = [
-    _NavItem(
+  static const _destinations = [
+    AppNavDestination(
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_rounded,
       label: 'Feed',
-      path: '/',
     ),
-    _NavItem(
+    AppNavDestination(
       icon: Icons.explore_outlined,
       selectedIcon: Icons.explore_rounded,
       label: 'Explore',
-      path: '/explore',
     ),
-    _NavItem(
-      icon: Icons.wb_sunny_outlined,
-      selectedIcon: Icons.wb_sunny_rounded,
-      label: 'Weather',
-      path: '/weather',
-    ),
-    _NavItem(
+    AppNavDestination(
       icon: Icons.emoji_events_outlined,
       selectedIcon: Icons.emoji_events_rounded,
       label: 'Trophy Wall',
-      path: '/trophy-wall',
+    ),
+    AppNavDestination(
+      icon: Icons.landscape_outlined,
+      selectedIcon: Icons.landscape_rounded,
+      label: 'Land',
+    ),
+    AppNavDestination(
+      icon: Icons.cloud_outlined,
+      selectedIcon: Icons.cloud_rounded,
+      label: 'Weather',
+    ),
+    AppNavDestination(
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings_rounded,
+      label: 'Settings',
     ),
   ];
 
-  int _getCurrentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).matchedLocation;
-    for (var i = 0; i < _navItems.length; i++) {
-      if (_navItems[i].path == location) return i;
+  void _onDestinationSelected(BuildContext context, int index) {
+    switch (index) {
+      case 0:
+        context.go('/');
+        break;
+      case 1:
+        context.go('/explore');
+        break;
+      case 2:
+        context.go('/trophy-wall');
+        break;
+      case 3:
+        context.go('/land');
+        break;
+      case 4:
+        context.go('/weather');
+        break;
+      case 5:
+        context.go('/settings');
+        break;
     }
-    return 0;
   }
 
-  void _onItemTapped(BuildContext context, int index) {
-    context.go(_navItems[index].path);
-  }
-
-  void _onPostTapped(BuildContext context) {
+  void _onPostTap(BuildContext context) {
     context.push('/post');
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _getCurrentIndex(context);
     final screenWidth = MediaQuery.of(context).size.width;
-    final isWideScreen = screenWidth >= 800;
+    final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-    return isWideScreen
-        ? _buildWideLayout(context, currentIndex)
-        : _buildMobileLayout(context, currentIndex);
+    if (isWide) {
+      return _buildWideLayout(context);
+    } else {
+      return _buildNarrowLayout(context);
+    }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MOBILE LAYOUT
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  Widget _buildMobileLayout(BuildContext context, int currentIndex) {
+  Widget _buildWideLayout(BuildContext context) {
     return Scaffold(
-      body: child,
-      floatingActionButton: _buildFab(context),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: _buildBottomNav(context, currentIndex),
+      backgroundColor: AppColors.background,
+      body: Row(
+        children: [
+          // Nav rail
+          AppNavRail(
+            selectedIndex: currentIndex,
+            onDestinationSelected: (index) => _onDestinationSelected(context, index),
+            destinations: _destinations,
+            onPostTap: () => _onPostTap(context),
+          ),
+
+          // Main content
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppColors.backgroundGradient,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: AppSpacing.maxContentWidth,
+                  ),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBottomNav(BuildContext context, int currentIndex) {
+  Widget _buildNarrowLayout(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppColors.backgroundGradient,
+        ),
+        child: child,
+      ),
+      bottomNavigationBar: _MobileBottomNav(
+        currentIndex: currentIndex,
+        onDestinationSelected: (index) => _onDestinationSelected(context, index),
+      ),
+      floatingActionButton: _MobilePostFab(
+        onTap: () => _onPostTap(context),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+    );
+  }
+}
+
+/// Mobile bottom navigation bar.
+class _MobileBottomNav extends StatelessWidget {
+  const _MobileBottomNav({
+    required this.currentIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
+        border: Border(
+          top: BorderSide(color: AppColors.borderSubtle),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -99,60 +177,39 @@ class AppScaffold extends StatelessWidget {
       ),
       child: SafeArea(
         child: SizedBox(
-          height: 60,
+          height: 64,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              for (var i = 0; i < 2; i++)
-                _buildMobileNavItem(context, i, currentIndex == i),
-              const SizedBox(width: 72), // FAB space
-              for (var i = 2; i < 4; i++)
-                _buildMobileNavItem(context, i, currentIndex == i),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMobileNavItem(BuildContext context, int index, bool isSelected) {
-    final item = _navItems[index];
-    return SizedBox(
-      width: 64,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _onItemTapped(context, index),
-          borderRadius: BorderRadius.circular(20),
-          hoverColor: AppColors.primary.withOpacity(0.06),
-          splashColor: AppColors.primary.withOpacity(0.12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isSelected 
-                      ? AppColors.primary.withOpacity(0.12) 
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Icon(
-                  isSelected ? item.selectedIcon : item.icon,
-                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                  size: 22,
-                ),
+              _MobileNavItem(
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home_rounded,
+                label: 'Feed',
+                isSelected: currentIndex == 0,
+                onTap: () => onDestinationSelected(0),
               ),
-              const SizedBox(height: 2),
-              Text(
-                item.label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                  letterSpacing: 0.1,
-                ),
+              _MobileNavItem(
+                icon: Icons.explore_outlined,
+                selectedIcon: Icons.explore_rounded,
+                label: 'Explore',
+                isSelected: currentIndex == 1,
+                onTap: () => onDestinationSelected(1),
+              ),
+              // Spacer for FAB
+              const SizedBox(width: 64),
+              _MobileNavItem(
+                icon: Icons.emoji_events_outlined,
+                selectedIcon: Icons.emoji_events_rounded,
+                label: 'Trophy',
+                isSelected: currentIndex == 2,
+                onTap: () => onDestinationSelected(2),
+              ),
+              _MobileNavItem(
+                icon: Icons.more_horiz_rounded,
+                selectedIcon: Icons.more_horiz_rounded,
+                label: 'More',
+                isSelected: currentIndex >= 3,
+                onTap: () => _showMoreSheet(context),
               ),
             ],
           ),
@@ -161,189 +218,93 @@ class AppScaffold extends StatelessWidget {
     );
   }
 
-  Widget _buildFab(BuildContext context) {
+  void _showMoreSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _MoreSheet(
+        currentIndex: currentIndex,
+        onDestinationSelected: (index) {
+          Navigator.pop(context);
+          onDestinationSelected(index);
+        },
+      ),
+    );
+  }
+}
+
+class _MobileNavItem extends StatelessWidget {
+  const _MobileNavItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 64,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? selectedIcon : icon,
+              size: 24,
+              color: isSelected ? AppColors.primary : AppColors.textTertiary,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? AppColors.primary : AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobilePostFab extends StatelessWidget {
+  const _MobilePostFab({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      width: 56,
+      height: 56,
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppColors.shadowButton,
       ),
-      child: FloatingActionButton(
-        onPressed: () => _onPostTapped(context),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        child: const Icon(Icons.add_rounded, size: 28),
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // WIDE LAYOUT (Web/Tablet)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  Widget _buildWideLayout(BuildContext context, int currentIndex) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Row(
-        children: [
-          // Slim modern nav rail
-          _buildNavRail(context, currentIndex),
-          // Divider
-          Container(width: 1, color: AppColors.border.withOpacity(0.5)),
-          // Main content with max-width constraint
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1200),
-                child: child,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavRail(BuildContext context, int currentIndex) {
-    return Container(
-      width: 72,
-      color: AppColors.surface,
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          // Logo mark
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                BrandingAssets.markIcon,
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          // Post button
-          _buildRailPostButton(context),
-          const SizedBox(height: 24),
-          // Nav items
-          Expanded(
-            child: Column(
-              children: List.generate(
-                _navItems.length,
-                (i) => _buildRailItem(context, i, currentIndex == i),
-              ),
-            ),
-          ),
-          // Settings at bottom
-          _buildRailSettingsButton(context),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRailPostButton(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _onPostTapped(context),
-          borderRadius: BorderRadius.circular(14),
-          hoverColor: Colors.white.withOpacity(0.08),
-          splashColor: Colors.white.withOpacity(0.12),
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRailItem(BuildContext context, int index, bool isSelected) {
-    final item = _navItems[index];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => _onItemTapped(context, index),
-            borderRadius: BorderRadius.circular(14),
-            hoverColor: AppColors.primary.withOpacity(0.06),
-            splashColor: AppColors.primary.withOpacity(0.12),
-            child: Tooltip(
-              message: item.label,
-              preferBelow: false,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isSelected 
-                      ? AppColors.primary.withOpacity(0.12) 
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  isSelected ? item.selectedIcon : item.icon,
-                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                  size: 22,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRailSettingsButton(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.go('/settings'),
-          borderRadius: BorderRadius.circular(14),
-          hoverColor: AppColors.primary.withOpacity(0.06),
-          splashColor: AppColors.primary.withOpacity(0.12),
-          child: Tooltip(
-            message: 'Settings',
-            preferBelow: false,
-            child: const SizedBox(
-              width: 48,
-              height: 48,
-              child: Icon(
-                Icons.settings_outlined,
-                color: AppColors.textTertiary,
-                size: 22,
-              ),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: const Center(
+            child: Icon(
+              Icons.add_rounded,
+              color: AppColors.textInverse,
+              size: 28,
             ),
           ),
         ),
@@ -352,16 +313,108 @@ class AppScaffold extends StatelessWidget {
   }
 }
 
-class _NavItem {
-  const _NavItem({
+class _MoreSheet extends StatelessWidget {
+  const _MoreSheet({
+    required this.currentIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppSpacing.radiusXl),
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            // Options
+            _MoreSheetItem(
+              icon: Icons.landscape_outlined,
+              label: 'Land Listings',
+              isSelected: currentIndex == 3,
+              onTap: () => onDestinationSelected(3),
+            ),
+            _MoreSheetItem(
+              icon: Icons.cloud_outlined,
+              label: 'Weather & Tools',
+              isSelected: currentIndex == 4,
+              onTap: () => onDestinationSelected(4),
+            ),
+            _MoreSheetItem(
+              icon: Icons.storefront_outlined,
+              label: 'Swap Shop',
+              isSelected: false,
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/swap-shop');
+              },
+            ),
+            _MoreSheetItem(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              isSelected: currentIndex == 5,
+              onTap: () => onDestinationSelected(5),
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoreSheetItem extends StatelessWidget {
+  const _MoreSheetItem({
     required this.icon,
-    required this.selectedIcon,
     required this.label,
-    required this.path,
+    required this.isSelected,
+    required this.onTap,
   });
 
   final IconData icon;
-  final IconData selectedIcon;
   final String label;
-  final String path;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          color: isSelected ? AppColors.primary : AppColors.textPrimary,
+        ),
+      ),
+      trailing: isSelected
+          ? const Icon(Icons.check_rounded, color: AppColors.primary, size: 20)
+          : null,
+      onTap: onTap,
+    );
+  }
 }

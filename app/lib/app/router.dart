@@ -4,16 +4,16 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/auth_screen.dart';
-import '../features/feed/feed_screen.dart';
 import '../features/explore/explore_screen.dart';
-import '../features/post/post_screen.dart';
-import '../features/trophy_wall/trophy_wall_screen.dart';
-import '../features/trophy_wall/trophy_detail_screen.dart';
-import '../features/land/land_screen.dart';
+import '../features/feed/feed_screen.dart';
 import '../features/land/land_detail_screen.dart';
-import '../features/swap_shop/swap_shop_screen.dart';
-import '../features/weather/weather_screen.dart';
+import '../features/land/land_screen.dart';
+import '../features/post/post_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/swap_shop/swap_shop_screen.dart';
+import '../features/trophy_wall/trophy_detail_screen.dart';
+import '../features/trophy_wall/trophy_wall_screen.dart';
+import '../features/weather/weather_screen.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
 
@@ -51,6 +51,16 @@ final authNotifierProvider = ChangeNotifierProvider<AuthNotifier>((ref) {
   return AuthNotifier(service);
 });
 
+/// Helper to get current index from location
+int _getIndexFromLocation(String location) {
+  if (location.startsWith('/explore')) return 1;
+  if (location.startsWith('/trophy-wall')) return 2;
+  if (location.startsWith('/land')) return 3;
+  if (location.startsWith('/weather')) return 4;
+  if (location.startsWith('/settings')) return 5;
+  return 0; // Feed is default
+}
+
 /// Router provider for the app
 final routerProvider = Provider<GoRouter>((ref) {
   final authNotifier = ref.watch(authNotifierProvider);
@@ -82,10 +92,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AuthScreen(),
       ),
       
-      // Main shell with bottom navigation
+      // Main shell with navigation
       ShellRoute(
         navigatorKey: _shellNavigatorKey,
-        builder: (context, state, child) => AppScaffold(child: child),
+        builder: (context, state, child) {
+          final currentIndex = _getIndexFromLocation(state.matchedLocation);
+          return AppScaffold(
+            currentIndex: currentIndex,
+            child: child,
+          );
+        },
         routes: [
           // Feed (Home)
           GoRoute(
@@ -127,14 +143,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           
-          // Swap Shop
-          GoRoute(
-            path: '/swap-shop',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: SwapShopScreen(),
-            ),
-          ),
-          
           // Settings
           GoRoute(
             path: '/settings',
@@ -149,6 +157,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/post',
         builder: (context, state) => const PostScreen(),
+      ),
+      
+      // Swap Shop (full screen)
+      GoRoute(
+        path: '/swap-shop',
+        builder: (context, state) => const SwapShopScreen(),
       ),
       
       // Trophy detail
@@ -174,7 +188,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/land/:id',
         builder: (context, state) {
           final id = state.pathParameters['id']!;
-          return LandDetailScreen(listingId: id);
+          return LandDetailScreen(landId: id);
         },
       ),
     ],

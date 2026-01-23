@@ -1,210 +1,200 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-
-/// 🔍 MODERN EXPLORE SCREEN
-/// 
-/// Features:
-/// - Species hubs with hover/press states
-/// - Strong visual hierarchy
-/// - Quick links with modern card design
-/// - State browser with chips
+/// 🧭 EXPLORE SCREEN - 2025 PREMIUM
+///
+/// Discovery hub with modern cards and clear hierarchy.
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final isWide = screenWidth >= 800;
+    final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          // App bar
-          SliverAppBar(
-            floating: true,
-            backgroundColor: AppColors.surface,
-            surfaceTintColor: Colors.transparent,
-            title: Text(
-              'Explore',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.search_rounded),
-                onPressed: () {},
-              ),
-              const SizedBox(width: 8),
-            ],
+    return Column(
+      children: [
+        // Top bar (web only)
+        if (isWide)
+          AppTopBar(
+            title: 'Explore',
+            subtitle: 'Discover species, regions & more',
+            onSearch: () {},
           ),
-          // Content
-          SliverPadding(
-            padding: const EdgeInsets.all(20),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // Species Hubs
-                _SectionHeader(
-                  title: 'Species Hubs',
-                  subtitle: 'Browse trophies by category',
-                ),
-                const SizedBox(height: 16),
-                _buildSpeciesGrid(context, isWide),
-                const SizedBox(height: 32),
 
-                // Quick Links
-                _SectionHeader(
-                  title: 'Discover',
-                  subtitle: 'More ways to explore',
-                ),
-                const SizedBox(height: 16),
-                _DiscoverCard(
-                  icon: Icons.terrain_rounded,
-                  title: 'Land for Lease',
-                  subtitle: 'Find hunting properties',
-                  color: AppColors.categoryOtherGame,
-                  onTap: () => context.go('/land'),
-                ),
-                _DiscoverCard(
-                  icon: Icons.sell_rounded,
-                  title: 'Land for Sale',
-                  subtitle: 'Own your hunting ground',
-                  color: AppColors.accent,
-                  onTap: () => context.go('/land'),
-                ),
-                _DiscoverCard(
-                  icon: Icons.swap_horiz_rounded,
-                  title: 'The Swap Shop',
-                  subtitle: 'Gear marketplace',
-                  color: AppColors.primary,
-                  onTap: () => context.go('/swap-shop'),
-                ),
-                const SizedBox(height: 32),
-
-                // Browse by State
-                _SectionHeader(
-                  title: 'Browse by State',
-                  subtitle: 'Regional trophy feeds',
-                ),
-                const SizedBox(height: 16),
-                _buildStateChips(context),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.arrow_forward, size: 18),
-                    label: const Text('View all 50 states'),
+        // Content
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              // Mobile header
+              if (!isWide)
+                const SliverToBoxAdapter(
+                  child: AppPageHeader(
+                    title: 'Explore',
+                    subtitle: 'Discover species, regions & more',
                   ),
                 ),
-              ]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildSpeciesGrid(BuildContext context, bool isWide) {
-    final hubs = [
-      _SpeciesData('🦌', 'Deer', AppColors.categoryDeer, '1.2k trophies'),
-      _SpeciesData('🦃', 'Turkey', AppColors.categoryTurkey, '847 trophies'),
-      _SpeciesData('🐟', 'Bass', AppColors.categoryBass, '956 trophies'),
-      _SpeciesData('🎯', 'Other Game', AppColors.categoryOtherGame, '324 trophies'),
-      _SpeciesData('🎣', 'Other Fishing', AppColors.categoryOtherFishing, '512 trophies'),
-    ];
+              // Species section
+              SliverToBoxAdapter(
+                child: _SectionHeader(
+                  title: 'Browse by Species',
+                  onSeeAll: () {},
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _SpeciesGrid(isWide: isWide),
+              ),
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: isWide ? 5 : 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: isWide ? 1.0 : 1.3,
-      ),
-      itemCount: hubs.length,
-      itemBuilder: (context, index) => _SpeciesHubCard(data: hubs[index]),
-    );
-  }
+              // Quick links section
+              SliverToBoxAdapter(
+                child: _SectionHeader(
+                  title: 'Quick Links',
+                  onSeeAll: null,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _QuickLinksGrid(isWide: isWide),
+              ),
 
-  Widget _buildStateChips(BuildContext context) {
-    final states = [
-      'Texas', 'Alabama', 'Florida', 'Georgia', 'Tennessee',
-      'Arkansas', 'Louisiana', 'Mississippi', 'Oklahoma', 'Missouri',
-    ];
+              // Trending section
+              SliverToBoxAdapter(
+                child: _SectionHeader(
+                  title: 'Trending This Week',
+                  onSeeAll: () {},
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _TrendingList(),
+              ),
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: states.map((state) => _StateChip(label: state)).toList(),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION HEADER
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    this.subtitle,
-  });
-
-  final String title;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+              // Bottom padding
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 100),
+              ),
+            ],
           ),
         ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
       ],
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SPECIES HUB CARD
-// ═══════════════════════════════════════════════════════════════════════════════
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    this.onSeeAll,
+  });
 
-class _SpeciesData {
-  const _SpeciesData(this.emoji, this.label, this.color, this.count);
-  final String emoji;
-  final String label;
-  final Color color;
-  final String count;
+  final String title;
+  final VoidCallback? onSeeAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenPadding,
+        AppSpacing.xxl,
+        AppSpacing.screenPadding,
+        AppSpacing.md,
+      ),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const Spacer(),
+          if (onSeeAll != null)
+            TextButton(
+              onPressed: onSeeAll,
+              child: const Text('See all'),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
-class _SpeciesHubCard extends StatefulWidget {
-  const _SpeciesHubCard({required this.data});
+class _SpeciesGrid extends StatelessWidget {
+  const _SpeciesGrid({required this.isWide});
+
+  final bool isWide;
+
+  @override
+  Widget build(BuildContext context) {
+    final species = [
+      _SpeciesData(
+        name: 'Whitetail Deer',
+        icon: Icons.pets_rounded,
+        color: AppColors.categoryDeer,
+        count: 1247,
+      ),
+      _SpeciesData(
+        name: 'Turkey',
+        icon: Icons.flutter_dash_rounded,
+        color: AppColors.categoryTurkey,
+        count: 856,
+      ),
+      _SpeciesData(
+        name: 'Largemouth Bass',
+        icon: Icons.water_rounded,
+        color: AppColors.categoryBass,
+        count: 623,
+      ),
+      _SpeciesData(
+        name: 'Other Game',
+        icon: Icons.forest_rounded,
+        color: AppColors.categoryOtherGame,
+        count: 412,
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: isWide ? 4 : 2,
+          mainAxisSpacing: AppSpacing.gridGap,
+          crossAxisSpacing: AppSpacing.gridGap,
+          childAspectRatio: isWide ? 1.3 : 1.1,
+        ),
+        itemCount: species.length,
+        itemBuilder: (context, index) => _SpeciesCard(data: species[index]),
+      ),
+    );
+  }
+}
+
+class _SpeciesData {
+  const _SpeciesData({
+    required this.name,
+    required this.icon,
+    required this.color,
+    required this.count,
+  });
+
+  final String name;
+  final IconData icon;
+  final Color color;
+  final int count;
+}
+
+class _SpeciesCard extends StatefulWidget {
+  const _SpeciesCard({required this.data});
+
   final _SpeciesData data;
 
   @override
-  State<_SpeciesHubCard> createState() => _SpeciesHubCardState();
+  State<_SpeciesCard> createState() => _SpeciesCardState();
 }
 
-class _SpeciesHubCardState extends State<_SpeciesHubCard> {
+class _SpeciesCardState extends State<_SpeciesCard> {
   bool _isHovered = false;
 
   @override
@@ -213,59 +203,56 @@ class _SpeciesHubCardState extends State<_SpeciesHubCard> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            // Navigate to species feed
-          },
-          borderRadius: BorderRadius.circular(16),
-          hoverColor: widget.data.color.withOpacity(0.06),
-          splashColor: widget.data.color.withOpacity(0.12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              color: _isHovered 
-                  ? widget.data.color.withOpacity(0.15)
-                  : widget.data.color.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _isHovered 
-                    ? widget.data.color.withOpacity(0.4)
-                    : widget.data.color.withOpacity(0.2),
-                width: 1.5,
-              ),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: widget.data.color.withOpacity(0.15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
+      child: GestureDetector(
+        onTap: () {},
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          transform: _isHovered
+              ? (Matrix4.identity()..scale(1.02))
+              : Matrix4.identity(),
+          transformAlignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            border: Border.all(
+              color: _isHovered ? widget.data.color.withOpacity(0.3) : AppColors.borderSubtle,
             ),
+            boxShadow: _isHovered ? AppColors.shadowElevated : AppColors.shadowCard,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.data.emoji,
-                  style: TextStyle(fontSize: _isHovered ? 36 : 32),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.data.label,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: widget.data.color,
+                // Icon
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: widget.data.color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                   ),
+                  child: Icon(
+                    widget.data.icon,
+                    color: widget.data.color,
+                    size: 24,
+                  ),
+                ),
+                const Spacer(),
+
+                // Name
+                Text(
+                  widget.data.name,
+                  style: Theme.of(context).textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
+
+                // Count
                 Text(
-                  widget.data.count,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
+                  '${widget.data.count} posts',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
@@ -276,128 +263,82 @@ class _SpeciesHubCardState extends State<_SpeciesHubCard> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DISCOVER CARD
-// ═══════════════════════════════════════════════════════════════════════════════
+class _QuickLinksGrid extends StatelessWidget {
+  const _QuickLinksGrid({required this.isWide});
 
-class _DiscoverCard extends StatefulWidget {
-  const _DiscoverCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  State<_DiscoverCard> createState() => _DiscoverCardState();
-}
-
-class _DiscoverCardState extends State<_DiscoverCard> {
-  bool _isHovered = false;
+  final bool isWide;
 
   @override
   Widget build(BuildContext context) {
+    final links = [
+      _QuickLinkData(
+        title: 'Land Listings',
+        subtitle: 'Find hunting land',
+        icon: Icons.landscape_rounded,
+        route: '/land',
+      ),
+      _QuickLinkData(
+        title: 'Swap Shop',
+        subtitle: 'Buy & sell gear',
+        icon: Icons.storefront_rounded,
+        route: '/swap-shop',
+      ),
+      _QuickLinkData(
+        title: 'Weather',
+        subtitle: 'Conditions & tools',
+        icon: Icons.cloud_rounded,
+        route: '/weather',
+      ),
+      _QuickLinkData(
+        title: 'Trophy Wall',
+        subtitle: 'Your profile',
+        icon: Icons.emoji_events_rounded,
+        route: '/trophy-wall',
+      ),
+    ];
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        cursor: SystemMouseCursors.click,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(14),
-            hoverColor: widget.color.withOpacity(0.06),
-            splashColor: widget.color.withOpacity(0.1),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: _isHovered 
-                      ? widget.color.withOpacity(0.3) 
-                      : AppColors.border.withOpacity(0.5),
-                ),
-                boxShadow: _isHovered
-                    ? [
-                        BoxShadow(
-                          color: widget.color.withOpacity(0.08),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(widget.icon, color: widget.color, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.subtitle,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: _isHovered ? widget.color : AppColors.textTertiary,
-                  ),
-                ],
-              ),
-            ),
-          ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: isWide ? 4 : 2,
+          mainAxisSpacing: AppSpacing.gridGap,
+          crossAxisSpacing: AppSpacing.gridGap,
+          childAspectRatio: isWide ? 2.2 : 1.8,
         ),
+        itemCount: links.length,
+        itemBuilder: (context, index) => _QuickLinkCard(data: links[index]),
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// STATE CHIP
-// ═══════════════════════════════════════════════════════════════════════════════
+class _QuickLinkData {
+  const _QuickLinkData({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.route,
+  });
 
-class _StateChip extends StatefulWidget {
-  const _StateChip({required this.label});
-  final String label;
-
-  @override
-  State<_StateChip> createState() => _StateChipState();
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String route;
 }
 
-class _StateChipState extends State<_StateChip> {
+class _QuickLinkCard extends StatefulWidget {
+  const _QuickLinkCard({required this.data});
+
+  final _QuickLinkData data;
+
+  @override
+  State<_QuickLinkCard> createState() => _QuickLinkCardState();
+}
+
+class _QuickLinkCardState extends State<_QuickLinkCard> {
   bool _isHovered = false;
 
   @override
@@ -406,33 +347,203 @@ class _StateChipState extends State<_StateChip> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            // Navigate to state feed
-          },
-          borderRadius: BorderRadius.circular(20),
-          hoverColor: AppColors.primary.withOpacity(0.06),
-          splashColor: AppColors.primary.withOpacity(0.1),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: _isHovered ? AppColors.primary.withOpacity(0.1) : AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _isHovered ? AppColors.primary : AppColors.border,
-              ),
+      child: GestureDetector(
+        onTap: () => context.go(widget.data.route),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppColors.surfaceHover : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
             ),
-            child: Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: _isHovered ? AppColors.primary : AppColors.textPrimary,
-              ),
+            boxShadow: _isHovered ? AppColors.shadowCard : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
+            child: Row(
+              children: [
+                // Icon
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: Icon(
+                    widget.data.icon,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+
+                // Text
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.data.title,
+                        style: Theme.of(context).textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        widget.data.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Arrow
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: _isHovered ? AppColors.textPrimary : AppColors.textTertiary,
+                  size: 20,
+                ),
+              ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrendingList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final trending = [
+      _TrendingItem(
+        title: '12-Point Buck in Texas',
+        subtitle: 'Posted by @hunter_joe',
+        likes: 234,
+      ),
+      _TrendingItem(
+        title: 'Opening Day Turkey',
+        subtitle: 'Posted by @wild_tom',
+        likes: 189,
+      ),
+      _TrendingItem(
+        title: 'Personal Best Bass',
+        subtitle: 'Posted by @bass_master',
+        likes: 156,
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      child: Column(
+        children: trending
+            .map((item) => _TrendingCard(data: item))
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _TrendingItem {
+  const _TrendingItem({
+    required this.title,
+    required this.subtitle,
+    required this.likes,
+  });
+
+  final String title;
+  final String subtitle;
+  final int likes;
+}
+
+class _TrendingCard extends StatefulWidget {
+  const _TrendingCard({required this.data});
+
+  final _TrendingItem data;
+
+  @override
+  State<_TrendingCard> createState() => _TrendingCardState();
+}
+
+class _TrendingCardState extends State<_TrendingCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {},
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+          padding: const EdgeInsets.all(AppSpacing.cardPadding),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppColors.surfaceHover : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Thumbnail placeholder
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundAlt,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: const Icon(
+                  Icons.image_outlined,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.data.title,
+                      style: Theme.of(context).textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.data.subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Likes
+              Row(
+                children: [
+                  const Icon(
+                    Icons.favorite_rounded,
+                    size: 16,
+                    color: AppColors.error,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    widget.data.likes.toString(),
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

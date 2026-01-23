@@ -1,162 +1,145 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/auth_service.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-
-/// Settings screen.
-class SettingsScreen extends StatelessWidget {
+/// ⚙️ SETTINGS SCREEN - 2025 PREMIUM
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
-      body: ListView(
-        children: [
-          // Account section
-          _SectionHeader(title: 'Account'),
-          _SettingsTile(
-            icon: Icons.person,
-            title: 'Edit Profile',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.email,
-            title: 'Email',
-            subtitle: 'user@example.com',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.lock,
-            title: 'Change Password',
-            onTap: () {},
-          ),
-          
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Preferences section
-          _SectionHeader(title: 'Preferences'),
-          _SettingsTile(
-            icon: Icons.notifications,
-            title: 'Notifications',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.location_on,
-            title: 'Default Location',
-            subtitle: 'Texas',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.palette,
-            title: 'Appearance',
-            subtitle: 'Light',
-            onTap: () {},
-          ),
-          
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Support section
-          _SectionHeader(title: 'Support'),
-          _SettingsTile(
-            icon: Icons.help,
-            title: 'Help Center',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.bug_report,
-            title: 'Report a Problem',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.article,
-            title: 'Community Guidelines',
-            onTap: () {},
-          ),
-          
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Legal section
-          _SectionHeader(title: 'Legal'),
-          _SettingsTile(
-            icon: Icons.privacy_tip,
-            title: 'Privacy Policy',
-            onTap: () {},
-          ),
-          _SettingsTile(
-            icon: Icons.description,
-            title: 'Terms of Service',
-            onTap: () {},
-          ),
-          
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Sign out
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.screenPadding,
-              vertical: AppSpacing.md,
-            ),
-            child: OutlinedButton(
-              onPressed: () {
-                _showSignOutDialog(context);
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.error,
-                side: const BorderSide(color: AppColors.error),
-              ),
-              child: const Text('Sign Out'),
-            ),
-          ),
-          
-          // App version
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
-            child: Text(
-              'The Skinning Shed v1.0.0',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          
-          const SizedBox(height: AppSpacing.xxl),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
-  void _showSignOutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+    return Column(
+      children: [
+        // Top bar (web only)
+        if (isWide)
+          const AppTopBar(
+            title: 'Settings',
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.go('/auth');
-            },
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Sign Out'),
+
+        // Content
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              // Mobile header
+              if (!isWide)
+                const SliverToBoxAdapter(
+                  child: AppPageHeader(
+                    title: 'Settings',
+                  ),
+                ),
+
+              // Account section
+              SliverToBoxAdapter(
+                child: _SettingsSection(
+                  title: 'Account',
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.person_outline_rounded,
+                      title: 'Edit Profile',
+                      onTap: () {},
+                    ),
+                    _SettingsItem(
+                      icon: Icons.notifications_outlined,
+                      title: 'Notifications',
+                      onTap: () {},
+                    ),
+                    _SettingsItem(
+                      icon: Icons.lock_outline_rounded,
+                      title: 'Privacy',
+                      onTap: () {},
+                    ),
+                  ],
+                ),
+              ),
+
+              // Preferences section
+              SliverToBoxAdapter(
+                child: _SettingsSection(
+                  title: 'Preferences',
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.location_on_outlined,
+                      title: 'Default Location',
+                      subtitle: 'Texas',
+                      onTap: () {},
+                    ),
+                    _SettingsItem(
+                      icon: Icons.straighten_outlined,
+                      title: 'Units',
+                      subtitle: 'Imperial',
+                      onTap: () {},
+                    ),
+                  ],
+                ),
+              ),
+
+              // Support section
+              SliverToBoxAdapter(
+                child: _SettingsSection(
+                  title: 'Support',
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.help_outline_rounded,
+                      title: 'Help Center',
+                      onTap: () {},
+                    ),
+                    _SettingsItem(
+                      icon: Icons.feedback_outlined,
+                      title: 'Send Feedback',
+                      onTap: () {},
+                    ),
+                    _SettingsItem(
+                      icon: Icons.info_outline_rounded,
+                      title: 'About',
+                      subtitle: 'Version 1.0.0',
+                      onTap: () {},
+                    ),
+                  ],
+                ),
+              ),
+
+              // Sign out
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                  child: AppButtonSecondary(
+                    label: 'Sign Out',
+                    icon: Icons.logout_rounded,
+                    onPressed: () async {
+                      final authService = ref.read(authServiceProvider);
+                      await authService.signOut();
+                    },
+                    isExpanded: true,
+                  ),
+                ),
+              ),
+
+              // Bottom padding
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 100),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
+    required this.title,
+    required this.children,
+  });
 
   final String title;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
@@ -165,25 +148,48 @@ class _SectionHeader extends StatelessWidget {
         AppSpacing.screenPadding,
         AppSpacing.lg,
         AppSpacing.screenPadding,
-        AppSpacing.sm,
+        0,
       ),
-      child: Text(
-        title.toUpperCase(),
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: AppColors.textTertiary,
-          letterSpacing: 1.2,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: Column(
+              children: children.asMap().entries.map((entry) {
+                final isLast = entry.key == children.length - 1;
+                return Column(
+                  children: [
+                    entry.value,
+                    if (!isLast) const Divider(height: 1),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({
+class _SettingsItem extends StatefulWidget {
+  const _SettingsItem({
     required this.icon,
     required this.title,
-    required this.onTap,
     this.subtitle,
+    required this.onTap,
   });
 
   final IconData icon;
@@ -192,13 +198,64 @@ class _SettingsTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_SettingsItem> createState() => _SettingsItemState();
+}
+
+class _SettingsItemState extends State<_SettingsItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.textTertiary),
-      title: Text(title),
-      subtitle: subtitle != null ? Text(subtitle!) : null,
-      trailing: const Icon(Icons.chevron_right, color: AppColors.textTertiary),
-      onTap: onTap,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(AppSpacing.cardPadding),
+          color: _isHovered ? AppColors.surfaceHover : Colors.transparent,
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundAlt,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    if (widget.subtitle != null)
+                      Text(
+                        widget.subtitle!,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

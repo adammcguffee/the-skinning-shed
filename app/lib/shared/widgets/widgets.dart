@@ -1,10 +1,14 @@
-/// Shared widgets barrel export
-library;
+// 2025 Premium Component System
+export 'app_buttons.dart';
+export 'app_card.dart';
+export 'app_chip.dart';
+export 'app_empty_state.dart';
+export 'app_nav_rail.dart';
+export 'app_skeleton.dart';
+export 'app_surface.dart';
+export 'app_top_bar.dart';
 
-export 'app_scaffold.dart';
+// Shared utilities
 export 'animated_entry.dart';
 export 'location_picker.dart';
-export 'premium_card.dart';
-export 'premium_button.dart';
-export 'premium_dropdown.dart';
 export 'state_widgets.dart';

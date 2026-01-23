@@ -141,7 +141,7 @@ class _LocationField extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: enabled ? Colors.white : AppColors.surfaceAlt,
+          color: enabled ? Colors.white : AppColors.backgroundAlt,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.border),
         ),
@@ -266,7 +266,7 @@ class _StatePickerSheetState extends State<StatePickerSheet> {
                     hintText: 'Search states...',
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
-                    fillColor: AppColors.surfaceAlt,
+                    fillColor: AppColors.backgroundAlt,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -401,7 +401,7 @@ class _CountyPickerSheetState extends State<CountyPickerSheet> {
                     hintText: 'Search counties...',
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
-                    fillColor: AppColors.surfaceAlt,
+                    fillColor: AppColors.backgroundAlt,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,

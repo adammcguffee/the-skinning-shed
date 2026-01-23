@@ -1,201 +1,95 @@
-import 'package:flutter/material.dart';
-
-/// 📐 THE SKINNING SHED — SPACING & RADIUS SYSTEM (2025)
+/// 📐 2025 SPACING & RADIUS SYSTEM
 /// 
-/// Consistent spacing scale based on 4dp grid.
-/// 
-/// ✅ LOCKED — Do not modify without design review.
+/// Tight, modern spacing with consistent rhythm.
 abstract final class AppSpacing {
   AppSpacing._();
 
   // ════════════════════════════════════════════════════════════════════════════
-  // SPACING SCALE (4dp base unit)
+  // SPACING SCALE (4px base)
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// 2dp — micro spacing
-  static const double xxs = 2;
-
-  /// 4dp — extra small
-  static const double xs = 4;
-
-  /// 8dp — small
-  static const double sm = 8;
-
-  /// 12dp — small-medium
-  static const double md = 12;
-
-  /// 16dp — medium (default)
-  static const double lg = 16;
-
-  /// 20dp — medium-large
-  static const double mlg = 20;
-
-  /// 24dp — large
-  static const double xl = 24;
-
-  /// 32dp — extra large
-  static const double xxl = 32;
-
-  /// 40dp — section spacing
-  static const double xxxl = 40;
-
-  /// 48dp — large section spacing
-  static const double xxxxl = 48;
-
-  /// 64dp — page section spacing
-  static const double section = 64;
+  static const double xxs = 2.0;
+  static const double xs = 4.0;
+  static const double sm = 8.0;
+  static const double md = 12.0;
+  static const double lg = 16.0;
+  static const double xl = 20.0;
+  static const double xxl = 24.0;
+  static const double xxxl = 32.0;
+  static const double xxxxl = 48.0;
 
   // ════════════════════════════════════════════════════════════════════════════
-  // SEMANTIC SPACING
+  // LAYOUT
   // ════════════════════════════════════════════════════════════════════════════
-
-  /// Padding inside cards
-  static const double cardPadding = 20;
-
-  /// Margin around cards
-  static const double cardMargin = 12;
 
   /// Screen edge padding
-  static const double screenPadding = 20;
+  static const double screenPadding = 20.0;
 
-  /// Space between list items
-  static const double listItemSpacing = 12;
+  /// Card internal padding
+  static const double cardPadding = 16.0;
 
-  /// Space between sections
-  static const double sectionSpacing = 32;
+  /// Section spacing
+  static const double sectionGap = 32.0;
 
-  /// Space between form fields
-  static const double formFieldSpacing = 20;
+  /// Grid gap
+  static const double gridGap = 16.0;
 
-  /// Icon to text spacing
-  static const double iconTextSpacing = 8;
+  /// Max content width (web)
+  static const double maxContentWidth = 1200.0;
 
-  /// Button content padding horizontal
-  static const double buttonPaddingH = 24;
-
-  /// Button content padding vertical
-  static const double buttonPaddingV = 14;
+  /// Nav rail width
+  static const double navRailWidth = 72.0;
 
   // ════════════════════════════════════════════════════════════════════════════
-  // BORDER RADIUS — LOCKED VALUES
+  // BORDER RADIUS
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// Cards, containers — 20dp
-  static const double radiusCard = 20;
+  /// Small elements (chips, badges)
+  static const double radiusSm = 8.0;
 
-  /// Buttons, inputs — 14dp
-  static const double radiusButton = 14;
+  /// Medium elements (buttons, inputs)
+  static const double radiusMd = 12.0;
 
-  /// Chips, tags — full round
-  static const double radiusChip = 999;
+  /// Large elements (cards)
+  static const double radiusLg = 18.0;
 
-  /// Small elements (icons, avatars) — 12dp
-  static const double radiusSmall = 12;
+  /// Extra large (modals, sheets)
+  static const double radiusXl = 24.0;
 
-  /// Modals, bottom sheets — 24dp
-  static const double radiusModal = 24;
-
-  /// Images, thumbnails — 16dp
-  static const double radiusImage = 16;
+  /// Full round (pills, avatars)
+  static const double radiusFull = 999.0;
 
   // ════════════════════════════════════════════════════════════════════════════
-  // TOUCH TARGETS (Accessibility)
+  // COMPONENT SIZES
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// Minimum touch target (44dp for AA accessibility)
-  static const double minTouchTarget = 44;
+  /// Button heights
+  static const double buttonHeightSm = 36.0;
+  static const double buttonHeightMd = 44.0;
+  static const double buttonHeightLg = 52.0;
 
-  /// Standard button height
-  static const double buttonHeight = 52;
+  /// Input height
+  static const double inputHeight = 48.0;
 
-  /// Compact button height
-  static const double buttonHeightCompact = 44;
+  /// Avatar sizes
+  static const double avatarSm = 32.0;
+  static const double avatarMd = 40.0;
+  static const double avatarLg = 56.0;
+  static const double avatarXl = 80.0;
 
-  /// Icon button size
-  static const double iconButtonSize = 44;
+  /// Icon sizes
+  static const double iconSm = 18.0;
+  static const double iconMd = 22.0;
+  static const double iconLg = 26.0;
 
-  /// Navigation item height
-  static const double navItemHeight = 56;
+  /// Chip height
+  static const double chipHeight = 32.0;
 
   // ════════════════════════════════════════════════════════════════════════════
   // BREAKPOINTS
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// Mobile breakpoint
-  static const double breakpointMobile = 600;
-
-  /// Tablet breakpoint
-  static const double breakpointTablet = 900;
-
-  /// Desktop breakpoint
-  static const double breakpointDesktop = 1200;
-
-  /// Wide desktop breakpoint
-  static const double breakpointWide = 1440;
-}
-
-/// Pre-built EdgeInsets for consistent padding
-class AppInsets {
-  AppInsets._();
-
-  /// Screen padding
-  static const EdgeInsets screen = EdgeInsets.all(AppSpacing.screenPadding);
-
-  /// Screen padding horizontal only
-  static const EdgeInsets screenH = EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding);
-
-  /// Card padding
-  static const EdgeInsets card = EdgeInsets.all(AppSpacing.cardPadding);
-
-  /// Card padding compact
-  static const EdgeInsets cardCompact = EdgeInsets.all(AppSpacing.lg);
-
-  /// List item padding
-  static const EdgeInsets listItem = EdgeInsets.symmetric(
-    horizontal: AppSpacing.lg,
-    vertical: AppSpacing.md,
-  );
-
-  /// Button padding
-  static const EdgeInsets button = EdgeInsets.symmetric(
-    horizontal: AppSpacing.buttonPaddingH,
-    vertical: AppSpacing.buttonPaddingV,
-  );
-
-  /// Input padding
-  static const EdgeInsets input = EdgeInsets.symmetric(
-    horizontal: AppSpacing.lg,
-    vertical: AppSpacing.md,
-  );
-
-  /// Section padding
-  static const EdgeInsets section = EdgeInsets.symmetric(vertical: AppSpacing.sectionSpacing);
-}
-
-/// Pre-built BorderRadius for consistent corners
-class AppRadius {
-  AppRadius._();
-
-  /// Card radius
-  static BorderRadius get card => BorderRadius.circular(AppSpacing.radiusCard);
-
-  /// Button radius
-  static BorderRadius get button => BorderRadius.circular(AppSpacing.radiusButton);
-
-  /// Chip radius (full round)
-  static BorderRadius get chip => BorderRadius.circular(AppSpacing.radiusChip);
-
-  /// Small radius
-  static BorderRadius get small => BorderRadius.circular(AppSpacing.radiusSmall);
-
-  /// Modal radius
-  static BorderRadius get modal => BorderRadius.circular(AppSpacing.radiusModal);
-
-  /// Image radius
-  static BorderRadius get image => BorderRadius.circular(AppSpacing.radiusImage);
-
-  /// Top only for bottom sheets
-  static BorderRadius get modalTop => const BorderRadius.vertical(
-    top: Radius.circular(AppSpacing.radiusModal),
-  );
+  static const double breakpointMobile = 600.0;
+  static const double breakpointTablet = 900.0;
+  static const double breakpointDesktop = 1200.0;
 }

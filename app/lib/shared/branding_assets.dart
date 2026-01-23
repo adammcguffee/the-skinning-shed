@@ -1,85 +1,60 @@
-/// 🏷️ THE SKINNING SHED — BRAND ASSETS v3 (FINAL)
+/// 🎨 BRANDING ASSETS - 2025 MODERN SYSTEM
 ///
-/// Modern, clean, unclippable branding system.
-///
-/// ## USAGE RULES
-///
-/// 1. **Always use `BoxFit.contain`** — never stretch/clip logos
-/// 2. **Never let logos determine layout size** — constrain with parent
-/// 3. **Icon + wordmark > badge** for most UI contexts
-/// 4. **Badges are for marketing** — use sparingly in app
-///
-/// ## WHERE TO USE WHAT
-///
-/// | Context          | Asset to Use        |
-/// |------------------|---------------------|
-/// | Auth screen      | `wordmark` or small `badgePrimary` |
-/// | Nav rail header  | `markIcon`          |
-/// | Web header       | `wordmark`          |
-/// | Mobile header    | `markIcon` + text   |
-/// | Feed cards       | **None** (content is hero) |
-/// | Splash/loading   | `markIcon`          |
-/// | Dark backgrounds | `badgeDark`         |
-/// | Watermarks/merch | `stampMono`         |
-///
-/// ✅ LOCKED — v3 assets have generous transparent padding built-in
+/// RULES:
+/// - Use markIcon for all in-app UI (nav, headers, splash)
+/// - Use wordmark ONLY if text branding is needed
+/// - NEVER use the illustrated badge in app UI (marketing only)
+/// - All logos render with BoxFit.contain
+/// - All logos have explicit size constraints
 abstract final class BrandingAssets {
   BrandingAssets._();
 
-  /// Base path for v3 branding assets
-  static const String _basePath = 'assets/branding/v3';
-
   // ════════════════════════════════════════════════════════════════════════════
-  // PRIMARY ASSETS
+  // PRIMARY APP ASSETS (USE THESE)
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// Mark icon — simple square icon, no text, generous padding.
-  /// Best for: Nav rail, mobile headers, splash, small spaces, favicon.
-  /// Size: 512x512 with ~15% padding
-  static const String markIcon = '$_basePath/mark_icon.png';
+  /// The primary icon mark - use for nav rail, headers, splash, app icon
+  static const String markIcon = 'assets/branding/mark_icon.png';
 
-  /// Wordmark — text-first, minimal, modern.
-  /// Best for: Web headers, auth screen, horizontal layouts.
-  /// Size: 800x200 with generous padding
-  static const String wordmark = '$_basePath/wordmark.png';
+  /// Text wordmark - use sparingly for auth screens or web headers
+  static const String wordmark = 'assets/branding/v3/wordmark.png';
 
   // ════════════════════════════════════════════════════════════════════════════
-  // BADGE ASSETS (use sparingly)
+  // APP ICONS
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// Badge primary — full illustrated badge with animals + text.
-  /// Best for: Marketing, splash (if needed), special occasions.
-  /// Use sparingly — prefer markIcon + wordmark for UI.
-  /// Size: 1024x1024 with ~12% padding
-  static const String badgePrimary = '$_basePath/badge_primary.png';
-
-  /// Badge dark — works on dark backgrounds.
-  /// Best for: Dark mode splash, dark promotional banners.
-  /// Size: 1024x800 with padding
-  static const String badgeDark = '$_basePath/badge_dark.png';
+  static const String appIcon1024 = 'assets/branding/app_icon_1024.png';
+  static const String appIcon512 = 'assets/branding/app_icon_512.png';
 
   // ════════════════════════════════════════════════════════════════════════════
-  // UTILITY ASSETS
+  // MARKETING ONLY (DO NOT USE IN APP UI)
   // ════════════════════════════════════════════════════════════════════════════
 
-  /// Stamp mono — single color for watermarks/merch.
-  /// Best for: Photo watermarks, merchandise, embossed effects.
-  /// Size: 512x512 with ~15% padding
-  static const String stampMono = '$_basePath/stamp_mono.png';
+  @Deprecated('Marketing only - use markIcon for app UI')
+  static const String badgePrimary = 'assets/branding/v3/badge_primary.png';
+
+  @Deprecated('Marketing only - use markIcon for app UI')
+  static const String badgeDark = 'assets/branding/v3/badge_dark.png';
+
+  @Deprecated('Marketing only - use markIcon for app UI')
+  static const String stampMono = 'assets/branding/v3/stamp_mono.png';
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LEGACY PATHS (deprecated, use v3 above)
+  // LEGACY (DEPRECATED)
   // ════════════════════════════════════════════════════════════════════════════
 
   @Deprecated('Use markIcon instead')
-  static const String icon = 'assets/branding/logo_icon.png';
+  static const String primary = 'assets/branding/logo_primary.png';
 
   @Deprecated('Use wordmark instead')
   static const String horizontal = 'assets/branding/logo_horizontal.png';
 
-  @Deprecated('Use badgePrimary instead')
-  static const String primary = 'assets/branding/logo_primary.png';
-
-  @Deprecated('Use badgeDark instead')
+  @Deprecated('Use markIcon instead')
   static const String dark = 'assets/branding/logo_dark.png';
+
+  @Deprecated('Use markIcon instead')
+  static const String icon = 'assets/branding/logo_icon.png';
+
+  @Deprecated('Use markIcon instead')
+  static const String stampMonoV1 = 'assets/branding/logo_stamp_mono.png';
 }

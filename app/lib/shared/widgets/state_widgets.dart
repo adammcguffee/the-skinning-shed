@@ -3,7 +3,7 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
-import 'premium_button.dart';
+import 'app_buttons.dart';
 
 /// Empty state widget with customizable icon and message.
 class EmptyState extends StatelessWidget {
@@ -34,7 +34,7 @@ class EmptyState extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(AppSpacing.xl),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
+                  color: AppColors.backgroundAlt,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -61,10 +61,9 @@ class EmptyState extends StatelessWidget {
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: AppSpacing.xl),
-              PremiumButton(
+              AppButtonSecondary(
                 label: actionLabel!,
                 onPressed: onAction,
-                variant: PremiumButtonVariant.secondary,
               ),
             ],
           ],
@@ -123,7 +122,7 @@ class ErrorState extends StatelessWidget {
             ),
             if (onRetry != null) ...[
               const SizedBox(height: AppSpacing.xl),
-              PremiumButton(
+              AppButtonPrimary(
                 label: 'Try Again',
                 onPressed: onRetry,
                 icon: Icons.refresh,
@@ -190,15 +189,15 @@ class CardSkeleton extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(
         horizontal: AppSpacing.screenPadding,
-        vertical: AppSpacing.cardMargin,
+        vertical: AppSpacing.sm,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         side: const BorderSide(color: AppColors.border, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Shimmer.fromColors(
-        baseColor: AppColors.surfaceAlt,
+        baseColor: AppColors.backgroundAlt,
         highlightColor: Colors.white,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -286,7 +285,7 @@ class FeedCardSkeleton extends StatelessWidget {
         border: Border.all(color: AppColors.border.withOpacity(0.5)),
       ),
       child: Shimmer.fromColors(
-        baseColor: AppColors.surfaceAlt,
+        baseColor: AppColors.backgroundAlt,
         highlightColor: Colors.white,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -365,7 +364,7 @@ class GridCardSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: AppColors.surfaceAlt,
+      baseColor: AppColors.backgroundAlt,
       highlightColor: Colors.white,
       child: Container(
         decoration: BoxDecoration(

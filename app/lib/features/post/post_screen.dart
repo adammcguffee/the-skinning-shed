@@ -1,122 +1,98 @@
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/data/us_states.dart';
+import 'package:shed/services/trophy_service.dart';
+import 'package:shed/services/supabase_service.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-import '../../data/us_counties.dart';
-import '../../data/us_states.dart';
-import '../../shared/widgets/animated_entry.dart';
-
-/// 📝 MODERN POST TROPHY SCREEN
-/// 
-/// Features:
-/// - Clear step hierarchy
-/// - Modern dropdown sheets with search
-/// - Photo picker with preview grid
-/// - Anchored, obvious CTA
-class PostScreen extends StatefulWidget {
+/// 📝 POST TROPHY SCREEN - 2025 PREMIUM
+///
+/// Modern form with clear step hierarchy.
+class PostScreen extends ConsumerStatefulWidget {
   const PostScreen({super.key});
 
   @override
-  State<PostScreen> createState() => _PostScreenState();
+  ConsumerState<PostScreen> createState() => _PostScreenState();
 }
 
-class _PostScreenState extends State<PostScreen> {
-  String? _selectedCategory;
+class _PostScreenState extends ConsumerState<PostScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _notesController = TextEditingController();
+  final _imagePicker = ImagePicker();
+
+  String? _selectedSpecies;
   USState? _selectedState;
   String? _selectedCounty;
-  DateTime? _harvestDate;
-  final _storyController = TextEditingController();
-  bool _isLoading = false;
-
-  final _imagePicker = ImagePicker();
-  final List<XFile> _selectedPhotos = [];
-  final _categories = ['Deer', 'Turkey', 'Bass', 'Other Game', 'Other Fishing'];
+  DateTime _harvestDate = DateTime.now();
+  List<XFile> _selectedPhotos = [];
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
-    _storyController.dispose();
+    _titleController.dispose();
+    _notesController.dispose();
     super.dispose();
-  }
-
-  List<String> get _availableCounties {
-    if (_selectedState == null) return [];
-    return USCounties.forState(_selectedState!.code);
-  }
-
-  Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppColors.primary,
-              onPrimary: Colors.white,
-              surface: AppColors.surface,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() => _harvestDate = picked);
-    }
   }
 
   Future<void> _pickPhotos() async {
     try {
-      final List<XFile> images = await _imagePicker.pickMultiImage(
+      final photos = await _imagePicker.pickMultiImage(
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
       );
-      if (images.isNotEmpty) {
+      if (photos.isNotEmpty) {
         setState(() {
-          _selectedPhotos.addAll(images);
-          if (_selectedPhotos.length > 5) {
-            _selectedPhotos.removeRange(5, _selectedPhotos.length);
-          }
+          _selectedPhotos = [..._selectedPhotos, ...photos].take(5).toList();
         });
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to pick images: $e'), backgroundColor: AppColors.error),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick photos: $e')),
+      );
     }
   }
 
-  void _removePhoto(int index) {
-    setState(() => _selectedPhotos.removeAt(index));
-  }
-
   Future<void> _submit() async {
-    if (_selectedCategory == null || _selectedState == null || _harvestDate == null) {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedSpecies == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all required fields')),
+        const SnackBar(content: Text('Please select a species')),
       );
       return;
     }
 
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+    setState(() => _isSubmitting = true);
 
-    if (mounted) {
-      context.pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trophy posted successfully!'), backgroundColor: AppColors.success),
+    try {
+      final trophyService = ref.read(trophyServiceProvider);
+      await trophyService.createTrophy(
+        category: _selectedSpecies!,
+        state: _selectedState?.name ?? '',
+        county: _selectedCounty ?? '',
+        harvestDate: _harvestDate,
+        story: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
       );
+
+      if (mounted) {
+        context.go('/');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Trophy posted successfully!')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to post: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -126,364 +102,167 @@ class _PostScreenState extends State<PostScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.surface,
-        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.pop(),
         ),
-        title: Text(
-          'Post Trophy',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          // Progress indicator
-          _StepIndicator(
-            currentStep: _calculateStep(),
-            totalSteps: 4,
-          ),
-          // Form content
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                // Step 1: Photos
-                AnimatedEntry(
-                  child: _SectionCard(
-                  number: 1,
-                  title: 'Add Photos',
-                  subtitle: 'Up to 5 photos',
-                  isComplete: _selectedPhotos.isNotEmpty,
-                  child: _PhotoGrid(
-                    photos: _selectedPhotos,
-                    onAddPhotos: _pickPhotos,
-                    onRemovePhoto: _removePhoto,
-                  ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Step 2: Category
-                AnimatedEntry(
-                  delay: const Duration(milliseconds: 60),
-                  child: _SectionCard(
-                  number: 2,
-                  title: 'Species Category',
-                  isComplete: _selectedCategory != null,
-                  child: _CategorySelector(
-                    selected: _selectedCategory,
-                    onChanged: (v) => setState(() => _selectedCategory = v),
-                  ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Step 3: Location
-                AnimatedEntry(
-                  delay: const Duration(milliseconds: 120),
-                  child: _SectionCard(
-                  number: 3,
-                  title: 'Location',
-                  subtitle: 'County level only - we respect your privacy',
-                  isComplete: _selectedState != null && _selectedCounty != null,
-                  child: Column(
-                    children: [
-                      _SelectField(
-                        label: 'State',
-                        value: _selectedState?.name,
-                        hint: 'Select state',
-                        onTap: _showStateSelector,
-                      ),
-                      const SizedBox(height: 12),
-                      _SelectField(
-                        label: 'County',
-                        value: _selectedCounty,
-                        hint: _selectedState == null ? 'Select state first' : 'Select county',
-                        enabled: _selectedState != null,
-                        onTap: _showCountySelector,
-                      ),
-                    ],
-                  ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Step 4: Date & Story
-                AnimatedEntry(
-                  delay: const Duration(milliseconds: 180),
-                  child: _SectionCard(
-                  number: 4,
-                  title: 'Details',
-                  isComplete: _harvestDate != null,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SelectField(
-                        label: 'Harvest Date',
-                        value: _harvestDate != null
-                            ? '${_harvestDate!.month}/${_harvestDate!.day}/${_harvestDate!.year}'
-                            : null,
-                        hint: 'Select date',
-                        icon: Icons.calendar_today_rounded,
-                        onTap: _selectDate,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Story (optional)',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _storyController,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          hintText: 'Share the story behind this trophy...',
-                          filled: true,
-                          fillColor: AppColors.surfaceAlt,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-              ],
+        title: const Text('Post Trophy'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.md),
+            child: AppButtonPrimary(
+              label: 'Post',
+              onPressed: _isSubmitting ? null : _submit,
+              isLoading: _isSubmitting,
+              size: AppButtonSize.small,
             ),
-          ),
-          // Submit button
-          _SubmitBar(
-            isLoading: _isLoading,
-            isEnabled: _canSubmit,
-            onSubmit: _submit,
           ),
         ],
       ),
-    );
-  }
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppColors.backgroundGradient,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                children: [
+                  // Photo section
+                  _PhotoSection(
+                    photos: _selectedPhotos,
+                    onAddPhotos: _pickPhotos,
+                    onRemovePhoto: (index) {
+                      setState(() {
+                        _selectedPhotos.removeAt(index);
+                      });
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
 
-  int _calculateStep() {
-    if (_selectedPhotos.isEmpty) return 1;
-    if (_selectedCategory == null) return 2;
-    if (_selectedState == null || _selectedCounty == null) return 3;
-    return 4;
-  }
-
-  bool get _canSubmit =>
-      _selectedPhotos.isNotEmpty &&
-      _selectedCategory != null &&
-      _selectedState != null &&
-      _selectedCounty != null &&
-      _harvestDate != null;
-
-  Future<void> _showStateSelector() async {
-    final selected = await showModalBottomSheet<USState>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _SearchableSheet<USState>(
-        title: 'Select State',
-        items: USStates.all,
-        selected: _selectedState,
-        itemLabel: (s) => s.name,
-        searchFilter: (s, q) => s.name.toLowerCase().contains(q.toLowerCase()),
-      ),
-    );
-    if (selected != null && selected != _selectedState) {
-      setState(() {
-        _selectedState = selected;
-        _selectedCounty = null;
-      });
-    }
-  }
-
-  Future<void> _showCountySelector() async {
-    if (_selectedState == null) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _SearchableSheet<String>(
-        title: 'Select County',
-        items: _availableCounties,
-        selected: _selectedCounty,
-        itemLabel: (c) => c,
-        searchFilter: (c, q) => c.toLowerCase().contains(q.toLowerCase()),
-      ),
-    );
-    if (selected != null) {
-      setState(() => _selectedCounty = selected);
-    }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// STEP INDICATOR
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _StepIndicator extends StatelessWidget {
-  const _StepIndicator({required this.currentStep, required this.totalSteps});
-  final int currentStep;
-  final int totalSteps;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      color: AppColors.surface,
-      child: Row(
-        children: List.generate(totalSteps * 2 - 1, (index) {
-          if (index.isOdd) {
-            // Connector
-            final stepBefore = (index ~/ 2) + 1;
-            return Expanded(
-              child: Container(
-                height: 2,
-                color: stepBefore < currentStep 
-                    ? AppColors.primary 
-                    : AppColors.border,
-              ),
-            );
-          } else {
-            // Step dot
-            final step = (index ~/ 2) + 1;
-            final isComplete = step < currentStep;
-            final isCurrent = step == currentStep;
-            return Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: isComplete ? AppColors.primary 
-                    : isCurrent ? AppColors.primary.withOpacity(0.15)
-                    : AppColors.surfaceAlt,
-                shape: BoxShape.circle,
-                border: isCurrent 
-                    ? Border.all(color: AppColors.primary, width: 2)
-                    : null,
-              ),
-              child: Center(
-                child: isComplete
-                    ? const Icon(Icons.check, size: 16, color: Colors.white)
-                    : Text(
-                        '$step',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isCurrent ? AppColors.primary : AppColors.textTertiary,
-                        ),
+                  // Title
+                  _FormSection(
+                    title: 'Title',
+                    child: TextFormField(
+                      controller: _titleController,
+                      decoration: const InputDecoration(
+                        hintText: 'Give your trophy a title',
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Title is required';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Species
+                  _FormSection(
+                    title: 'Species',
+                    child: _SpeciesSelector(
+                      selectedSpecies: _selectedSpecies,
+                      onChanged: (species) {
+                        setState(() => _selectedSpecies = species);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Location
+                  _FormSection(
+                    title: 'Location',
+                    child: LocationSelector(
+                      selectedState: _selectedState,
+                      selectedCounty: _selectedCounty,
+                      onStateChanged: (state) {
+                        setState(() {
+                          _selectedState = state;
+                          _selectedCounty = null;
+                        });
+                      },
+                      onCountyChanged: (county) {
+                        setState(() => _selectedCounty = county);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Date
+                  _FormSection(
+                    title: 'Harvest Date',
+                    child: _DatePicker(
+                      date: _harvestDate,
+                      onChanged: (date) {
+                        setState(() => _harvestDate = date);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Notes
+                  _FormSection(
+                    title: 'Notes (Optional)',
+                    child: TextFormField(
+                      controller: _notesController,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText: 'Share the story behind your harvest...',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxxl),
+
+                  // Submit button (mobile)
+                  AppButtonPrimary(
+                    label: 'Post Trophy',
+                    onPressed: _isSubmitting ? null : _submit,
+                    isLoading: _isSubmitting,
+                    isExpanded: true,
+                    size: AppButtonSize.large,
+                  ),
+                  const SizedBox(height: AppSpacing.xxxxl),
+                ],
               ),
-            );
-          }
-        }),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.number,
+class _FormSection extends StatelessWidget {
+  const _FormSection({
     required this.title,
     required this.child,
-    this.subtitle,
-    this.isComplete = false,
   });
 
-  final int number;
   final String title;
-  final String? subtitle;
-  final bool isComplete;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isComplete 
-              ? AppColors.success.withOpacity(0.3) 
-              : AppColors.border.withOpacity(0.5),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall,
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: isComplete ? AppColors.success : AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: isComplete
-                      ? const Icon(Icons.check, size: 16, color: Colors.white)
-                      : Text(
-                          '$number',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (subtitle != null)
-                      Text(
-                        subtitle!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          child,
-        ],
-      ),
+        const SizedBox(height: AppSpacing.sm),
+        child,
+      ],
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PHOTO GRID
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _PhotoGrid extends StatelessWidget {
-  const _PhotoGrid({
+class _PhotoSection extends StatelessWidget {
+  const _PhotoSection({
     required this.photos,
     required this.onAddPhotos,
     required this.onRemovePhoto,
@@ -491,91 +270,159 @@ class _PhotoGrid extends StatelessWidget {
 
   final List<XFile> photos;
   final VoidCallback onAddPhotos;
-  final void Function(int) onRemovePhoto;
+  final ValueChanged<int> onRemovePhoto;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 100,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Add button
-          if (photos.length < 5)
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onAddPhotos,
-                borderRadius: BorderRadius.circular(12),
-                hoverColor: AppColors.primary.withOpacity(0.06),
-                splashColor: AppColors.primary.withOpacity(0.12),
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.primary.withOpacity(0.3),
-                      width: 2,
-                      strokeAlign: BorderSide.strokeAlignInside,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.add_photo_alternate_rounded,
-                        color: AppColors.primary,
-                        size: 28,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Add',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+          Row(
+            children: [
+              const Icon(
+                Icons.photo_library_outlined,
+                size: 20,
+                color: AppColors.textSecondary,
               ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'Photos',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Spacer(),
+              Text(
+                '${photos.length}/5',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          if (photos.isEmpty)
+            _AddPhotoButton(onTap: onAddPhotos)
+          else
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                ...photos.asMap().entries.map((entry) => _PhotoThumbnail(
+                      photo: entry.value,
+                      onRemove: () => onRemovePhoto(entry.key),
+                    )),
+                if (photos.length < 5)
+                  _AddPhotoButton(onTap: onAddPhotos, isSmall: true),
+              ],
             ),
-          // Photo thumbnails
-          ...photos.asMap().entries.map((entry) {
-            return Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: _PhotoThumbnail(
-                file: entry.value,
-                onRemove: () => onRemovePhoto(entry.key),
-              ),
-            );
-          }),
         ],
       ),
     );
   }
 }
 
+class _AddPhotoButton extends StatefulWidget {
+  const _AddPhotoButton({
+    required this.onTap,
+    this.isSmall = false,
+  });
+
+  final VoidCallback onTap;
+  final bool isSmall;
+
+  @override
+  State<_AddPhotoButton> createState() => _AddPhotoButtonState();
+}
+
+class _AddPhotoButtonState extends State<_AddPhotoButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = widget.isSmall ? 80.0 : 120.0;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: widget.isSmall ? size : double.infinity,
+          height: size,
+          decoration: BoxDecoration(
+            color: _isHovered ? AppColors.surfaceHover : AppColors.backgroundAlt,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: _isHovered ? AppColors.primary : AppColors.border,
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_photo_alternate_outlined,
+                size: widget.isSmall ? 24 : 32,
+                color: _isHovered ? AppColors.primary : AppColors.textTertiary,
+              ),
+              if (!widget.isSmall) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Add Photos',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: _isHovered ? AppColors.primary : AppColors.textSecondary,
+                      ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PhotoThumbnail extends StatelessWidget {
-  const _PhotoThumbnail({required this.file, required this.onRemove});
-  final XFile file;
+  const _PhotoThumbnail({
+    required this.photo,
+    required this.onRemove,
+  });
+
+  final XFile photo;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            width: 100,
-            height: 100,
-            child: kIsWeb
-                ? Image.network(file.path, fit: BoxFit.cover)
-                : Image.file(File(file.path), fit: BoxFit.cover),
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: FutureBuilder<dynamic>(
+            future: photo.readAsBytes(),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return Image.memory(
+                  snapshot.data!,
+                  fit: BoxFit.cover,
+                );
+              }
+              return const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              );
+            },
           ),
         ),
         Positioned(
@@ -584,12 +431,17 @@ class _PhotoThumbnail extends StatelessWidget {
           child: GestureDetector(
             onTap: onRemove,
             child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: Colors.black54,
-                shape: BoxShape.circle,
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.close, size: 16, color: Colors.white),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -598,314 +450,105 @@ class _PhotoThumbnail extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CATEGORY SELECTOR
-// ═══════════════════════════════════════════════════════════════════════════════
+class _SpeciesSelector extends StatelessWidget {
+  const _SpeciesSelector({
+    required this.selectedSpecies,
+    required this.onChanged,
+  });
 
-class _CategorySelector extends StatelessWidget {
-  const _CategorySelector({required this.selected, required this.onChanged});
-  final String? selected;
-  final ValueChanged<String> onChanged;
-
-  static const _categories = [
-    ('🦌', 'Deer', AppColors.categoryDeer),
-    ('🦃', 'Turkey', AppColors.categoryTurkey),
-    ('🐟', 'Bass', AppColors.categoryBass),
-    ('🎯', 'Other Game', AppColors.categoryOtherGame),
-    ('🎣', 'Other Fishing', AppColors.categoryOtherFishing),
-  ];
+  final String? selectedSpecies;
+  final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final species = [
+      ('deer', 'Whitetail Deer', AppColors.categoryDeer),
+      ('turkey', 'Turkey', AppColors.categoryTurkey),
+      ('bass', 'Largemouth Bass', AppColors.categoryBass),
+      ('other_game', 'Other Game', AppColors.categoryOtherGame),
+      ('other_fishing', 'Other Fishing', AppColors.categoryOtherFishing),
+    ];
+
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _categories.map((cat) {
-        final isSelected = selected == cat.$2;
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => onChanged(cat.$2),
-            borderRadius: BorderRadius.circular(12),
-            hoverColor: cat.$3.withOpacity(0.08),
-            splashColor: cat.$3.withOpacity(0.12),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? cat.$3.withOpacity(0.15) : AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? cat.$3 : AppColors.border,
-                  width: isSelected ? 2 : 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(cat.$1, style: const TextStyle(fontSize: 18)),
-                  const SizedBox(width: 8),
-                  Text(
-                    cat.$2,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: isSelected ? cat.$3 : AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: species.map((s) {
+        final isSelected = selectedSpecies == s.$1;
+        return AppChip(
+          label: s.$2,
+          color: s.$3,
+          isSelected: isSelected,
+          onTap: () => onChanged(isSelected ? null : s.$1),
         );
       }).toList(),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SELECT FIELD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SelectField extends StatelessWidget {
-  const _SelectField({
-    required this.label,
-    required this.value,
-    required this.hint,
-    required this.onTap,
-    this.icon,
-    this.enabled = true,
+class _DatePicker extends StatefulWidget {
+  const _DatePicker({
+    required this.date,
+    required this.onChanged,
   });
 
-  final String label;
-  final String? value;
-  final String hint;
-  final IconData? icon;
-  final bool enabled;
-  final VoidCallback onTap;
+  final DateTime date;
+  final ValueChanged<DateTime> onChanged;
+
+  @override
+  State<_DatePicker> createState() => _DatePickerState();
+}
+
+class _DatePickerState extends State<_DatePicker> {
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(12),
-        hoverColor: AppColors.primary.withOpacity(0.06),
-        splashColor: AppColors.primary.withOpacity(0.1),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () async {
+          final date = await showDatePicker(
+            context: context,
+            initialDate: widget.date,
+            firstDate: DateTime(2000),
+            lastDate: DateTime.now(),
+          );
+          if (date != null) {
+            widget.onChanged(date);
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(AppSpacing.cardPadding),
           decoration: BoxDecoration(
-            color: enabled ? Colors.white : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
+            color: _isHovered ? AppColors.surfaceHover : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.border,
+            ),
           ),
           child: Row(
             children: [
-              if (icon != null) ...[
-                Icon(icon, size: 20, color: AppColors.textSecondary),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value ?? hint,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
+              const Icon(
+                Icons.calendar_today_outlined,
+                size: 20,
+                color: AppColors.textSecondary,
               ),
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
+              const SizedBox(width: AppSpacing.md),
+              Text(
+                '${widget.date.month}/${widget.date.day}/${widget.date.year}',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const Spacer(),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textTertiary,
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBMIT BAR
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SubmitBar extends StatelessWidget {
-  const _SubmitBar({
-    required this.isLoading,
-    required this.isEnabled,
-    required this.onSubmit,
-  });
-
-  final bool isLoading;
-  final bool isEnabled;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).padding.bottom + 16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border.withOpacity(0.5))),
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton(
-          onPressed: isEnabled && !isLoading ? onSubmit : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            disabledBackgroundColor: AppColors.primary.withOpacity(0.3),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : const Text(
-                  'Post Trophy',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SEARCHABLE SHEET
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SearchableSheet<T> extends StatefulWidget {
-  const _SearchableSheet({
-    required this.title,
-    required this.items,
-    required this.selected,
-    required this.itemLabel,
-    required this.searchFilter,
-  });
-
-  final String title;
-  final List<T> items;
-  final T? selected;
-  final String Function(T) itemLabel;
-  final bool Function(T, String) searchFilter;
-
-  @override
-  State<_SearchableSheet<T>> createState() => _SearchableSheetState<T>();
-}
-
-class _SearchableSheetState<T> extends State<_SearchableSheet<T>> {
-  final _searchController = TextEditingController();
-  late List<T> _filteredItems;
-
-  @override
-  void initState() {
-    super.initState();
-    _filteredItems = widget.items;
-    _searchController.addListener(_filterItems);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _filterItems() {
-    final query = _searchController.text;
-    setState(() {
-      _filteredItems = query.isEmpty
-          ? widget.items
-          : widget.items.where((i) => widget.searchFilter(i, query)).toList();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          // Header
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: AppColors.surfaceAlt,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          // List
-          Expanded(
-            child: ListView.builder(
-              itemCount: _filteredItems.length,
-              itemBuilder: (context, index) {
-                final item = _filteredItems[index];
-                final isSelected = item == widget.selected;
-                return ListTile(
-                  title: Text(widget.itemLabel(item)),
-                  trailing: isSelected
-                      ? const Icon(Icons.check, color: AppColors.primary)
-                      : null,
-                  tileColor: isSelected ? AppColors.primary.withOpacity(0.05) : null,
-                  onTap: () => Navigator.pop(context, item),
-                );
-              },
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -1,171 +1,278 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/shared/widgets/widgets.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
-
-/// Trophy detail screen showing full trophy information.
+/// 🏆 TROPHY DETAIL SCREEN - 2025 PREMIUM
 class TrophyDetailScreen extends StatelessWidget {
-  const TrophyDetailScreen({
-    super.key,
-    required this.trophyId,
-  });
+  const TrophyDetailScreen({super.key, required this.trophyId});
 
   final String trophyId;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // Hero image with app bar
+          // Image header
           SliverAppBar(
-            expandedHeight: 300,
+            expandedHeight: 400,
             pinned: true,
+            backgroundColor: AppColors.surface,
+            leading: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              ),
+              onPressed: () => context.pop(),
+            ),
+            actions: [
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.share_outlined, color: Colors.white),
+                ),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                ),
+                onPressed: () {},
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                color: AppColors.surfaceAlt,
+                color: AppColors.backgroundAlt,
                 child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('🦌', style: TextStyle(fontSize: 64)),
-                      SizedBox(height: 8),
-                      Text(
-                        'Trophy Photo',
-                        style: TextStyle(color: AppColors.textTertiary),
-                      ),
-                    ],
+                  child: Icon(
+                    Icons.image_outlined,
+                    size: 64,
+                    color: AppColors.textTertiary,
                   ),
                 ),
               ),
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: () {
-                  // TODO: Share trophy
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: () {
-                  // TODO: More options
-                },
-              ),
-            ],
           ),
-          
-          // Trophy content
+
+          // Content
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppColors.backgroundGradient,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Species and location
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: AppSpacing.xs,
+                  // Header info
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Species chip
+                        AppCategoryChip(
+                          category: 'Whitetail Deer',
+                          size: AppChipSize.medium,
                         ),
-                        decoration: BoxDecoration(
-                          color: AppColors.categoryDeer.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
+                        const SizedBox(height: AppSpacing.md),
+
+                        // Title
+                        Text(
+                          'Opening Day Buck',
+                          style: Theme.of(context).textTheme.headlineMedium,
                         ),
-                        child: Text(
-                          '🦌 Deer',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: AppColors.categoryDeer,
+                        const SizedBox(height: AppSpacing.sm),
+
+                        // Location & date
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_outlined,
+                              size: 16,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Hill Country, Texas',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(width: AppSpacing.lg),
+                            const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 16,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Nov 4, 2024',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Actions
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Row(
+                      children: [
+                        _ActionButton(
+                          icon: Icons.favorite_outline_rounded,
+                          label: '234',
+                          onTap: () {},
+                        ),
+                        const SizedBox(width: AppSpacing.lg),
+                        _ActionButton(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          label: '18',
+                          onTap: () {},
+                        ),
+                        const Spacer(),
+                        _ActionButton(
+                          icon: Icons.bookmark_outline_rounded,
+                          onTap: () {},
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Divider(height: AppSpacing.xxxl),
+
+                  // User info
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                          ),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            color: AppColors.primary,
                           ),
                         ),
-                      ),
-                      const Spacer(),
-                      const _ReactionButton(
-                        icon: Icons.favorite_border,
-                        label: 'Respect',
-                        count: 24,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  
-                  // Location
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on, size: 18, color: AppColors.textTertiary),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text(
-                        'Texas • Travis County',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textTertiary,
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Hunter Name',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              Text(
+                                '@huntername',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  
-                  // Dates
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_today, size: 18, color: AppColors.textTertiary),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text(
-                        'Harvested: Jan 15, 2026 • Morning',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textTertiary,
+                        AppButtonSecondary(
+                          label: 'Follow',
+                          onPressed: () {},
+                          size: AppButtonSize.small,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  
-                  // Weather conditions at harvest
-                  _SectionCard(
-                    title: 'Conditions at Harvest',
-                    icon: Icons.cloud,
-                    child: Column(
-                      children: [
-                        _ConditionRow(label: 'Temperature', value: '52°F'),
-                        _ConditionRow(label: 'Wind', value: 'NW at 8 mph'),
-                        _ConditionRow(label: 'Moon Phase', value: 'First Quarter'),
-                        _ConditionRow(label: 'Pressure', value: '30.12 inHg (Rising)'),
                       ],
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  
-                  // Stats
-                  _SectionCard(
-                    title: 'Trophy Stats',
-                    icon: Icons.bar_chart,
-                    child: Column(
-                      children: [
-                        _ConditionRow(label: 'Score', value: '142"'),
-                        _ConditionRow(label: 'Points', value: '8'),
-                        _ConditionRow(label: 'Weapon', value: 'Rifle'),
-                        _ConditionRow(label: 'Distance', value: '120 yards'),
-                      ],
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Notes
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: AppSurface(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Notes',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'Opening morning of deer season. Had this buck on camera all summer and finally got a shot at him. 10-point with a 19" inside spread. Taken at 85 yards with my .308.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  
-                  // Story
-                  _SectionCard(
-                    title: 'The Story',
-                    icon: Icons.auto_stories,
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Comments section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
                     child: Text(
-                      'This is where the hunter\'s story about the harvest would appear. '
-                      'They can share the experience, the setup, and any memorable moments from the hunt.',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      'Comments',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
+                  const SizedBox(height: AppSpacing.md),
+
+                  // Comment input
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            decoration: InputDecoration(
+                              hintText: 'Add a comment...',
+                              filled: true,
+                              fillColor: AppColors.surface,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        AppIconButton(
+                          icon: Icons.send_rounded,
+                          onPressed: () {},
+                          backgroundColor: AppColors.primary,
+                          color: AppColors.textInverse,
+                        ),
+                      ],
+                    ),
+                  ),
+
                   const SizedBox(height: AppSpacing.lg),
-                  
-                  // User info
-                  _UserTile(),
-                  const SizedBox(height: AppSpacing.xxxl),
+
+                  // Sample comments
+                  _CommentItem(
+                    username: '@hunter_joe',
+                    comment: 'Congrats! That\'s a beautiful buck!',
+                    time: '2h ago',
+                  ),
+                  _CommentItem(
+                    username: '@wild_tom',
+                    comment: 'Great harvest! What county?',
+                    time: '4h ago',
+                  ),
+
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
@@ -176,145 +283,122 @@ class TrophyDetailScreen extends StatelessWidget {
   }
 }
 
-class _ReactionButton extends StatelessWidget {
-  const _ReactionButton({
+class _ActionButton extends StatefulWidget {
+  const _ActionButton({
     required this.icon,
-    required this.label,
-    required this.count,
+    this.label,
+    required this.onTap,
   });
 
   final IconData icon;
-  final String label;
-  final int count;
+  final String? label;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: () {
-        // TODO: React to trophy
-      },
-      icon: Icon(icon, size: 20),
-      label: Text('$label ($count)'),
-      style: TextButton.styleFrom(
-        foregroundColor: AppColors.primary,
-      ),
-    );
-  }
+  State<_ActionButton> createState() => _ActionButtonState();
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.icon,
-    required this.child,
-  });
-
-  final String title;
-  final IconData icon;
-  final Widget child;
+class _ActionButtonState extends State<_ActionButton> {
+  bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppColors.surfaceHover : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          ),
+          child: Row(
             children: [
-              Icon(icon, size: 20, color: AppColors.primary),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
+              Icon(
+                widget.icon,
+                size: 22,
+                color: _isHovered ? AppColors.textPrimary : AppColors.textSecondary,
               ),
+              if (widget.label != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  widget.label!,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: _isHovered ? AppColors.textPrimary : AppColors.textSecondary,
+                      ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          child,
-        ],
+        ),
       ),
     );
   }
 }
 
-class _ConditionRow extends StatelessWidget {
-  const _ConditionRow({
-    required this.label,
-    required this.value,
+class _CommentItem extends StatelessWidget {
+  const _CommentItem({
+    required this.username,
+    required this.comment,
+    required this.time,
   });
 
-  final String label;
-  final String value;
+  final String username;
+  final String comment;
+  final String time;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.backgroundAlt,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: const Icon(
+              Icons.person_rounded,
+              size: 18,
               color: AppColors.textTertiary,
             ),
-          ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _UserTile extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: AppColors.primaryContainer.withOpacity(0.2),
-            child: const Icon(Icons.person, color: AppColors.primary),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Hunter Name',
-                  style: Theme.of(context).textTheme.titleSmall,
+                Row(
+                  children: [
+                    Text(
+                      username,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      time,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  'Posted Jan 15, 2026',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  comment,
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
             ),
-          ),
-          OutlinedButton(
-            onPressed: () {
-              // TODO: View trophy wall
-            },
-            child: const Text('View Wall'),
           ),
         ],
       ),
