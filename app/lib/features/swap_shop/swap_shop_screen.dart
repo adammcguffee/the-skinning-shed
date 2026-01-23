@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../data/us_states.dart';
 import '../../shared/widgets/widgets.dart';
 
 /// The Swap Shop - buy/sell/trade classifieds.
@@ -310,12 +311,12 @@ class _SwapShopFilterSheet extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
               
-              PremiumDropdown<String>(
+              PremiumDropdown<USState>(
                 label: 'State',
-                items: const ['Texas', 'Alabama', 'Florida', 'Georgia'],
+                items: USStates.all,
                 value: null,
                 onChanged: (value) {},
-                itemLabel: (item) => item,
+                itemLabel: (item) => item.name,
                 allOptionLabel: 'All States',
               ),
               const SizedBox(height: AppSpacing.xxl),

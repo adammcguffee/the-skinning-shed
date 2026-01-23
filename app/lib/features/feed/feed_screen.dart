@@ -724,13 +724,21 @@ class _FiltersSheet extends StatelessWidget {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: ['Texas', 'Alabama', 'Florida', 'Georgia']
+                  // Popular hunting states - full list available via state picker
+                  children: ['Texas', 'Alabama', 'Florida', 'Georgia', 'Tennessee', 'Louisiana']
                       .map((s) => FilterChip(
                             label: Text(s),
                             selected: false,
                             onSelected: (v) {},
                           ))
                       .toList(),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () {
+                    // TODO: Open full state picker
+                  },
+                  child: const Text('View all states →'),
                 ),
                 const SizedBox(height: 20),
                 Text(

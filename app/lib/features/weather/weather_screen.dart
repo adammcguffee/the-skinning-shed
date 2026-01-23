@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
-import '../../app/theme/app_spacing.dart';
 import '../../data/us_states.dart';
 import '../../shared/widgets/animated_entry.dart';
+import '../../shared/widgets/location_picker.dart';
 
 /// 🌤️ MODERN WEATHER & TOOLS SCREEN
 /// 
 /// Features:
+/// - Uses shared LocationSelector (all 50 states + counties)
 /// - Accent color usage for visual hierarchy
 /// - Cards with real hierarchy
-/// - Meaningful icons (not decorative)
 /// - Privacy-safe county-level data
 class WeatherScreen extends StatefulWidget {
   const WeatherScreen({super.key});
@@ -48,8 +48,8 @@ class _WeatherScreenState extends State<WeatherScreen> {
             padding: const EdgeInsets.all(20),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // Location selector
-                _LocationSelector(
+                // Location selector - uses shared component with all 50 states
+                _LocationCard(
                   selectedState: _selectedState,
                   selectedCounty: _selectedCounty,
                   onStateChanged: (state) {
@@ -67,7 +67,10 @@ class _WeatherScreenState extends State<WeatherScreen> {
                 // Current conditions
                 if (_hasLocation) ...[
                   AnimatedEntry(
-                    child: _CurrentConditions(),
+                    child: _CurrentConditions(
+                      stateName: _selectedState?.name ?? '',
+                      countyName: _selectedCounty ?? '',
+                    ),
                   ),
                   const SizedBox(height: 16),
                   AnimatedEntry(
@@ -122,11 +125,11 @@ class _WeatherScreenState extends State<WeatherScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// LOCATION SELECTOR
+// LOCATION CARD (wraps shared LocationSelector)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _LocationSelector extends StatelessWidget {
-  const _LocationSelector({
+class _LocationCard extends StatelessWidget {
+  const _LocationCard({
     required this.selectedState,
     required this.selectedCounty,
     required this.onStateChanged,
@@ -174,114 +177,14 @@ class _LocationSelector extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _DropdownButton(
-                  label: 'State',
-                  value: selectedState?.name,
-                  hint: 'Select state',
-                  onTap: () => _showStatePicker(context),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _DropdownButton(
-                  label: 'County',
-                  value: selectedCounty,
-                  hint: selectedState == null ? 'Select state first' : 'Select county',
-                  enabled: selectedState != null,
-                  onTap: () => _showCountyPicker(context),
-                ),
-              ),
-            ],
+          // Shared location selector with all 50 states + counties
+          LocationSelector(
+            selectedState: selectedState,
+            selectedCounty: selectedCounty,
+            onStateChanged: onStateChanged,
+            onCountyChanged: onCountyChanged,
           ),
         ],
-      ),
-    );
-  }
-
-  void _showStatePicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _StatePickerSheet(
-        selectedState: selectedState,
-        onSelected: (state) {
-          onStateChanged(state);
-          Navigator.pop(context);
-        },
-      ),
-    );
-  }
-
-  void _showCountyPicker(BuildContext context) {
-    if (selectedState == null) return;
-    // TODO: Show county picker
-  }
-}
-
-class _DropdownButton extends StatelessWidget {
-  const _DropdownButton({
-    required this.label,
-    required this.value,
-    required this.hint,
-    required this.onTap,
-    this.enabled = true,
-  });
-
-  final String label;
-  final String? value;
-  final String hint;
-  final VoidCallback onTap;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(10),
-        hoverColor: AppColors.primary.withOpacity(0.06),
-        splashColor: AppColors.primary.withOpacity(0.1),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: enabled ? Colors.white : AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value ?? hint,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -292,6 +195,14 @@ class _DropdownButton extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _CurrentConditions extends StatelessWidget {
+  const _CurrentConditions({
+    required this.stateName,
+    required this.countyName,
+  });
+
+  final String stateName;
+  final String countyName;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -311,11 +222,22 @@ class _CurrentConditions extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Current Conditions',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Text(
+                'Current Conditions',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$countyName, $stateName',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           Row(
@@ -462,7 +384,7 @@ class _WindCard extends StatelessWidget {
                     // Arrow
                     Transform.rotate(
                       angle: -0.785, // NW
-                      child: Icon(
+                      child: const Icon(
                         Icons.navigation_rounded,
                         size: 32,
                         color: AppColors.accent,
@@ -685,73 +607,67 @@ class _ToolCardState extends State<_ToolCard> {
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         cursor: SystemMouseCursors.click,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(14),
-            hoverColor: widget.color.withOpacity(0.06),
-            splashColor: widget.color.withOpacity(0.1),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: _isHovered 
-                      ? widget.color.withOpacity(0.3) 
-                      : AppColors.border.withOpacity(0.5),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: _isHovered 
+                    ? widget.color.withOpacity(0.3) 
+                    : AppColors.border.withOpacity(0.5),
+              ),
+              boxShadow: _isHovered
+                  ? [
+                      BoxShadow(
+                        color: widget.color.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(widget.icon, color: widget.color, size: 24),
                 ),
-                boxShadow: _isHovered
-                    ? [
-                        BoxShadow(
-                          color: widget.color.withOpacity(0.08),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
-                      ]
-                    : null,
-              ),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: widget.color.withOpacity(_isHovered ? 0.15 : 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(widget.icon, color: widget.color, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.subtitle,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: _isHovered ? widget.color : AppColors.textTertiary,
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: _isHovered ? widget.color : AppColors.textTertiary,
+                ),
+              ],
             ),
           ),
         ),
@@ -844,7 +760,7 @@ class _PrivacyNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             Icons.shield_outlined,
             size: 20,
             color: AppColors.primary,
@@ -856,123 +772,6 @@ class _PrivacyNotice extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// STATE PICKER SHEET
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _StatePickerSheet extends StatefulWidget {
-  const _StatePickerSheet({
-    required this.selectedState,
-    required this.onSelected,
-  });
-
-  final USState? selectedState;
-  final ValueChanged<USState> onSelected;
-
-  @override
-  State<_StatePickerSheet> createState() => _StatePickerSheetState();
-}
-
-class _StatePickerSheetState extends State<_StatePickerSheet> {
-  final _searchController = TextEditingController();
-  List<USState> _filteredStates = USStates.all;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(_filterStates);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _filterStates() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredStates = USStates.all
-          .where((s) => s.name.toLowerCase().contains(query))
-          .toList();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          // Header
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Select State',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search states...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: AppColors.surfaceAlt,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          // List
-          Expanded(
-            child: ListView.builder(
-              itemCount: _filteredStates.length,
-              itemBuilder: (context, index) {
-                final state = _filteredStates[index];
-                final isSelected = state == widget.selectedState;
-                return ListTile(
-                  title: Text(state.name),
-                  trailing: isSelected
-                      ? const Icon(Icons.check, color: AppColors.primary)
-                      : null,
-                  onTap: () => widget.onSelected(state),
-                );
-              },
             ),
           ),
         ],
