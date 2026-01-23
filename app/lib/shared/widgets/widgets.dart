@@ -1,4 +1,5 @@
 // 2025 Premium Dark Theme Component System
+export 'ad_slot.dart';
 export 'app_buttons.dart';
 export 'app_card.dart';
 export 'app_chip.dart';

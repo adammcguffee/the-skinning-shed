@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/ad_service.dart';
+import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/banner_header.dart';
 import 'app_nav_rail.dart';
 
@@ -13,7 +16,8 @@ import 'app_nav_rail.dart';
 /// - Floating post button (FAB)
 /// - Max-width content container
 /// - Dark forest-green aesthetic
-class AppScaffold extends StatelessWidget {
+/// - Ad slots in header (desktop/tablet only)
+class AppScaffold extends ConsumerWidget {
   const AppScaffold({
     super.key,
     required this.child,
@@ -22,6 +26,19 @@ class AppScaffold extends StatelessWidget {
 
   final Widget child;
   final int currentIndex;
+
+  /// Map navigation index to page identifier for ad targeting.
+  String get _currentPageId {
+    switch (currentIndex) {
+      case 0: return AdPages.feed;
+      case 1: return AdPages.explore;
+      case 2: return AdPages.trophyWall;
+      case 3: return AdPages.land;
+      case 4: return AdPages.weather;
+      case 5: return AdPages.settings;
+      default: return AdPages.feed;
+    }
+  }
 
   static const _destinations = [
     AppNavDestination(
@@ -84,7 +101,7 @@ class AppScaffold extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
@@ -116,10 +133,16 @@ class AppScaffold extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  // Header zone
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12, left: 16, right: 16),
-                    child: BannerHeader.appTop(),
+                  // Header zone with ad slots
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
+                    child: AdAwareBannerHeader(
+                      page: _currentPageId,
+                      bannerWidget: const BannerHeader.appTop(),
+                      maxBannerWidth: 900,
+                      adMaxWidth: 200,
+                      adMaxHeight: 100,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   // Subtle divider
@@ -177,12 +200,12 @@ class AppScaffold extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // Header zone
+            // Header zone (no ads on mobile - they're hidden by AdSlot)
             SafeArea(
               bottom: false,
-              child: const Padding(
-                padding: EdgeInsets.only(top: 12, left: 16, right: 16),
-                child: BannerHeader.appTop(),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
+                child: const BannerHeader.appTop(),
               ),
             ),
             const SizedBox(height: 12),
