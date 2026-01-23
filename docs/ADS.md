@@ -28,13 +28,19 @@ The ad slot system displays banner ads in the app header area, positioned on eit
 ### Storage Bucket
 
 **Bucket Name**: `ad_share`
+**Visibility**: **PUBLIC** (read access for all, write restricted to admin)
 
-Create this bucket manually in Supabase Dashboard:
-1. Go to Storage → Create bucket
-2. Name: `ad_share`
-3. Public: Yes (recommended for simplicity) or No (use signed URLs)
-4. File size limit: 2MB
-5. Allowed MIME types: `image/png`, `image/jpeg`, `image/webp`, `image/gif`
+The bucket is configured as:
+- `public: true` — Images are served via direct public URLs (fast, no signing needed)
+- File size limit: 2MB
+- Allowed MIME types: `image/png`, `image/jpeg`, `image/webp`, `image/gif`
+
+**Why public?** Ad images are non-sensitive marketing content. Public URLs:
+- Load faster (no signing overhead)
+- Cache better (CDN-friendly)
+- Simpler to debug
+
+**Write access**: Only service-role/admin can upload. Regular users cannot upload to this bucket.
 
 ### Database Table
 
@@ -157,6 +163,18 @@ Then upload the new image to Storage.
 | 768-1024px (tablet) | Hidden | Shown |
 | > 1024px (desktop) | Shown | Shown |
 
+## App Configuration
+
+The app is configured to use **public URLs** by default (`kAdsBucketPublic = true`).
+
+No `--dart-define` flags are required for normal operation.
+
+**If you ever need private bucket mode** (not recommended for ads):
+```bash
+flutter run --dart-define=ADS_BUCKET_PUBLIC=false
+```
+This would use signed URLs instead. But for ads, public bucket is preferred.
+
 ## Caching
 
 - Ad metadata is cached in-memory for 10 minutes
@@ -176,15 +194,16 @@ Then upload the new image to Storage.
 
 1. Check `enabled = true` in database
 2. Check dates: `starts_at <= now() <= ends_at`
-3. Check storage path matches uploaded file exactly
-4. Check bucket is public or signed URLs work
-5. Check screen width is >= 768px
+3. Check storage path matches uploaded file exactly (case-sensitive)
+4. Check screen width is >= 768px (ads hidden on mobile)
+5. Verify bucket `ad_share` exists and is public
 
 ### Ad shows but image broken
 
 1. Verify file exists in Storage at exact path
-2. Check file permissions (bucket should be public)
-3. Check image format is supported
+2. Confirm bucket `ad_share` has `public: true`
+3. Check image format is PNG, JPEG, WebP, or GIF
+4. Check file size is under 2MB
 
 ### Layout issues
 
