@@ -61,4 +61,5 @@ flutter:
   assets:
     - assets/images/
     - assets/branding/banner_v2/
+    - assets/data/
  

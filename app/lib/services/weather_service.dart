@@ -205,13 +205,40 @@ class WeatherService {
     }
   }
 
-  /// Get weather for a US county at a specific time.
+  /// Get weather for a US county by FIPS code (preferred method).
+  /// FIPS is the 5-digit county GEOID from US Census.
+  Future<WeatherSnapshot?> getHistoricalForCountyFips({
+    required String countyFips,
+    required DateTime dateTime,
+  }) async {
+    final centroids = CountyCentroids.instance;
+    await centroids.ensureLoaded();
+    
+    final coords = centroids.getCoordinatesByFips(countyFips);
+    if (coords == null) {
+      print('No centroid for FIPS: $countyFips');
+      return null;
+    }
+    
+    return getHistoricalConditions(
+      lat: coords.lat,
+      lon: coords.lon,
+      dateTime: dateTime,
+    );
+  }
+  
+  /// Get weather for a US county by state code and county name.
+  /// Legacy method - prefer getHistoricalForCountyFips for new code.
+  /// Handles suffix normalization (County/Parish/Borough).
   Future<WeatherSnapshot?> getHistoricalForCounty({
     required String stateCode,
     required String county,
     required DateTime dateTime,
   }) async {
-    final coords = CountyCentroids.getCoordinates(stateCode, county);
+    final centroids = CountyCentroids.instance;
+    await centroids.ensureLoaded();
+    
+    final coords = centroids.getCoordinates(stateCode, county);
     if (coords == null) {
       print('No centroid for $county, $stateCode');
       return null;

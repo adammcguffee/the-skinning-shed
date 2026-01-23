@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
-import '../../data/us_counties.dart';
+import '../../data/county_centroids.dart';
 import '../../data/us_states.dart';
 
 /// 📍 UNIFIED LOCATION PICKER COMPONENTS
@@ -12,12 +12,47 @@ import '../../data/us_states.dart';
 /// - Land listings
 /// - Explore filters
 /// - Any future location-based features
+///
+/// Now uses Census Gazetteer data for full US county coverage (3200+ counties).
+/// Each county has a FIPS code (5-digit GEOID) for precise identification.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SELECTED COUNTY MODEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Selected county with FIPS code for precise identification.
+class SelectedCounty {
+  const SelectedCounty({
+    required this.name,
+    required this.fips,
+  });
+  
+  /// Display name (e.g., "Travis County").
+  final String name;
+  
+  /// 5-digit FIPS code (GEOID).
+  final String fips;
+  
+  @override
+  String toString() => name;
+  
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SelectedCounty && fips == other.fips;
+  
+  @override
+  int get hashCode => fips.hashCode;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LOCATION SELECTOR WIDGET
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Combined state + county selector widget
+/// Combined state + county selector widget.
+/// 
+/// For new code, use [onCountyChangedWithFips] to get the FIPS code.
+/// [onCountyChanged] is retained for backward compatibility.
 class LocationSelector extends StatelessWidget {
   const LocationSelector({
     super.key,
@@ -25,6 +60,8 @@ class LocationSelector extends StatelessWidget {
     required this.selectedCounty,
     required this.onStateChanged,
     required this.onCountyChanged,
+    this.selectedCountyFips,
+    this.onCountyChangedWithFips,
     this.stateLabel = 'State',
     this.countyLabel = 'County',
     this.stateHint = 'Select state',
@@ -36,8 +73,11 @@ class LocationSelector extends StatelessWidget {
 
   final USState? selectedState;
   final String? selectedCounty;
+  final String? selectedCountyFips;
   final ValueChanged<USState?> onStateChanged;
   final ValueChanged<String?> onCountyChanged;
+  /// New callback that provides both name and FIPS code.
+  final ValueChanged<SelectedCounty?>? onCountyChangedWithFips;
   final String stateLabel;
   final String countyLabel;
   final String stateHint;
@@ -99,15 +139,17 @@ class LocationSelector extends StatelessWidget {
 
   void _showCountyPicker(BuildContext context) {
     if (selectedState == null) return;
-    showModalBottomSheet<String>(
+    showModalBottomSheet<SelectedCounty>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => CountyPickerSheet(
         stateCode: selectedState!.code,
-        selectedCounty: selectedCounty,
+        selectedCountyFips: selectedCountyFips,
         onSelected: (county) {
-          onCountyChanged(county);
+          // Call both callbacks for compatibility
+          onCountyChanged(county.name);
+          onCountyChangedWithFips?.call(county);
           Navigator.pop(context);
         },
       ),
@@ -306,18 +348,19 @@ class _StatePickerSheetState extends State<StatePickerSheet> {
 // COUNTY PICKER SHEET
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Searchable bottom sheet for selecting a county within a state
+/// Searchable bottom sheet for selecting a county within a state.
+/// Uses Census Gazetteer data for full US coverage (3200+ counties).
 class CountyPickerSheet extends StatefulWidget {
   const CountyPickerSheet({
     super.key,
     required this.stateCode,
-    required this.selectedCounty,
+    required this.selectedCountyFips,
     required this.onSelected,
   });
 
   final String stateCode;
-  final String? selectedCounty;
-  final ValueChanged<String> onSelected;
+  final String? selectedCountyFips;
+  final ValueChanged<SelectedCounty> onSelected;
 
   @override
   State<CountyPickerSheet> createState() => _CountyPickerSheetState();
@@ -325,15 +368,28 @@ class CountyPickerSheet extends StatefulWidget {
 
 class _CountyPickerSheetState extends State<CountyPickerSheet> {
   final _searchController = TextEditingController();
-  late List<String> _allCounties;
-  late List<String> _filteredCounties;
+  List<CountyData> _allCounties = [];
+  List<CountyData> _filteredCounties = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _allCounties = USCounties.forState(widget.stateCode);
-    _filteredCounties = _allCounties;
+    _loadCounties();
     _searchController.addListener(_filterCounties);
+  }
+
+  Future<void> _loadCounties() async {
+    final centroids = CountyCentroids.instance;
+    await centroids.ensureLoaded();
+    
+    if (mounted) {
+      setState(() {
+        _allCounties = centroids.getCountiesForState(widget.stateCode);
+        _filteredCounties = _allCounties;
+        _loading = false;
+      });
+    }
   }
 
   @override
@@ -347,7 +403,10 @@ class _CountyPickerSheetState extends State<CountyPickerSheet> {
     setState(() {
       _filteredCounties = query.isEmpty
           ? _allCounties
-          : _allCounties.where((c) => c.toLowerCase().contains(query)).toList();
+          : _allCounties.where((c) => 
+              c.name.toLowerCase().contains(query) ||
+              c.normalizedName.contains(query)
+            ).toList();
     });
   }
 
@@ -389,7 +448,9 @@ class _CountyPickerSheetState extends State<CountyPickerSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$stateName • ${_allCounties.length} counties',
+                  _loading 
+                      ? 'Loading...'
+                      : '$stateName • ${_allCounties.length} counties',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -414,33 +475,43 @@ class _CountyPickerSheetState extends State<CountyPickerSheet> {
           const Divider(height: 1),
           // List
           Expanded(
-            child: _filteredCounties.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Text(
-                        'No counties found',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation(AppColors.accent),
                     ),
                   )
-                : ListView.builder(
-                    itemCount: _filteredCounties.length,
-                    itemBuilder: (context, index) {
-                      final county = _filteredCounties[index];
-                      final isSelected = county == widget.selectedCounty;
-                      return ListTile(
-                        title: Text(county),
-                        trailing: isSelected
-                            ? const Icon(Icons.check, color: AppColors.primary)
-                            : null,
-                        tileColor: isSelected ? AppColors.primary.withOpacity(0.05) : null,
-                        onTap: () => widget.onSelected(county),
-                      );
-                    },
-                  ),
+                : _filteredCounties.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'No counties found',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _filteredCounties.length,
+                        itemBuilder: (context, index) {
+                          final county = _filteredCounties[index];
+                          final isSelected = county.fips == widget.selectedCountyFips;
+                          return ListTile(
+                            title: Text(county.name),
+                            subtitle: Text('FIPS: ${county.fips}'),
+                            trailing: isSelected
+                                ? const Icon(Icons.check, color: AppColors.primary)
+                                : null,
+                            tileColor: isSelected ? AppColors.primary.withOpacity(0.05) : null,
+                            onTap: () => widget.onSelected(SelectedCounty(
+                              name: county.name,
+                              fips: county.fips,
+                            )),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

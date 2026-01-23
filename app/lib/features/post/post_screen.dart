@@ -34,6 +34,7 @@ class _PostScreenState extends ConsumerState<PostScreen> {
   String? _selectedSpecies;
   USState? _selectedState;
   String? _selectedCounty;
+  String? _selectedCountyFips;
   DateTime _harvestDate = DateTime.now();
   TimeOfDay? _harvestTime;
   List<XFile> _selectedPhotos = [];
@@ -87,11 +88,21 @@ class _PostScreenState extends ConsumerState<PostScreen> {
         _harvestTime!.minute,
       );
       
-      final weather = await weatherService.getHistoricalForCounty(
-        stateCode: _selectedState!.code,
-        county: _selectedCounty!,
-        dateTime: dateTime,
-      );
+      // Prefer FIPS-based lookup (more reliable)
+      WeatherSnapshot? weather;
+      if (_selectedCountyFips != null) {
+        weather = await weatherService.getHistoricalForCountyFips(
+          countyFips: _selectedCountyFips!,
+          dateTime: dateTime,
+        );
+      } else {
+        // Fallback to name-based lookup
+        weather = await weatherService.getHistoricalForCounty(
+          stateCode: _selectedState!.code,
+          county: _selectedCounty!,
+          dateTime: dateTime,
+        );
+      }
       
       final moon = weatherService.getMoonPhase(_harvestDate);
       
@@ -103,7 +114,7 @@ class _PostScreenState extends ConsumerState<PostScreen> {
           _weatherSource = 'auto';
           
           // Populate editable fields
-          _tempController.text = weather.tempF.round().toString();
+          _tempController.text = weather!.tempF.round().toString();
           _pressureController.text = weather.pressureInHg.toStringAsFixed(2);
           _windSpeedController.text = weather.windSpeedMph.round().toString();
           _humidityController.text = weather.humidity.toString();
@@ -216,6 +227,8 @@ class _PostScreenState extends ConsumerState<PostScreen> {
         category: _selectedSpecies!,
         state: _selectedState?.name ?? '',
         county: _selectedCounty ?? '',
+        stateCode: _selectedState?.code,
+        countyFips: _selectedCountyFips,
         harvestDate: _harvestDate,
         harvestTime: harvestTimeStr,
         harvestTimeBucket: harvestTimeBucket,
@@ -326,16 +339,24 @@ class _PostScreenState extends ConsumerState<PostScreen> {
                     child: LocationSelector(
                       selectedState: _selectedState,
                       selectedCounty: _selectedCounty,
+                      selectedCountyFips: _selectedCountyFips,
                       onStateChanged: (state) {
                         setState(() {
                           _selectedState = state;
                           _selectedCounty = null;
+                          _selectedCountyFips = null;
                           _weatherSnapshot = null;
                         });
                       },
                       onCountyChanged: (county) {
                         setState(() {
                           _selectedCounty = county;
+                        });
+                      },
+                      onCountyChangedWithFips: (county) {
+                        setState(() {
+                          _selectedCounty = county?.name;
+                          _selectedCountyFips = county?.fips;
                         });
                         // Auto-fetch weather if time is set
                         if (_harvestTime != null) {
