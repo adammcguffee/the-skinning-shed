@@ -108,101 +108,280 @@ class MoonSnapshot {
   };
 }
 
-/// Service for fetching historical weather data.
-/// Uses Open-Meteo Archive API (free, no API key required).
+/// Weather data tier for source selection.
+enum _WeatherTier {
+  /// Recent data (last 14 days) - uses Forecast API with past_days
+  recent,
+  /// Historical forecast (2022+) - uses Historical Forecast API
+  historicalForecast,
+  /// Archive reanalysis (pre-2022) - uses Archive API
+  archive,
+}
+
+/// Service for fetching weather data across multiple time ranges.
+/// 
+/// Uses 3-tier Open-Meteo API selection:
+/// - **Tier 1 (Recent)**: Last 14 days → Forecast API with past_days=14
+/// - **Tier 2 (Historical Forecast)**: 2022-01-01 to 14 days ago → Historical Forecast API
+/// - **Tier 3 (Archive)**: Before 2022-01-01 → Archive API (reanalysis data)
+/// 
+/// All APIs are free and require no API key.
 class WeatherService {
   WeatherService() : _dio = Dio();
 
   final Dio _dio;
-  static const _baseUrl = 'https://archive-api.open-meteo.com/v1/archive';
+  
+  // API endpoints
+  static const _forecastUrl = 'https://api.open-meteo.com/v1/forecast';
+  static const _historicalForecastUrl = 'https://historical-forecast-api.open-meteo.com/v1/forecast';
+  static const _archiveUrl = 'https://archive-api.open-meteo.com/v1/archive';
+  
+  // Tier boundaries
+  static const _recentWindowDays = 14;
+  static final _historicalForecastStart = DateTime(2022, 1, 1);
+  
+  // Common hourly variables for all tiers
+  static const _hourlyVars = 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m';
 
-  /// Fetch historical weather conditions for a specific location and time.
+  /// Fetch weather conditions for a specific location and time.
+  /// Automatically selects the appropriate API tier based on date.
   /// Returns nearest-hour data.
   Future<WeatherSnapshot?> getHistoricalConditions({
     required double lat,
     required double lon,
     required DateTime dateTime,
   }) async {
+    final tier = _selectTier(dateTime);
+    
+    print('WeatherService: Fetching for ${_formatDate(dateTime)} using tier: ${tier.name}');
+    
+    // Try primary tier first
+    var result = await _fetchFromTier(lat, lon, dateTime, tier);
+    
+    // Fallback chain if primary fails
+    if (result == null && tier == _WeatherTier.recent) {
+      print('WeatherService: Recent tier failed, falling back to historical forecast');
+      result = await _fetchFromTier(lat, lon, dateTime, _WeatherTier.historicalForecast);
+    }
+    
+    if (result == null && tier != _WeatherTier.archive) {
+      print('WeatherService: Falling back to archive tier');
+      result = await _fetchFromTier(lat, lon, dateTime, _WeatherTier.archive);
+    }
+    
+    return result;
+  }
+
+  /// Select the appropriate tier based on the target date.
+  _WeatherTier _selectTier(DateTime dateTime) {
+    final now = DateTime.now();
+    final recentCutoff = now.subtract(const Duration(days: _recentWindowDays));
+    
+    if (dateTime.isAfter(recentCutoff) || _isSameDay(dateTime, recentCutoff)) {
+      return _WeatherTier.recent;
+    } else if (dateTime.isAfter(_historicalForecastStart) || _isSameDay(dateTime, _historicalForecastStart)) {
+      return _WeatherTier.historicalForecast;
+    } else {
+      return _WeatherTier.archive;
+    }
+  }
+  
+  /// Check if two dates are the same day.
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  /// Fetch weather data from a specific tier.
+  Future<WeatherSnapshot?> _fetchFromTier(
+    double lat,
+    double lon,
+    DateTime dateTime,
+    _WeatherTier tier,
+  ) async {
     try {
-      // Open-Meteo Archive requires date range
-      final dateStr = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
-      
-      final response = await _dio.get(_baseUrl, queryParameters: {
-        'latitude': lat,
-        'longitude': lon,
-        'start_date': dateStr,
-        'end_date': dateStr,
-        'hourly': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
-        'temperature_unit': 'fahrenheit',
-        'wind_speed_unit': 'mph',
-        'timezone': 'auto',
-      });
-      
-      if (response.statusCode != 200) {
-        print('Weather API error: ${response.statusCode}');
-        return null;
+      switch (tier) {
+        case _WeatherTier.recent:
+          return await _fetchRecent(lat, lon, dateTime);
+        case _WeatherTier.historicalForecast:
+          return await _fetchHistoricalForecast(lat, lon, dateTime);
+        case _WeatherTier.archive:
+          return await _fetchArchive(lat, lon, dateTime);
       }
-
-      final data = response.data as Map<String, dynamic>;
-      final hourly = data['hourly'] as Map<String, dynamic>?;
-      
-      if (hourly == null) return null;
-
-      // Find the index for the nearest hour
-      final times = (hourly['time'] as List).cast<String>();
-      final targetHour = dateTime.hour;
-      int nearestIndex = 0;
-      
-      for (int i = 0; i < times.length; i++) {
-        final hourTime = DateTime.parse(times[i]);
-        if (hourTime.hour == targetHour) {
-          nearestIndex = i;
-          break;
-        }
-        if (hourTime.hour > targetHour) {
-          nearestIndex = i > 0 ? i - 1 : i;
-          break;
-        }
-        nearestIndex = i;
-      }
-
-      // Extract values at nearest hour
-      final tempF = _getDouble(hourly['temperature_2m'], nearestIndex);
-      final tempC = (tempF - 32) * 5 / 9;
-      final feelsLikeF = _getDouble(hourly['apparent_temperature'], nearestIndex);
-      final humidity = _getInt(hourly['relative_humidity_2m'], nearestIndex);
-      final precipMm = _getDouble(hourly['precipitation'], nearestIndex);
-      final weatherCode = _getInt(hourly['weather_code'], nearestIndex);
-      final pressureHpa = _getDouble(hourly['surface_pressure'], nearestIndex);
-      final pressureInHg = pressureHpa * 0.02953; // Convert hPa to inHg
-      final cloudPct = _getInt(hourly['cloud_cover'], nearestIndex);
-      final windSpeedMph = _getDouble(hourly['wind_speed_10m'], nearestIndex);
-      final windDirDeg = _getInt(hourly['wind_direction_10m'], nearestIndex);
-      final gustsMph = _getDouble(hourly['wind_gusts_10m'], nearestIndex);
-
-      return WeatherSnapshot(
-        tempF: tempF,
-        tempC: tempC,
-        feelsLikeF: feelsLikeF,
-        humidity: humidity,
-        pressure: pressureHpa,
-        pressureInHg: pressureInHg,
-        windSpeedMph: windSpeedMph,
-        windDirDeg: windDirDeg,
-        windDirText: _degToDirection(windDirDeg),
-        gustsMph: gustsMph,
-        precipMm: precipMm,
-        cloudPct: cloudPct,
-        conditionText: _weatherCodeToText(weatherCode),
-        conditionCode: weatherCode,
-        isHourly: true,
-        snapshotTime: DateTime.parse(times[nearestIndex]),
-        source: 'open_meteo',
-      );
     } catch (e) {
-      print('Weather fetch error: $e');
+      print('WeatherService: ${tier.name} tier error: $e');
       return null;
     }
+  }
+
+  /// Tier 1: Fetch from Forecast API with past_days (last 14 days + today/tomorrow).
+  Future<WeatherSnapshot?> _fetchRecent(double lat, double lon, DateTime dateTime) async {
+    final response = await _dio.get(_forecastUrl, queryParameters: {
+      'latitude': lat,
+      'longitude': lon,
+      'hourly': _hourlyVars,
+      'temperature_unit': 'fahrenheit',
+      'wind_speed_unit': 'mph',
+      'timezone': 'auto',
+      'past_days': _recentWindowDays,
+      'forecast_days': 2, // Include today + tomorrow
+    });
+    
+    if (response.statusCode != 200) {
+      print('WeatherService: Forecast API error: ${response.statusCode}');
+      return null;
+    }
+    
+    return _parseHourlyResponse(response.data, dateTime, 'auto_forecast_recent');
+  }
+
+  /// Tier 2: Fetch from Historical Forecast API (2022 onwards).
+  Future<WeatherSnapshot?> _fetchHistoricalForecast(double lat, double lon, DateTime dateTime) async {
+    final dateStr = _formatDate(dateTime);
+    
+    final response = await _dio.get(_historicalForecastUrl, queryParameters: {
+      'latitude': lat,
+      'longitude': lon,
+      'start_date': dateStr,
+      'end_date': dateStr,
+      'hourly': _hourlyVars,
+      'temperature_unit': 'fahrenheit',
+      'wind_speed_unit': 'mph',
+      'timezone': 'auto',
+    });
+    
+    if (response.statusCode != 200) {
+      print('WeatherService: Historical Forecast API error: ${response.statusCode}');
+      return null;
+    }
+    
+    return _parseHourlyResponse(response.data, dateTime, 'auto_historical_forecast');
+  }
+
+  /// Tier 3: Fetch from Archive API (reanalysis data, pre-2022).
+  Future<WeatherSnapshot?> _fetchArchive(double lat, double lon, DateTime dateTime) async {
+    final dateStr = _formatDate(dateTime);
+    
+    final response = await _dio.get(_archiveUrl, queryParameters: {
+      'latitude': lat,
+      'longitude': lon,
+      'start_date': dateStr,
+      'end_date': dateStr,
+      'hourly': _hourlyVars,
+      'temperature_unit': 'fahrenheit',
+      'wind_speed_unit': 'mph',
+      'timezone': 'auto',
+    });
+    
+    if (response.statusCode != 200) {
+      print('WeatherService: Archive API error: ${response.statusCode}');
+      return null;
+    }
+    
+    return _parseHourlyResponse(response.data, dateTime, 'auto_archive');
+  }
+
+  /// Parse hourly response data from any tier.
+  WeatherSnapshot? _parseHourlyResponse(
+    Map<String, dynamic> data,
+    DateTime targetTime,
+    String source,
+  ) {
+    final hourly = data['hourly'] as Map<String, dynamic>?;
+    
+    if (hourly == null) {
+      print('WeatherService: No hourly data in response');
+      return null;
+    }
+    
+    final times = hourly['time'] as List?;
+    if (times == null || times.isEmpty) {
+      print('WeatherService: No time array in hourly data');
+      return null;
+    }
+    
+    // Find the index for the nearest hour to target time
+    final nearestIndex = _findNearestHourIndex(times.cast<String>(), targetTime);
+    if (nearestIndex < 0) {
+      print('WeatherService: Could not find matching hour for $targetTime');
+      return null;
+    }
+    
+    // Check that we have temperature data at minimum
+    final tempList = hourly['temperature_2m'] as List?;
+    if (tempList == null || nearestIndex >= tempList.length || tempList[nearestIndex] == null) {
+      print('WeatherService: Missing temperature data at index $nearestIndex');
+      return null;
+    }
+
+    // Extract values at nearest hour
+    final tempF = _getDouble(hourly['temperature_2m'], nearestIndex);
+    final tempC = (tempF - 32) * 5 / 9;
+    final feelsLikeF = _getDouble(hourly['apparent_temperature'], nearestIndex);
+    final humidity = _getInt(hourly['relative_humidity_2m'], nearestIndex);
+    final precipMm = _getDouble(hourly['precipitation'], nearestIndex);
+    final weatherCode = _getInt(hourly['weather_code'], nearestIndex);
+    final pressureHpa = _getDouble(hourly['surface_pressure'], nearestIndex);
+    final pressureInHg = pressureHpa * 0.02953; // Convert hPa to inHg
+    final cloudPct = _getInt(hourly['cloud_cover'], nearestIndex);
+    final windSpeedMph = _getDouble(hourly['wind_speed_10m'], nearestIndex);
+    final windDirDeg = _getInt(hourly['wind_direction_10m'], nearestIndex);
+    final gustsMph = _getDouble(hourly['wind_gusts_10m'], nearestIndex);
+
+    final snapshotTimeStr = times[nearestIndex] as String;
+    
+    return WeatherSnapshot(
+      tempF: tempF,
+      tempC: tempC,
+      feelsLikeF: feelsLikeF,
+      humidity: humidity,
+      pressure: pressureHpa,
+      pressureInHg: pressureInHg,
+      windSpeedMph: windSpeedMph,
+      windDirDeg: windDirDeg,
+      windDirText: _degToDirection(windDirDeg),
+      gustsMph: gustsMph,
+      precipMm: precipMm,
+      cloudPct: cloudPct,
+      conditionText: _weatherCodeToText(weatherCode),
+      conditionCode: weatherCode,
+      isHourly: true,
+      snapshotTime: DateTime.parse(snapshotTimeStr),
+      source: source,
+    );
+  }
+
+  /// Find the index of the nearest hour in the times array.
+  int _findNearestHourIndex(List<String> times, DateTime targetTime) {
+    if (times.isEmpty) return -1;
+    
+    int bestIndex = 0;
+    int bestDiff = 999999;
+    final targetMs = targetTime.millisecondsSinceEpoch;
+    
+    for (int i = 0; i < times.length; i++) {
+      try {
+        final hourTime = DateTime.parse(times[i]);
+        final diff = (hourTime.millisecondsSinceEpoch - targetMs).abs();
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIndex = i;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // If best match is more than 2 hours away, consider it a miss
+    if (bestDiff > 2 * 60 * 60 * 1000) {
+      return -1;
+    }
+    
+    return bestIndex;
+  }
+
+  /// Format date as YYYY-MM-DD.
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
   /// Get weather for a US county by FIPS code (preferred method).
