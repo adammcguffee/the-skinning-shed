@@ -1,0 +1,12 @@
+﻿# Secrets
+.env
+
+# Cursor workspace/settings
+.cursor/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
