@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shed/app/theme/app_colors.dart';
@@ -387,15 +389,15 @@ class _HourlyForecast extends StatelessWidget {
   Widget build(BuildContext context) {
     // Mock hourly data with full details
     final hours = [
-      _HourData(time: 'Now', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 10, wind: 12, windDir: 225, windDirText: 'SW', gusts: 18, humidity: 65, pressure: 30.12, visibility: 10, condition: 'Partly Cloudy'),
-      _HourData(time: '1PM', temp: 60, feelsLike: 58, icon: Icons.wb_sunny_outlined, precip: 5, wind: 14, windDir: 230, windDirText: 'SW', gusts: 20, humidity: 60, pressure: 30.10, visibility: 10, condition: 'Mostly Sunny'),
-      _HourData(time: '2PM', temp: 62, feelsLike: 60, icon: Icons.wb_sunny_outlined, precip: 0, wind: 15, windDir: 235, windDirText: 'SW', gusts: 22, humidity: 55, pressure: 30.08, visibility: 10, condition: 'Sunny'),
-      _HourData(time: '3PM', temp: 63, feelsLike: 61, icon: Icons.wb_sunny_outlined, precip: 0, wind: 16, windDir: 240, windDirText: 'WSW', gusts: 24, humidity: 52, pressure: 30.06, visibility: 10, condition: 'Sunny'),
-      _HourData(time: '4PM', temp: 61, feelsLike: 59, icon: Icons.cloud_outlined, precip: 5, wind: 14, windDir: 245, windDirText: 'WSW', gusts: 21, humidity: 58, pressure: 30.04, visibility: 10, condition: 'Partly Cloudy'),
-      _HourData(time: '5PM', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 15, wind: 12, windDir: 250, windDirText: 'W', gusts: 18, humidity: 62, pressure: 30.02, visibility: 9, condition: 'Cloudy'),
-      _HourData(time: '6PM', temp: 54, feelsLike: 51, icon: Icons.wb_twilight_rounded, precip: 20, wind: 10, windDir: 255, windDirText: 'W', gusts: 15, humidity: 68, pressure: 30.00, visibility: 8, condition: 'Evening Clouds'),
-      _HourData(time: '7PM', temp: 50, feelsLike: 47, icon: Icons.nightlight_round, precip: 25, wind: 8, windDir: 260, windDirText: 'W', gusts: 12, humidity: 72, pressure: 29.98, visibility: 8, condition: 'Partly Cloudy'),
-      _HourData(time: '8PM', temp: 48, feelsLike: 44, icon: Icons.nightlight_round, precip: 30, wind: 7, windDir: 265, windDirText: 'W', gusts: 10, humidity: 75, pressure: 29.96, visibility: 7, condition: 'Scattered Showers'),
+      _HourData(time: 'Now', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 10, windSpeed: 12, windDirectionDegrees: 225, windDirectionText: 'SW', gusts: 18, humidity: 65, pressure: 30.12, visibility: 10, condition: 'Partly Cloudy'),
+      _HourData(time: '1PM', temp: 60, feelsLike: 58, icon: Icons.wb_sunny_outlined, precip: 5, windSpeed: 14, windDirectionDegrees: 230, windDirectionText: 'SW', gusts: 20, humidity: 60, pressure: 30.10, visibility: 10, condition: 'Mostly Sunny'),
+      _HourData(time: '2PM', temp: 62, feelsLike: 60, icon: Icons.wb_sunny_outlined, precip: 0, windSpeed: 15, windDirectionDegrees: 235, windDirectionText: 'SW', gusts: 22, humidity: 55, pressure: 30.08, visibility: 10, condition: 'Sunny'),
+      _HourData(time: '3PM', temp: 63, feelsLike: 61, icon: Icons.wb_sunny_outlined, precip: 0, windSpeed: 16, windDirectionDegrees: 240, windDirectionText: 'WSW', gusts: 24, humidity: 52, pressure: 30.06, visibility: 10, condition: 'Sunny'),
+      _HourData(time: '4PM', temp: 61, feelsLike: 59, icon: Icons.cloud_outlined, precip: 5, windSpeed: 14, windDirectionDegrees: 245, windDirectionText: 'WSW', gusts: 21, humidity: 58, pressure: 30.04, visibility: 10, condition: 'Partly Cloudy'),
+      _HourData(time: '5PM', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 15, windSpeed: 12, windDirectionDegrees: 250, windDirectionText: 'W', gusts: 18, humidity: 62, pressure: 30.02, visibility: 9, condition: 'Cloudy'),
+      _HourData(time: '6PM', temp: 54, feelsLike: 51, icon: Icons.wb_twilight_rounded, precip: 20, windSpeed: 10, windDirectionDegrees: 255, windDirectionText: 'W', gusts: 15, humidity: 68, pressure: 30.00, visibility: 8, condition: 'Evening Clouds'),
+      _HourData(time: '7PM', temp: 50, feelsLike: 47, icon: Icons.nightlight_round, precip: 25, windSpeed: 8, windDirectionDegrees: 260, windDirectionText: 'W', gusts: 12, humidity: 72, pressure: 29.98, visibility: 8, condition: 'Partly Cloudy'),
+      _HourData(time: '8PM', temp: 48, feelsLike: 44, icon: Icons.nightlight_round, precip: 30, windSpeed: 7, windDirectionDegrees: 265, windDirectionText: 'W', gusts: 10, humidity: 75, pressure: 29.96, visibility: 7, condition: 'Scattered Showers'),
     ];
 
     return Padding(
@@ -461,33 +463,33 @@ class _HourlyForecast extends StatelessWidget {
 class _HourData {
   const _HourData({
     required this.time,
-    required this.temp,
-    required this.feelsLike,
     required this.icon,
-    required this.precip,
-    required this.wind,
-    required this.windDir,
-    required this.windDirText,
-    required this.gusts,
-    required this.humidity,
-    required this.pressure,
-    required this.visibility,
-    required this.condition,
+    this.temp,
+    this.feelsLike,
+    this.precip,
+    this.windSpeed,
+    this.windDirectionDegrees,
+    this.windDirectionText,
+    this.gusts,
+    this.humidity,
+    this.pressure,
+    this.visibility,
+    this.condition,
   });
 
   final String time;
-  final int temp;
-  final int feelsLike;
   final IconData icon;
-  final int precip;
-  final int wind;
-  final int windDir; // degrees (0-360)
-  final String windDirText; // N, NE, E, SE, S, SW, W, NW
-  final int gusts;
-  final int humidity;
-  final double pressure;
-  final int visibility;
-  final String condition;
+  final int? temp;
+  final int? feelsLike;
+  final int? precip;
+  final int? windSpeed;
+  final int? windDirectionDegrees; // degrees (0-360)
+  final String? windDirectionText; // N, NE, E, SE, S, SW, W, NW
+  final int? gusts;
+  final int? humidity;
+  final double? pressure;
+  final int? visibility;
+  final String? condition;
 }
 
 /// Hourly card with wind direction arrow
@@ -512,6 +514,12 @@ class _HourCardState extends State<_HourCard> {
 
   @override
   Widget build(BuildContext context) {
+    final windDirectionText = _directionLabel(
+      widget.data.windDirectionDegrees,
+      widget.data.windDirectionText,
+    );
+    final hasWindDirection = widget.data.windDirectionDegrees != null;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -529,24 +537,22 @@ class _HourCardState extends State<_HourCard> {
             vertical: AppSpacing.md,
           ),
           decoration: BoxDecoration(
-            color: widget.isFirst 
-                ? AppColors.accent.withOpacity(0.15) 
+            color: widget.isFirst
+                ? AppColors.accent.withOpacity(0.15)
                 : _isHovered || _isPressed
                     ? AppColors.surfaceHover
                     : AppColors.surface,
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             border: Border.all(
-              color: widget.isFirst 
-                  ? AppColors.accent.withOpacity(0.3) 
+              color: widget.isFirst
+                  ? AppColors.accent.withOpacity(0.3)
                   : _isHovered
                       ? AppColors.borderStrong
                       : AppColors.borderSubtle,
             ),
             boxShadow: _isPressed ? null : (_isHovered ? AppColors.shadowCard : null),
           ),
-          transform: _isPressed 
-              ? (Matrix4.identity()..scale(0.95)) 
-              : Matrix4.identity(),
+          transform: _isPressed ? (Matrix4.identity()..scale(0.95)) : Matrix4.identity(),
           transformAlignment: Alignment.center,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -570,7 +576,7 @@ class _HourCardState extends State<_HourCard> {
 
               // Temperature
               Text(
-                '${widget.data.temp}°',
+                _formatTemp(widget.data.temp),
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -582,18 +588,19 @@ class _HourCardState extends State<_HourCard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Wind direction arrow rotated by degrees
                   Transform.rotate(
-                    angle: (widget.data.windDir + 180) * 3.14159 / 180,
+                    angle: hasWindDirection
+                        ? (widget.data.windDirectionDegrees! + 180) * math.pi / 180
+                        : 0,
                     child: Icon(
-                      Icons.navigation_rounded,
+                      hasWindDirection ? Icons.navigation_rounded : Icons.remove,
                       size: 10,
-                      color: AppColors.accent,
+                      color: hasWindDirection ? AppColors.accent : AppColors.textTertiary,
                     ),
                   ),
                   const SizedBox(width: 2),
                   Text(
-                    '${widget.data.wind}',
+                    _formatValue(widget.data.windSpeed),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
@@ -601,7 +608,7 @@ class _HourCardState extends State<_HourCard> {
                     ),
                   ),
                   Text(
-                    ' ${widget.data.windDirText}',
+                    ' $windDirectionText',
                     style: TextStyle(
                       fontSize: 9,
                       color: AppColors.textTertiary,
@@ -617,14 +624,18 @@ class _HourCardState extends State<_HourCard> {
                   Icon(
                     Icons.water_drop_outlined,
                     size: 10,
-                    color: widget.data.precip > 20 ? AppColors.info : AppColors.textTertiary,
+                    color: (widget.data.precip ?? 0) > 20
+                        ? AppColors.info
+                        : AppColors.textTertiary,
                   ),
                   const SizedBox(width: 2),
                   Text(
-                    '${widget.data.precip}%',
+                    _formatPercent(widget.data.precip),
                     style: TextStyle(
                       fontSize: 10,
-                      color: widget.data.precip > 20 ? AppColors.info : AppColors.textTertiary,
+                      color: (widget.data.precip ?? 0) > 20
+                          ? AppColors.info
+                          : AppColors.textTertiary,
                     ),
                   ),
                 ],
@@ -645,6 +656,11 @@ class _HourlyDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final windDirectionText = _directionLabel(
+      data.windDirectionDegrees,
+      data.windDirectionText,
+    );
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
@@ -681,7 +697,7 @@ class _HourlyDetailSheet extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    data.condition,
+                    data.condition ?? '—',
                     style: const TextStyle(
                       fontSize: 14,
                       color: AppColors.textSecondary,
@@ -691,7 +707,7 @@ class _HourlyDetailSheet extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                '${data.temp}°F',
+                _formatTempF(data.temp),
                 style: const TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.w700,
@@ -714,16 +730,20 @@ class _HourlyDetailSheet extends StatelessWidget {
                 // Row 1: Feels Like + Humidity
                 Row(
                   children: [
-                    Expanded(child: _DetailItem(
-                      icon: Icons.thermostat_outlined,
-                      label: 'Feels Like',
-                      value: '${data.feelsLike}°F',
-                    )),
-                    Expanded(child: _DetailItem(
-                      icon: Icons.water_drop_outlined,
-                      label: 'Humidity',
-                      value: '${data.humidity}%',
-                    )),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.thermostat_outlined,
+                        label: 'Feels Like',
+                        value: _formatTempF(data.feelsLike),
+                      ),
+                    ),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.water_drop_outlined,
+                        label: 'Humidity',
+                        value: _formatPercent(data.humidity),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -731,18 +751,22 @@ class _HourlyDetailSheet extends StatelessWidget {
                 // Row 2: Wind Speed + Gusts
                 Row(
                   children: [
-                    Expanded(child: _DetailItem(
-                      icon: Icons.air_rounded,
-                      label: 'Wind Speed',
-                      value: '${data.wind} mph ${data.windDirText}',
-                      valueColor: AppColors.accent,
-                    )),
-                    Expanded(child: _DetailItem(
-                      icon: Icons.speed_rounded,
-                      label: 'Gusts',
-                      value: '${data.gusts} mph',
-                      valueColor: AppColors.accent,
-                    )),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.air_rounded,
+                        label: 'Wind Speed',
+                        value: _formatMph(data.windSpeed, suffix: ' $windDirectionText'),
+                        valueColor: AppColors.accent,
+                      ),
+                    ),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.speed_rounded,
+                        label: 'Gusts',
+                        value: _formatMph(data.gusts),
+                        valueColor: AppColors.accent,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -750,18 +774,22 @@ class _HourlyDetailSheet extends StatelessWidget {
                 // Row 3: Wind Direction + Precip
                 Row(
                   children: [
-                    Expanded(child: _DetailItem(
-                      icon: Icons.explore_outlined,
-                      label: 'Wind Direction',
-                      value: '${data.windDir}° (${data.windDirText})',
-                      valueColor: AppColors.accent,
-                    )),
-                    Expanded(child: _DetailItem(
-                      icon: Icons.umbrella_outlined,
-                      label: 'Precipitation',
-                      value: '${data.precip}%',
-                      valueColor: data.precip > 20 ? AppColors.info : null,
-                    )),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.explore_outlined,
+                        label: 'Wind Direction',
+                        value: _formatDirection(data.windDirectionDegrees, windDirectionText),
+                        valueColor: AppColors.accent,
+                      ),
+                    ),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.umbrella_outlined,
+                        label: 'Precipitation',
+                        value: _formatPercent(data.precip),
+                        valueColor: (data.precip ?? 0) > 20 ? AppColors.info : null,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -769,16 +797,20 @@ class _HourlyDetailSheet extends StatelessWidget {
                 // Row 4: Pressure + Visibility
                 Row(
                   children: [
-                    Expanded(child: _DetailItem(
-                      icon: Icons.compress_rounded,
-                      label: 'Pressure',
-                      value: '${data.pressure.toStringAsFixed(2)} in',
-                    )),
-                    Expanded(child: _DetailItem(
-                      icon: Icons.visibility_outlined,
-                      label: 'Visibility',
-                      value: '${data.visibility} mi',
-                    )),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.compress_rounded,
+                        label: 'Pressure',
+                        value: _formatPressure(data.pressure),
+                      ),
+                    ),
+                    Expanded(
+                      child: _DetailItem(
+                        icon: Icons.visibility_outlined,
+                        label: 'Visibility',
+                        value: _formatMiles(data.visibility),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -833,6 +865,54 @@ class _DetailItem extends StatelessWidget {
       ],
     );
   }
+}
+
+String _formatValue(num? value, {String suffix = ''}) {
+  if (value == null) return '—';
+  return '$value$suffix';
+}
+
+String _formatTemp(int? value) {
+  if (value == null) return '—';
+  return '$value°';
+}
+
+String _formatTempF(int? value) {
+  if (value == null) return '—';
+  return '$value°F';
+}
+
+String _formatPercent(int? value) {
+  if (value == null) return '—';
+  return '$value%';
+}
+
+String _formatMph(int? value, {String suffix = ''}) {
+  if (value == null) return '—';
+  return '$value mph$suffix';
+}
+
+String _formatPressure(double? value) {
+  if (value == null) return '—';
+  return '${value.toStringAsFixed(2)} in';
+}
+
+String _formatMiles(int? value) {
+  if (value == null) return '—';
+  return '$value mi';
+}
+
+String _formatDirection(int? degrees, String? label) {
+  if (degrees == null) return '—';
+  return '$degrees° ($label)';
+}
+
+String _directionLabel(int? degrees, String? label) {
+  if (label != null && label.trim().isNotEmpty) return label;
+  if (degrees == null) return '—';
+  const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  final index = ((degrees % 360) / 45).round() % directions.length;
+  return directions[index];
 }
 
 /// Wind section with emphasis
