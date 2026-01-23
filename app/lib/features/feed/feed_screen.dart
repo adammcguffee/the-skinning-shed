@@ -5,6 +5,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../data/us_counties.dart';
 import '../../data/us_states.dart';
+import '../../shared/branding_assets.dart';
 import '../../shared/widgets/widgets.dart';
 
 /// Main feed showing latest trophies.
@@ -25,24 +26,7 @@ class _FeedScreenState extends State<FeedScreen> {
     return Scaffold(
       backgroundColor: AppColors.bone,
       appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppColors.forest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.emoji_events_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text('The Skinning Shed'),
-          ],
-        ),
+        title: _buildAppBarTitle(context),
         actions: [
           IconButton(
             icon: const Icon(Icons.search_rounded),
@@ -62,6 +46,34 @@ class _FeedScreenState extends State<FeedScreen> {
         },
         child: _showSampleData ? _buildFeedContent() : _buildEmptyState(),
       ),
+    );
+  }
+
+  Widget _buildAppBarTitle(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 800;
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Show horizontal logo on wide screens, icon on narrow
+        if (isWide)
+          Image.asset(
+            BrandingAssets.horizontal,
+            height: 36,
+            fit: BoxFit.contain,
+          )
+        else ...[
+          Image.asset(
+            BrandingAssets.icon,
+            width: 32,
+            height: 32,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(width: 10),
+          const Text('The Skinning Shed'),
+        ],
+      ],
     );
   }
 

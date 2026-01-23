@@ -6,6 +6,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../shared/branding_assets.dart';
 
 /// Professional auth screen with sign in / sign up.
 class AuthScreen extends ConsumerStatefulWidget {
@@ -211,36 +212,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Widget _buildHeader() {
     return Column(
       children: [
-        // Logo icon
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: AppColors.forest,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.forest.withValues(alpha: 0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.emoji_events_rounded,
-            size: 40,
-            color: Colors.white,
+        // Primary logo with illustration
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280, maxHeight: 220),
+          child: Image.asset(
+            BrandingAssets.primary,
+            fit: BoxFit.contain,
           ),
         ),
-        const SizedBox(height: AppSpacing.lg),
-        Text(
-          'The Skinning Shed',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: AppColors.charcoal,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
+        const SizedBox(height: AppSpacing.md),
         Text(
           'Your hunting & fishing trophy journal',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(

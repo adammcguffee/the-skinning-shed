@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../branding_assets.dart';
 
 /// Responsive scaffold with bottom navigation (mobile) or navigation rail (tablet/web).
 class AppScaffold extends StatelessWidget {
@@ -180,12 +181,25 @@ class AppScaffold extends StatelessWidget {
             ),
             child: Column(
               children: [
+                const SizedBox(height: 12),
+                
+                // Logo icon at top of rail
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Image.asset(
+                    BrandingAssets.icon,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                
                 const SizedBox(height: 16),
                 
-                // Post button at top
+                // Post button
                 _buildRailPostButton(context),
                 
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 
                 // Navigation items
                 Expanded(
