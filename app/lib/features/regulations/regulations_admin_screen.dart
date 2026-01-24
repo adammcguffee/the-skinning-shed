@@ -724,16 +724,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       ),
     );
     
-    // Note: includeAuditLog is scoped within the StatefulBuilder above
-    // We need to capture it before dispose - but this is tricky with StatefulBuilder
-    // For simplicity, just pass true to also clear audit log (clean slate)
     confirmController.dispose();
     
     if (confirmed == true) {
       try {
         final service = ref.read(regulationsServiceProvider);
-        // Do a full reset including audit log for clean slate
-        final result = await service.resetRegulationsData(includeAuditLog: true);
+        // Use the checkbox value - includeAuditLog is in outer scope, accessible here
+        final result = await service.resetRegulationsData(includeAuditLog: includeAuditLog);
         
         if (mounted) {
           final auditMsg = result['audit'] != null && result['audit'] > 0 
