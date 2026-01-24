@@ -172,9 +172,19 @@ int _getIndexFromLocation(String location) {
   return 0; // Feed is default
 }
 
-/// Router provider for the app
+/// Router provider for the app.
+/// 
+/// IMPORTANT: Uses ref.read (not ref.watch) for authNotifier to avoid
+/// recreating the GoRouter on every auth state change. The router uses
+/// refreshListenable to respond to auth changes, which triggers redirect
+/// without rebuilding the router. Rebuilding the router with the same
+/// GlobalKey navigator keys causes "Duplicate GlobalKey" crashes.
 final routerProvider = Provider<GoRouter>((ref) {
-  final authNotifier = ref.watch(authNotifierProvider);
+  // Use ref.read to get authNotifier once. The router will listen to it
+  // via refreshListenable, which triggers redirect re-evaluation.
+  // Do NOT use ref.watch here - it would recreate the router on every
+  // auth change, causing GlobalKey conflicts.
+  final authNotifier = ref.read(authNotifierProvider);
   
   return GoRouter(
     navigatorKey: _rootNavigatorKey,

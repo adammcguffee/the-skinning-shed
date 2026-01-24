@@ -260,20 +260,25 @@ class AuthReadyNotifier extends StateNotifier<AuthReadyState> {
   StreamSubscription<AuthState>? _subscription;
   
   void _init() {
-    // If auth is already ready, update state immediately
+    // If auth is already ready, update state immediately and start listening
     if (_service.isAuthReady) {
       state = _service.authReadyState;
+      _startListening();
     } else {
-      // Wait for auth ready, then start listening
+      // Start listening immediately so we catch auth events during recovery.
+      // The subscription will update state when auth events occur.
+      _startListening();
+      
+      // Wait for auth recovery to complete. Only update state if the
+      // subscription hasn't already updated it (still in recovering state).
+      // This prevents overwriting fresher state from the subscription.
       _service.authReady.then((_) {
         if (!mounted) return;
-        state = _service.authReadyState;
-        _startListening();
+        if (state == AuthReadyState.recovering) {
+          state = _service.authReadyState;
+        }
       });
     }
-    
-    // Also start listening for ongoing auth changes
-    _startListening();
   }
   
   void _startListening() {
