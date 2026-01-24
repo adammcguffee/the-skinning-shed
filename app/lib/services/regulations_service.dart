@@ -277,6 +277,7 @@ class PendingRegulation {
     this.regionGeo,
     this.confidenceScore = 0,
     this.extractionWarnings = const [],
+    this.pendingReason,
   });
   
   final String id;
@@ -299,6 +300,7 @@ class PendingRegulation {
   // Confidence fields
   final double confidenceScore;
   final List<String> extractionWarnings;
+  final String? pendingReason;
   
   RegulationRegion get region => RegulationRegion(
     regionKey: regionKey,
@@ -339,6 +341,7 @@ class PendingRegulation {
       extractionWarnings: (json['extraction_warnings'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList() ?? [],
+      pendingReason: json['pending_reason'] as String?,
     );
   }
 }
@@ -721,14 +724,14 @@ class RegulationsService {
   }
   
   /// Run the regulations checker edge function (admin only).
-  /// Uses v3 with confidence-based auto-approval.
+  /// Uses v4 with LLM extraction, source type classification, and strict validation.
   /// Returns a map with check results: checked, auto_approved, pending, results array.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
     final response = await client.functions.invoke(
-      'regulations-check-v3',
+      'regulations-check-v4',
       body: {},
     );
     
