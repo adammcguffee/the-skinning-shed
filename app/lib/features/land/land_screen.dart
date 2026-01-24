@@ -22,6 +22,11 @@ class _LandScreenState extends ConsumerState<LandScreen>
   late TabController _tabController;
   bool _showFilters = false;
   LandSortBy _sortBy = LandSortBy.newest;
+  String? _selectedState;
+  double? _minPrice;
+  double? _maxPrice;
+  double? _minAcres;
+  double? _maxAcres;
 
   @override
   void initState() {
@@ -50,6 +55,11 @@ class _LandScreenState extends ConsumerState<LandScreen>
   void _loadListings(String type) {
     final params = LandSearchParams(
       type: type,
+      state: _selectedState,
+      minPrice: _minPrice,
+      maxPrice: _maxPrice,
+      minAcreage: _minAcres,
+      maxAcreage: _maxAcres,
       sortBy: _sortBy,
     );
     
@@ -62,6 +72,52 @@ class _LandScreenState extends ConsumerState<LandScreen>
     });
     final type = _tabController.index == 0 ? 'lease' : 'sale';
     _loadListings(type);
+  }
+
+  void _onStateChanged(String? state) {
+    setState(() {
+      _selectedState = state;
+    });
+    final type = _tabController.index == 0 ? 'lease' : 'sale';
+    _loadListings(type);
+  }
+
+  void _onPriceRangeChanged(double? min, double? max) {
+    setState(() {
+      _minPrice = min;
+      _maxPrice = max;
+    });
+    final type = _tabController.index == 0 ? 'lease' : 'sale';
+    _loadListings(type);
+  }
+
+  void _onAcresRangeChanged(double? min, double? max) {
+    setState(() {
+      _minAcres = min;
+      _maxAcres = max;
+    });
+    final type = _tabController.index == 0 ? 'lease' : 'sale';
+    _loadListings(type);
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _selectedState = null;
+      _minPrice = null;
+      _maxPrice = null;
+      _minAcres = null;
+      _maxAcres = null;
+    });
+    final type = _tabController.index == 0 ? 'lease' : 'sale';
+    _loadListings(type);
+  }
+
+  bool get _hasActiveFilters {
+    return _selectedState != null ||
+        _minPrice != null ||
+        _maxPrice != null ||
+        _minAcres != null ||
+        _maxAcres != null;
   }
 
   @override
@@ -163,7 +219,17 @@ class _LandScreenState extends ConsumerState<LandScreen>
                   ),
                   child: _FiltersPanel(
                     sortBy: _sortBy,
+                    selectedState: _selectedState,
+                    minPrice: _minPrice,
+                    maxPrice: _maxPrice,
+                    minAcres: _minAcres,
+                    maxAcres: _maxAcres,
+                    hasActiveFilters: _hasActiveFilters,
                     onSortChanged: _onSortChanged,
+                    onStateChanged: _onStateChanged,
+                    onPriceRangeChanged: _onPriceRangeChanged,
+                    onAcresRangeChanged: _onAcresRangeChanged,
+                    onClearAll: _clearAllFilters,
                   ),
                 ),
               ],
@@ -281,14 +347,90 @@ class _FilterToggleState extends State<_FilterToggle> {
 }
 
 /// Filters panel for land listings
-class _FiltersPanel extends StatelessWidget {
+class _FiltersPanel extends StatefulWidget {
   const _FiltersPanel({
     required this.sortBy,
+    required this.selectedState,
+    required this.minPrice,
+    required this.maxPrice,
+    required this.minAcres,
+    required this.maxAcres,
+    required this.hasActiveFilters,
     required this.onSortChanged,
+    required this.onStateChanged,
+    required this.onPriceRangeChanged,
+    required this.onAcresRangeChanged,
+    required this.onClearAll,
   });
 
   final LandSortBy sortBy;
+  final String? selectedState;
+  final double? minPrice;
+  final double? maxPrice;
+  final double? minAcres;
+  final double? maxAcres;
+  final bool hasActiveFilters;
   final void Function(LandSortBy) onSortChanged;
+  final void Function(String?) onStateChanged;
+  final void Function(double?, double?) onPriceRangeChanged;
+  final void Function(double?, double?) onAcresRangeChanged;
+  final VoidCallback onClearAll;
+
+  @override
+  State<_FiltersPanel> createState() => _FiltersPanelState();
+}
+
+class _FiltersPanelState extends State<_FiltersPanel> {
+  final _minPriceController = TextEditingController();
+  final _maxPriceController = TextEditingController();
+  final _minAcresController = TextEditingController();
+  final _maxAcresController = TextEditingController();
+
+  static const _states = [
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.minPrice != null) {
+      _minPriceController.text = widget.minPrice!.toStringAsFixed(0);
+    }
+    if (widget.maxPrice != null) {
+      _maxPriceController.text = widget.maxPrice!.toStringAsFixed(0);
+    }
+    if (widget.minAcres != null) {
+      _minAcresController.text = widget.minAcres!.toStringAsFixed(0);
+    }
+    if (widget.maxAcres != null) {
+      _maxAcresController.text = widget.maxAcres!.toStringAsFixed(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _minPriceController.dispose();
+    _maxPriceController.dispose();
+    _minAcresController.dispose();
+    _maxAcresController.dispose();
+    super.dispose();
+  }
+
+  void _applyPriceFilter() {
+    final min = double.tryParse(_minPriceController.text);
+    final max = double.tryParse(_maxPriceController.text);
+    widget.onPriceRangeChanged(min, max);
+  }
+
+  void _applyAcresFilter() {
+    final min = double.tryParse(_minAcresController.text);
+    final max = double.tryParse(_maxAcresController.text);
+    widget.onAcresRangeChanged(min, max);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,6 +438,30 @@ class _FiltersPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header with clear button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Filters',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              if (widget.hasActiveFilters)
+                GestureDetector(
+                  onTap: widget.onClearAll,
+                  child: Text(
+                    'Clear all',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          // Sort options
           Text(
             'Sort by',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -309,32 +475,205 @@ class _FiltersPanel extends StatelessWidget {
             children: [
               _SortChip(
                 label: 'Newest',
-                isSelected: sortBy == LandSortBy.newest,
-                onTap: () => onSortChanged(LandSortBy.newest),
+                isSelected: widget.sortBy == LandSortBy.newest,
+                onTap: () => widget.onSortChanged(LandSortBy.newest),
               ),
               _SortChip(
-                label: 'Price: Low to High',
-                isSelected: sortBy == LandSortBy.priceLowToHigh,
-                onTap: () => onSortChanged(LandSortBy.priceLowToHigh),
+                label: 'Price ↓',
+                isSelected: widget.sortBy == LandSortBy.priceLowToHigh,
+                onTap: () => widget.onSortChanged(LandSortBy.priceLowToHigh),
               ),
               _SortChip(
-                label: 'Price: High to Low',
-                isSelected: sortBy == LandSortBy.priceHighToLow,
-                onTap: () => onSortChanged(LandSortBy.priceHighToLow),
+                label: 'Price ↑',
+                isSelected: widget.sortBy == LandSortBy.priceHighToLow,
+                onTap: () => widget.onSortChanged(LandSortBy.priceHighToLow),
               ),
               _SortChip(
-                label: 'Acres: Low to High',
-                isSelected: sortBy == LandSortBy.acreageLowToHigh,
-                onTap: () => onSortChanged(LandSortBy.acreageLowToHigh),
+                label: 'Acres ↓',
+                isSelected: widget.sortBy == LandSortBy.acreageLowToHigh,
+                onTap: () => widget.onSortChanged(LandSortBy.acreageLowToHigh),
               ),
               _SortChip(
-                label: 'Acres: High to Low',
-                isSelected: sortBy == LandSortBy.acreageHighToLow,
-                onTap: () => onSortChanged(LandSortBy.acreageHighToLow),
+                label: 'Acres ↑',
+                isSelected: widget.sortBy == LandSortBy.acreageHighToLow,
+                onTap: () => widget.onSortChanged(LandSortBy.acreageHighToLow),
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // State filter
+          Text(
+            'State',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _SortChip(
+                  label: 'All States',
+                  isSelected: widget.selectedState == null,
+                  onTap: () => widget.onStateChanged(null),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                ..._states.map((state) => Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.xs),
+                  child: _SortChip(
+                    label: state,
+                    isSelected: widget.selectedState == state,
+                    onTap: () => widget.onStateChanged(state),
+                  ),
+                )),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Price range
+          Text(
+            'Price Range',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: _RangeInput(
+                  controller: _minPriceController,
+                  hint: 'Min',
+                  prefix: '\$ ',
+                  onSubmit: _applyPriceFilter,
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Text('–', style: TextStyle(color: AppColors.textTertiary)),
+              ),
+              Expanded(
+                child: _RangeInput(
+                  controller: _maxPriceController,
+                  hint: 'Max',
+                  prefix: '\$ ',
+                  onSubmit: _applyPriceFilter,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              _ApplyButton(onTap: _applyPriceFilter),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Acres range
+          Text(
+            'Acreage',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: _RangeInput(
+                  controller: _minAcresController,
+                  hint: 'Min',
+                  suffix: ' ac',
+                  onSubmit: _applyAcresFilter,
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Text('–', style: TextStyle(color: AppColors.textTertiary)),
+              ),
+              Expanded(
+                child: _RangeInput(
+                  controller: _maxAcresController,
+                  hint: 'Max',
+                  suffix: ' ac',
+                  onSubmit: _applyAcresFilter,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              _ApplyButton(onTap: _applyAcresFilter),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _RangeInput extends StatelessWidget {
+  const _RangeInput({
+    required this.controller,
+    required this.hint,
+    this.prefix,
+    this.suffix,
+    required this.onSubmit,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final String? prefix;
+  final String? suffix;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixText: prefix,
+        suffixText: suffix,
+        filled: true,
+        fillColor: AppColors.background,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.borderSubtle),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.borderSubtle),
+        ),
+      ),
+      style: const TextStyle(color: AppColors.textPrimary),
+      onSubmitted: (_) => onSubmit(),
+    );
+  }
+}
+
+class _ApplyButton extends StatelessWidget {
+  const _ApplyButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: AppColors.success,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        ),
+        child: const Icon(
+          Icons.check_rounded,
+          size: 20,
+          color: Colors.white,
+        ),
       ),
     );
   }
@@ -401,6 +740,7 @@ class _LandCardState extends ConsumerState<_LandCard> {
     final service = ref.read(landListingServiceProvider);
     final hasPhoto = listing.photos.isNotEmpty;
     final photoUrl = hasPhoto ? service.getPhotoUrl(listing.photos.first) : null;
+    final photoCount = listing.photos.length;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -423,14 +763,14 @@ class _LandCardState extends ConsumerState<_LandCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Image placeholder
+              // Main image with badges
               AspectRatio(
                 aspectRatio: 16 / 9,
                 child: Container(
                   color: AppColors.backgroundAlt,
                   child: Stack(
                     children: [
-                      // Image
+                      // Main image
                       if (hasPhoto)
                         Positioned.fill(
                           child: Image.network(
@@ -454,30 +794,7 @@ class _LandCardState extends ConsumerState<_LandCard> {
                           ),
                         ),
                       
-                      // Price badge
-                      Positioned(
-                        top: AppSpacing.md,
-                        right: AppSpacing.md,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.success,
-                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                          ),
-                          child: Text(
-                            listing.priceDisplay,
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: AppColors.textInverse,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      
-                      // Type badge
+                      // Type badge (top-left)
                       Positioned(
                         top: AppSpacing.md,
                         left: AppSpacing.md,
@@ -487,11 +804,13 @@ class _LandCardState extends ConsumerState<_LandCard> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
+                            color: listing.type == 'lease' 
+                                ? AppColors.accent 
+                                : AppColors.success,
                             borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                           ),
                           child: Text(
-                            listing.type == 'lease' ? 'FOR LEASE' : 'FOR SALE',
+                            listing.type == 'lease' ? 'LEASE' : 'SALE',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -501,10 +820,155 @@ class _LandCardState extends ConsumerState<_LandCard> {
                           ),
                         ),
                       ),
+                      
+                      // Price badge (top-right)
+                      Positioned(
+                        top: AppSpacing.md,
+                        right: AppSpacing.md,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                          ),
+                          child: Text(
+                            listing.priceDisplay,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Photo count badge (bottom-right)
+                      if (photoCount > 1)
+                        Positioned(
+                          bottom: AppSpacing.sm,
+                          right: AppSpacing.sm,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.photo_library_outlined,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$photoCount',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      // Acreage badge (bottom-left)
+                      if (listing.acreage != null)
+                        Positioned(
+                          bottom: AppSpacing.sm,
+                          left: AppSpacing.sm,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                            ),
+                            child: Text(
+                              '${listing.acreage!.toStringAsFixed(0)} ac',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
               ),
+
+              // Photo thumbnails (if multiple photos)
+              if (photoCount > 1) ...[
+                SizedBox(
+                  height: 56,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
+                    itemCount: photoCount > 4 ? 4 : photoCount,
+                    itemBuilder: (context, index) {
+                      final isLast = index == 3 && photoCount > 4;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.xs),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                          child: SizedBox(
+                            width: 56,
+                            height: 42,
+                            child: isLast
+                                ? Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Image.network(
+                                        service.getPhotoUrl(listing.photos[index]),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: AppColors.backgroundAlt,
+                                        ),
+                                      ),
+                                      Container(
+                                        color: Colors.black.withValues(alpha: 0.6),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          '+${photoCount - 3}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Image.network(
+                                    service.getPhotoUrl(listing.photos[index]),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      color: AppColors.backgroundAlt,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
 
               // Content
               Padding(
@@ -515,6 +979,8 @@ class _LandCardState extends ConsumerState<_LandCard> {
                     Text(
                       listing.title,
                       style: Theme.of(context).textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Row(
@@ -525,27 +991,18 @@ class _LandCardState extends ConsumerState<_LandCard> {
                           color: AppColors.textTertiary,
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          listing.locationDisplay,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        if (listing.acreage != null) ...[
-                          const SizedBox(width: AppSpacing.md),
-                          const Icon(
-                            Icons.straighten_outlined,
-                            size: 14,
-                            color: AppColors.textTertiary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${listing.acreage!.toStringAsFixed(0)} acres',
+                        Expanded(
+                          child: Text(
+                            listing.locationDisplay,
                             style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ],
+                        ),
                       ],
                     ),
                     if (listing.speciesTags != null && listing.speciesTags!.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.sm),
                       Wrap(
                         spacing: AppSpacing.xs,
                         runSpacing: AppSpacing.xs,

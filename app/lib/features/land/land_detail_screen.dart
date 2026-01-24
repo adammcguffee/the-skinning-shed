@@ -420,27 +420,56 @@ class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
                     ),
                   ),
 
-                  // Quick stats
-                  if (listing.acreage != null)
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                  // Quick stats grid
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    child: Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                        border: Border.all(color: AppColors.borderSubtle),
+                      ),
                       child: Row(
                         children: [
-                          _StatItem(
-                            icon: Icons.straighten_outlined,
-                            label: '${listing.acreage!.toStringAsFixed(0)} acres',
-                          ),
+                          if (listing.acreage != null)
+                            Expanded(
+                              child: _AttributeItem(
+                                icon: Icons.straighten_outlined,
+                                label: 'Acreage',
+                                value: '${listing.acreage!.toStringAsFixed(0)} acres',
+                              ),
+                            ),
                           if (listing.pricePerAcre != null) ...[
-                            const SizedBox(width: AppSpacing.lg),
-                            _StatItem(
-                              icon: Icons.attach_money_rounded,
-                              label: '\$${listing.pricePerAcre!.toStringAsFixed(0)}/acre',
+                            Container(
+                              width: 1,
+                              height: 40,
+                              color: AppColors.borderSubtle,
+                            ),
+                            Expanded(
+                              child: _AttributeItem(
+                                icon: Icons.attach_money_rounded,
+                                label: 'Per Acre',
+                                value: '\$${listing.pricePerAcre!.toStringAsFixed(0)}',
+                              ),
                             ),
                           ],
+                          Container(
+                            width: 1,
+                            height: 40,
+                            color: AppColors.borderSubtle,
+                          ),
+                          Expanded(
+                            child: _AttributeItem(
+                              icon: Icons.calendar_today_outlined,
+                              label: 'Listed',
+                              value: _formatDateShort(listing.createdAt),
+                            ),
+                          ),
                         ],
                       ),
                     ),
+                  ),
 
                   const SizedBox(height: AppSpacing.xxl),
 
@@ -496,38 +525,83 @@ class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
 
                   const SizedBox(height: AppSpacing.xxl),
 
-                  // Contact section
+                  // Owner section with profile link
                   Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.screenPadding),
                     child: AppSurface(
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withValues(alpha: 0.1),
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd),
-                            ),
-                            child: const Icon(
-                              Icons.person_rounded,
-                              color: AppColors.success,
+                          Text(
+                            'Property Owner',
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: AppColors.textSecondary,
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: AppSpacing.md),
+                          GestureDetector(
+                            onTap: () => context.push('/user/${listing.userId}'),
+                            child: Row(
                               children: [
-                                Text(
-                                  listing.ownerName ?? 'Property Owner',
-                                  style: Theme.of(context).textTheme.titleSmall,
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.success.withValues(alpha: 0.1),
+                                    borderRadius:
+                                        BorderRadius.circular(AppSpacing.radiusMd),
+                                  ),
+                                  child: listing.ownerAvatarPath != null
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                              AppSpacing.radiusMd),
+                                          child: Image.network(
+                                            service.getPhotoUrl(listing.ownerAvatarPath!),
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Center(
+                                              child: Text(
+                                                (listing.ownerName ?? 'O')[0].toUpperCase(),
+                                                style: const TextStyle(
+                                                  fontSize: 24,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.success,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Text(
+                                            (listing.ownerName ?? 'O')[0].toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 24,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.success,
+                                            ),
+                                          ),
+                                        ),
                                 ),
-                                Text(
-                                  'Listed ${_formatDate(listing.createdAt)}',
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        listing.ownerName ?? 'Property Owner',
+                                        style: Theme.of(context).textTheme.titleSmall,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Listed ${_formatDate(listing.createdAt)}',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: AppColors.textTertiary,
                                 ),
                               ],
                             ),
@@ -630,30 +704,60 @@ class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
       return '$months month${months > 1 ? 's' : ''} ago';
     }
   }
+
+  String _formatDateShort(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
+    if (diff.inDays == 0) {
+      return 'Today';
+    } else if (diff.inDays == 1) {
+      return 'Yesterday';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays}d ago';
+    } else if (diff.inDays < 30) {
+      final weeks = (diff.inDays / 7).floor();
+      return '${weeks}w ago';
+    } else {
+      final months = (diff.inDays / 30).floor();
+      return '${months}mo ago';
+    }
+  }
 }
 
-class _StatItem extends StatelessWidget {
-  const _StatItem({
+class _AttributeItem extends StatelessWidget {
+  const _AttributeItem({
     required this.icon,
     required this.label,
+    required this.value,
   });
 
   final IconData icon;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
         Icon(
           icon,
-          size: 16,
-          color: AppColors.textTertiary,
+          size: 20,
+          color: AppColors.success,
         ),
-        const SizedBox(width: 4),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 10,
+          ),
         ),
       ],
     );
