@@ -24,7 +24,7 @@ class EdgeAdminClient {
   /// This method:
   /// 1. Waits for auth recovery to complete (prevents Invalid JWT on page refresh)
   /// 2. Sends explicit Authorization header with access token
-  /// 3. Retries once on 401 after refreshing session
+  /// 3. Retries ONCE on 401 after refreshing session (if token actually changed)
   static Future<Map<String, dynamic>> invokeAdminEdge(
     String functionName, {
     Map<String, dynamic>? body,
@@ -43,6 +43,15 @@ class EdgeAdminClient {
       }
     }
     
+    // Fail fast if not authenticated
+    if (service.authReadyState == AuthReadyState.unauthenticated) {
+      throw EdgeAdminException(
+        401,
+        null,
+        'Not logged in. Please sign in.',
+      );
+    }
+    
     final client = Supabase.instance.client;
     final session = client.auth.currentSession;
 
@@ -54,12 +63,14 @@ class EdgeAdminClient {
       );
     }
 
+    final originalToken = session.accessToken;
+    
     try {
       return await _invokeOnce(
         client,
         functionName,
         body ?? {},
-        session.accessToken,
+        originalToken,
       );
     } on EdgeAdminException catch (e) {
       if (e.status != 401) rethrow;
@@ -70,8 +81,20 @@ class EdgeAdminClient {
       debugPrint('[EdgeAdminClient] Got 401, attempting session refresh...');
     }
     
-    final refresh = await client.auth.refreshSession();
-    final refreshedSession = refresh.session ?? client.auth.currentSession;
+    try {
+      await client.auth.refreshSession();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[EdgeAdminClient] Session refresh failed: $e');
+      }
+      throw EdgeAdminException(
+        401,
+        null,
+        'Session expired. Log out/in.',
+      );
+    }
+    
+    final refreshedSession = client.auth.currentSession;
 
     if (refreshedSession == null) {
       throw EdgeAdminException(
@@ -81,8 +104,20 @@ class EdgeAdminClient {
       );
     }
     
+    // Only retry if the token actually changed - otherwise we'll just get 401 again
+    if (refreshedSession.accessToken == originalToken) {
+      if (kDebugMode) {
+        debugPrint('[EdgeAdminClient] Token unchanged after refresh, not retrying');
+      }
+      throw EdgeAdminException(
+        401,
+        null,
+        'Session invalid. Log out/in.',
+      );
+    }
+    
     if (kDebugMode) {
-      debugPrint('[EdgeAdminClient] Session refreshed, retrying...');
+      debugPrint('[EdgeAdminClient] Session refreshed with new token, retrying...');
     }
 
     return _invokeOnce(
