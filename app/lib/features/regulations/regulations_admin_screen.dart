@@ -9,6 +9,7 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/data/us_states.dart';
 import 'package:shed/services/regulations_service.dart';
+import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -47,11 +48,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   List<DiscoveryRunItem> _discoveryItems = [];
   bool _isDiscoveryRunning = false;
   
+  // Auth state for gating admin access
+  bool _isAuthenticated = false;
+  bool _isAdmin = false;
+  bool _authChecked = false;
+  
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this); // Added Links tab
-    _loadData();
+    _checkAuthAndLoadData();
   }
   
   @override
@@ -60,11 +66,92 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     super.dispose();
   }
   
+  /// Check authentication and admin status before loading admin data.
+  Future<void> _checkAuthAndLoadData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _authChecked = false;
+    });
+    
+    try {
+      final supabaseService = SupabaseService.instance;
+      
+      // Wait for auth to be ready
+      if (!supabaseService.isAuthReady) {
+        await supabaseService.authReady;
+      }
+      
+      // Check authentication status
+      final isAuthenticated = supabaseService.authReadyState == AuthReadyState.authenticated;
+      final client = supabaseService.client;
+      final userId = client?.auth.currentUser?.id;
+      
+      if (!isAuthenticated || userId == null) {
+        if (mounted) {
+          setState(() {
+            _isAuthenticated = false;
+            _isAdmin = false;
+            _authChecked = true;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+      
+      // Check if user is admin
+      bool isAdmin = false;
+      try {
+        final response = await client!
+            .from('profiles')
+            .select('is_admin')
+            .eq('id', userId)
+            .maybeSingle();
+        isAdmin = response?['is_admin'] == true;
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[RegulationsAdmin] Error checking admin status: $e');
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _isAuthenticated = true;
+          _isAdmin = isAdmin;
+          _authChecked = true;
+        });
+      }
+      
+      // Only load admin data if authenticated and admin
+      if (isAdmin) {
+        await _loadData();
+      } else {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _authChecked = true;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
+    
+    // Guard: don't load if not authenticated or not admin
+    if (!_isAuthenticated || !_isAdmin) {
+      setState(() => _isLoading = false);
+      return;
+    }
     
     try {
       final service = ref.read(regulationsServiceProvider);
@@ -1026,9 +1113,248 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   List<Map<String, dynamic>> _getPortalLinksSeedData() {
     return _allStatesPortalLinks;
   }
+  
+  /// Build loading scaffold while checking auth
+  Widget _buildLoadingScaffold(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppColors.backgroundGradient,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                child: Row(
+                  children: [
+                    _BackButton(onTap: () => context.pop()),
+                    const SizedBox(width: AppSpacing.md),
+                    const Text(
+                      'Regulations Admin',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Expanded(
+                child: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  /// Build scaffold for unauthenticated users
+  Widget _buildNotAuthenticatedScaffold(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppColors.backgroundGradient,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                child: Row(
+                  children: [
+                    _BackButton(onTap: () => context.pop()),
+                    const SizedBox(width: AppSpacing.md),
+                    const Text(
+                      'Regulations Admin',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    margin: const EdgeInsets.all(AppSpacing.screenPadding),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.lock_outline_rounded,
+                          size: 48,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        const Text(
+                          'Login Required',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'Please log in to access admin tools.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => context.go('/auth'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                              ),
+                            ),
+                            child: const Text('Log In'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  /// Build scaffold for authenticated but non-admin users
+  Widget _buildNotAuthorizedScaffold(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppColors.backgroundGradient,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                child: Row(
+                  children: [
+                    _BackButton(onTap: () => context.pop()),
+                    const SizedBox(width: AppSpacing.md),
+                    const Text(
+                      'Regulations Admin',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    margin: const EdgeInsets.all(AppSpacing.screenPadding),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                      border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.admin_panel_settings_outlined,
+                          size: 48,
+                          color: AppColors.error,
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        const Text(
+                          'Not Authorized',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'You do not have admin access to this page.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: () => context.pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                              ),
+                              side: BorderSide(color: AppColors.border),
+                            ),
+                            child: const Text('Go Back'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Show auth gate if not yet checked, not authenticated, or not admin
+    if (!_authChecked || _isLoading && !_isAuthenticated) {
+      return _buildLoadingScaffold(context);
+    }
+    
+    if (!_isAuthenticated) {
+      return _buildNotAuthenticatedScaffold(context);
+    }
+    
+    if (!_isAdmin) {
+      return _buildNotAuthorizedScaffold(context);
+    }
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(

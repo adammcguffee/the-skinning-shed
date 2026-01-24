@@ -76,7 +76,34 @@ class EdgeAdminClient {
       if (e.status != 401) rethrow;
     }
 
-    // 401 received - try refreshing session and retry once
+    // 401 received - check if we can refresh before attempting
+    // Re-check current session (might have changed)
+    final currentSession = client.auth.currentSession;
+    
+    // Cannot refresh if no session or no refresh token
+    if (currentSession == null) {
+      if (kDebugMode) {
+        debugPrint('[EdgeAdminClient] Got 401, no session - cannot refresh');
+      }
+      throw EdgeAdminException(
+        401,
+        null,
+        'Not logged in. Please sign in.',
+      );
+    }
+    
+    final refreshToken = currentSession.refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('[EdgeAdminClient] Got 401, no refresh token - cannot refresh');
+      }
+      throw EdgeAdminException(
+        401,
+        null,
+        'Session cannot be refreshed. Please log in again.',
+      );
+    }
+    
     if (kDebugMode) {
       debugPrint('[EdgeAdminClient] Got 401, attempting session refresh...');
     }
@@ -90,7 +117,7 @@ class EdgeAdminClient {
       throw EdgeAdminException(
         401,
         null,
-        'Session expired. Log out/in.',
+        'Session expired. Please log in again.',
       );
     }
     
@@ -100,7 +127,7 @@ class EdgeAdminClient {
       throw EdgeAdminException(
         401,
         null,
-        'Session expired. Log out/in.',
+        'Session expired. Please log in again.',
       );
     }
     
@@ -112,7 +139,7 @@ class EdgeAdminClient {
       throw EdgeAdminException(
         401,
         null,
-        'Session invalid. Log out/in.',
+        'Session invalid. Please log in again.',
       );
     }
     

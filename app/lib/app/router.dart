@@ -60,36 +60,52 @@ class AuthNotifier extends ChangeNotifier {
   void _init() {
     // Wait for auth recovery before reading session
     _service.authReady.then((_) {
+      // Only set session and prefetch if truly authenticated
       if (_service.authReadyState == AuthReadyState.authenticated) {
         _session = _service.currentSession;
         if (_session != null) {
           _triggerLocationPrefetch();
         }
+      } else {
+        // Ensure session is null if not authenticated
+        _session = null;
       }
       _isRecovering = false;
       notifyListeners();
     });
     
-    // Listen for ongoing auth changes
+    // Listen for ongoing auth changes (AFTER recovery completes)
     _subscription = _service.authStateChanges?.listen((state) {
       final wasAuthenticated = _session != null;
       _session = state.session;
       
-      // If recovery finished, notify listeners
+      // Only notify and prefetch AFTER recovery is complete
+      // During recovery, auth events are handled by the .then() callback above
       if (!_isRecovering) {
         notifyListeners();
-      }
-      
-      // Trigger location prefetch when user becomes authenticated
-      if (!wasAuthenticated && _session != null) {
-        _triggerLocationPrefetch();
+        
+        // Trigger location prefetch when user becomes newly authenticated
+        // (not during initial recovery - that's handled above)
+        if (!wasAuthenticated && _session != null) {
+          _triggerLocationPrefetch();
+        }
       }
     });
   }
   
   /// Trigger location prefetch in background (non-blocking).
+  /// Only runs once per app session, and only when authenticated.
   void _triggerLocationPrefetch() {
     if (_didPrefetch) return;
+    
+    // Double-check we have a valid session before prefetching
+    if (_session == null) {
+      if (kDebugMode) {
+        debugPrint('[AuthNotifier] Skipping prefetch - no session');
+      }
+      return;
+    }
+    
     _didPrefetch = true;
     
     // Run in background - don't await, don't block
