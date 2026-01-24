@@ -60,10 +60,6 @@ class AuthNotifier extends ChangeNotifier {
     return false;
   }
   
-  /// Whether the dev bypass state has been loaded from SharedPreferences.
-  /// Used to avoid premature redirects before we know the dev bypass state.
-  bool get isDevBypassChecked => _devAuthNotifier.isChecked;
-  
   /// Whether currently using dev bypass (not real auth).
   bool get isDevBypass => 
       DevFlags.isDevBypassAuthEnabled && 
@@ -111,13 +107,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       // If not authenticated and not on auth page, redirect to auth
       if (!isAuthenticated && !isAuthRoute) {
-        // IMPORTANT: If dev bypass is enabled but not yet checked (async load
-        // from SharedPreferences), don't redirect yet. Wait for the check to
-        // complete to avoid a flash of the auth screen on app restart when
-        // dev bypass was previously enabled.
-        if (DevFlags.isDevBypassAuthEnabled && !authNotifier.isDevBypassChecked) {
-          return null; // Stay on current route until check completes
-        }
         return '/auth';
       }
       
