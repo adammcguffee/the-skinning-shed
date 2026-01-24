@@ -12,6 +12,9 @@ import '../features/land/land_create_screen.dart';
 import '../features/land/land_detail_screen.dart';
 import '../features/land/land_screen.dart';
 import '../features/post/post_screen.dart';
+import '../features/regulations/regulations_screen.dart';
+import '../features/regulations/regulations_admin_screen.dart';
+import '../features/regulations/state_regulations_screen.dart';
 import '../features/research/research_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/swap_shop/swap_shop_create_screen.dart';
@@ -200,7 +203,30 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: ResearchScreen(),
             ),
           ),
+          
+          // Regulations (Seasons & Limits)
+          GoRoute(
+            path: '/regulations',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: RegulationsScreen(),
+            ),
+          ),
         ],
+      ),
+      
+      // State regulations detail (outside shell for full screen)
+      GoRoute(
+        path: '/regulations/:stateCode',
+        builder: (context, state) {
+          final stateCode = state.pathParameters['stateCode']!;
+          return StateRegulationsScreen(stateCode: stateCode);
+        },
+      ),
+      
+      // Regulations admin (admin only)
+      GoRoute(
+        path: '/admin/regulations',
+        builder: (context, state) => const RegulationsAdminScreen(),
       ),
       
       // Post trophy (modal / full screen)

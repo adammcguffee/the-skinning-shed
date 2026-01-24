@@ -562,6 +562,24 @@ class _MoreSheet extends StatelessWidget {
               },
             ),
             _MoreSheetItem(
+              icon: Icons.gavel_outlined,
+              label: 'Regulations',
+              isSelected: false,
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/regulations');
+              },
+            ),
+            _MoreSheetItem(
+              icon: Icons.insights_outlined,
+              label: 'Research & Patterns',
+              isSelected: false,
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/research');
+              },
+            ),
+            _MoreSheetItem(
               icon: Icons.settings_outlined,
               label: 'Settings',
               isSelected: currentIndex == 5,

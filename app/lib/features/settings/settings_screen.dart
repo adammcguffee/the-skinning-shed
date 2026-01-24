@@ -1,9 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/auth_service.dart';
+import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+
+/// Provider to check if current user is admin.
+final isAdminProvider = FutureProvider<bool>((ref) async {
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return false;
+  
+  final userId = client.auth.currentUser?.id;
+  if (userId == null) return false;
+  
+  try {
+    final response = await client
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', userId)
+        .maybeSingle();
+    
+    return response?['is_admin'] == true;
+  } catch (e) {
+    return false;
+  }
+});
 
 /// ⚙️ SETTINGS SCREEN - 2025 PREMIUM
 class SettingsScreen extends ConsumerWidget {
@@ -113,6 +136,35 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+              ),
+
+              // Admin section (only visible to admins)
+              Consumer(
+                builder: (context, ref, child) {
+                  final isAdminAsync = ref.watch(isAdminProvider);
+                  
+                  return isAdminAsync.when(
+                    data: (isAdmin) {
+                      if (!isAdmin) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                      
+                      return SliverToBoxAdapter(
+                        child: _SettingsSection(
+                          title: 'Admin',
+                          children: [
+                            _SettingsItem(
+                              icon: Icons.gavel_outlined,
+                              title: 'Regulations Admin',
+                              subtitle: 'Review pending updates',
+                              onTap: () => context.push('/admin/regulations'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+                    error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+                  );
+                },
               ),
 
               // Sign out
