@@ -697,33 +697,31 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     
     return Column(
       children: [
-        // Summary row - wrapped to prevent overflow
+        // Summary row
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-          child: Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          child: Row(
             children: [
               _CoverageSummaryChip(
                 label: 'Approved',
                 count: totalApproved,
                 color: AppColors.success,
               ),
+              const SizedBox(width: AppSpacing.sm),
               _CoverageSummaryChip(
                 label: 'Pending',
                 count: totalPending,
                 color: AppColors.warning,
               ),
+              const SizedBox(width: AppSpacing.sm),
               _CoverageSummaryChip(
                 label: 'Missing',
                 count: totalMissing,
                 color: AppColors.error,
               ),
+              const Spacer(),
               // Filter toggle
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     'Missing only',
@@ -760,7 +758,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                       fontWeight: FontWeight.w600,
                       color: AppColors.textSecondary,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               )),
@@ -1093,7 +1090,6 @@ class _PendingRegulationCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: AppColors.textPrimary,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   // Confidence badge
@@ -1232,11 +1228,9 @@ class _PendingRegulationCard extends StatelessWidget {
               
               const SizedBox(height: AppSpacing.md),
               
-              // Actions - Wrap to prevent overflow on small screens
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                alignment: WrapAlignment.end,
+              // Actions
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
                     onPressed: onReject,
@@ -1246,6 +1240,7 @@ class _PendingRegulationCard extends StatelessWidget {
                       foregroundColor: AppColors.error,
                     ),
                   ),
+                  const SizedBox(width: AppSpacing.sm),
                   ElevatedButton.icon(
                     onPressed: pending.proposedSummary != null ? onApprove : null,
                     icon: const Icon(Icons.check_rounded, size: 18),

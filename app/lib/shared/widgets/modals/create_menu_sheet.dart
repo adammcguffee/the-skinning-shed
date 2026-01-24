@@ -369,17 +369,14 @@ class _CreateOptionState extends State<_CreateOption> {
                   children: [
                     Row(
                       children: [
-                        Flexible(
-                          child: Text(
-                            widget.title,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: showHighlight 
-                                  ? widget.iconColor 
-                                  : AppColors.textPrimary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                        Text(
+                          widget.title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: showHighlight 
+                                ? widget.iconColor 
+                                : AppColors.textPrimary,
                           ),
                         ),
                         if (widget.isHighlighted) ...[

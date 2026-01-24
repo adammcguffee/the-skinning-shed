@@ -99,16 +99,13 @@ class _AppButtonPrimaryState extends State<AppButtonPrimary> {
                     Icon(widget.icon, size: 18, color: textColor),
                     const SizedBox(width: 8),
                   ],
-                  Flexible(
-                    child: Text(
-                      widget.label,
-                      style: TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w600,
-                        color: textColor,
-                        letterSpacing: 0.1,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.w600,
+                      color: textColor,
+                      letterSpacing: 0.1,
                     ),
                   ),
                 ],
@@ -190,15 +187,12 @@ class _AppButtonSecondaryState extends State<AppButtonSecondary> {
                     Icon(widget.icon, size: 18, color: AppColors.textPrimary),
                     const SizedBox(width: 8),
                   ],
-                  Flexible(
-                    child: Text(
-                      widget.label,
-                      style: TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ],
