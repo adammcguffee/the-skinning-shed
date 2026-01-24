@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/messaging_service.dart';
+import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/swap_shop_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -89,6 +91,39 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
       }
     } else {
       _showContactInfo(contactValue, 'Contact');
+    }
+  }
+
+  Future<void> _messageSeller() async {
+    if (_listing == null) return;
+    
+    final isAuthenticated = ref.read(isAuthenticatedProvider);
+    if (!isAuthenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to send messages')),
+      );
+      context.push('/auth');
+      return;
+    }
+    
+    try {
+      final messagingService = ref.read(messagingServiceProvider);
+      final conversationId = await messagingService.getOrCreateDM(
+        otherUserId: _listing!.userId,
+        subjectType: 'swap',
+        subjectId: _listing!.id,
+        subjectTitle: _listing!.title,
+      );
+      
+      if (mounted) {
+        context.push('/messages/$conversationId');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     }
   }
 
@@ -516,11 +551,20 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: AppSpacing.md),
+            const SizedBox(width: AppSpacing.sm),
+
+            // Message button
+            AppButtonSecondary(
+              label: 'Message',
+              icon: Icons.chat_bubble_outline_rounded,
+              onPressed: _messageSeller,
+              size: AppButtonSize.medium,
+            ),
+            const SizedBox(width: AppSpacing.sm),
 
             // Contact button
             AppButtonPrimary(
-              label: 'Contact Seller',
+              label: listing.contactMethod == 'email' ? 'Email' : 'Call',
               icon: listing.contactMethod == 'email'
                   ? Icons.email_outlined
                   : Icons.phone_outlined,

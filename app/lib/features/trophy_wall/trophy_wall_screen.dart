@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/follow_service.dart';
+import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
@@ -424,18 +425,27 @@ class _ProfileHeader extends ConsumerWidget {
                     ),
                   ),
 
-                  // Edit or Follow button
+                  // Edit or Follow/Message buttons
                   if (isOwnProfile)
                     _EditProfileButton()
                   else if (targetUserId != null)
-                    _FollowButton(
-                      isFollowing: isFollowing,
-                      isLoading: followState?.isLoading ?? false,
-                      onTap: () {
-                        ref
-                            .read(followStateNotifierProvider(targetUserId!).notifier)
-                            .toggleFollow();
-                      },
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _MessageButton(
+                          targetUserId: targetUserId!,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        _FollowButton(
+                          isFollowing: isFollowing,
+                          isLoading: followState?.isLoading ?? false,
+                          onTap: () {
+                            ref
+                                .read(followStateNotifierProvider(targetUserId!).notifier)
+                                .toggleFollow();
+                          },
+                        ),
+                      ],
                     ),
                 ],
               ),
@@ -541,6 +551,106 @@ class _ProfileHeader extends ConsumerWidget {
       child: _FollowListContent(
         userId: userId,
         showFollowers: showFollowers,
+      ),
+    );
+  }
+}
+
+class _MessageButton extends ConsumerStatefulWidget {
+  const _MessageButton({required this.targetUserId});
+  
+  final String targetUserId;
+  
+  @override
+  ConsumerState<_MessageButton> createState() => _MessageButtonState();
+}
+
+class _MessageButtonState extends ConsumerState<_MessageButton> {
+  bool _isHovered = false;
+  bool _isLoading = false;
+
+  Future<void> _openMessage() async {
+    final isAuthenticated = ref.read(isAuthenticatedProvider);
+    if (!isAuthenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to send messages')),
+      );
+      context.push('/auth');
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final messagingService = ref.read(messagingServiceProvider);
+      final conversationId = await messagingService.getOrCreateDM(
+        otherUserId: widget.targetUserId,
+      );
+      
+      if (mounted) {
+        context.push('/messages/$conversationId');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: _isLoading ? null : _openMessage,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: _isHovered 
+                ? AppColors.accent.withValues(alpha: 0.15)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: _isHovered ? AppColors.accent : AppColors.borderSubtle,
+            ),
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 16,
+                      color: _isHovered ? AppColors.accent : AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Message',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _isHovered ? AppColors.accent : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
