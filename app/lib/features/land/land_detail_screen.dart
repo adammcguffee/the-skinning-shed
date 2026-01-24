@@ -1,17 +1,199 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/land_listing_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 🏞️ LAND DETAIL SCREEN - 2025 PREMIUM
-class LandDetailScreen extends StatelessWidget {
+class LandDetailScreen extends ConsumerStatefulWidget {
   const LandDetailScreen({super.key, required this.landId});
 
   final String landId;
 
   @override
+  ConsumerState<LandDetailScreen> createState() => _LandDetailScreenState();
+}
+
+class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
+  LandListing? _listing;
+  bool _isLoading = true;
+  String? _error;
+  int _currentPhotoIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadListing();
+  }
+
+  Future<void> _loadListing() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final service = ref.read(landListingServiceProvider);
+      final listing = await service.fetchListing(widget.landId);
+
+      if (listing == null) {
+        setState(() {
+          _error = 'Listing not found';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _listing = listing;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _contactOwner() async {
+    if (_listing == null) return;
+
+    final contactMethod = _listing!.contactMethod;
+    final contactValue = _listing!.contactValue;
+
+    if (contactMethod == 'email') {
+      final uri = Uri(
+        scheme: 'mailto',
+        path: contactValue,
+        query: 'subject=Interested in: ${_listing!.title}',
+      );
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        _showContactInfo(contactValue, 'Email');
+      }
+    } else if (contactMethod == 'phone') {
+      final uri = Uri(scheme: 'tel', path: contactValue);
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        _showContactInfo(contactValue, 'Phone');
+      }
+    } else {
+      _showContactInfo(contactValue, 'Contact');
+    }
+  }
+
+  void _showContactInfo(String value, String label) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy_rounded),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: value));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Copied to clipboard'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null || _listing == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: Center(
+          child: AppErrorState(
+            message: _error ?? 'Listing not found',
+            onRetry: _loadListing,
+          ),
+        ),
+      );
+    }
+
+    final listing = _listing!;
+    final service = ref.read(landListingServiceProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
@@ -25,7 +207,7 @@ class LandDetailScreen extends StatelessWidget {
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                 ),
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -37,36 +219,82 @@ class LandDetailScreen extends StatelessWidget {
                 icon: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                   ),
                   child: const Icon(Icons.share_outlined, color: Colors.white),
                 ),
-                onPressed: () {},
-              ),
-              IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: const Icon(Icons.bookmark_outline_rounded, color: Colors.white),
-                ),
-                onPressed: () {},
+                onPressed: () {
+                  final url = 'https://theskinningshed.com/land/${listing.id}';
+                  Clipboard.setData(ClipboardData(text: url));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Link copied to clipboard'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                color: AppColors.backgroundAlt,
-                child: const Center(
-                  child: Icon(
-                    Icons.landscape_outlined,
-                    size: 64,
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ),
+              background: listing.photos.isEmpty
+                  ? Container(
+                      color: AppColors.backgroundAlt,
+                      child: const Center(
+                        child: Icon(
+                          Icons.landscape_outlined,
+                          size: 64,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    )
+                  : Stack(
+                      children: [
+                        PageView.builder(
+                          itemCount: listing.photos.length,
+                          onPageChanged: (i) =>
+                              setState(() => _currentPhotoIndex = i),
+                          itemBuilder: (context, index) {
+                            return Image.network(
+                              service.getPhotoUrl(listing.photos[index]),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: AppColors.backgroundAlt,
+                                child: const Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 48,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        if (listing.photos.length > 1)
+                          Positioned(
+                            bottom: 16,
+                            left: 0,
+                            right: 0,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(
+                                listing.photos.length,
+                                (index) => Container(
+                                  width: index == _currentPhotoIndex ? 20 : 8,
+                                  height: 8,
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 2),
+                                  decoration: BoxDecoration(
+                                    color: index == _currentPhotoIndex
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
             ),
           ),
 
@@ -85,29 +313,53 @@ class LandDetailScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Price badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                          ),
-                          child: Text(
-                            '\$2,500/season',
-                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        // Type and price badges
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.textTertiary,
+                                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                              ),
+                              child: Text(
+                                listing.type == 'lease' ? 'FOR LEASE' : 'FOR SALE',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.success,
+                                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                              ),
+                              child: Text(
+                                listing.priceDisplay,
+                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
                                   color: AppColors.textInverse,
                                   fontWeight: FontWeight.w600,
                                 ),
-                          ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: AppSpacing.md),
 
                         // Title
                         Text(
-                          '500 Acre Deer Lease',
+                          listing.title,
                           style: Theme.of(context).textTheme.headlineMedium,
                         ),
                         const SizedBox(height: AppSpacing.sm),
@@ -122,7 +374,7 @@ class LandDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Hill Country, Texas',
+                              listing.locationDisplay,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
@@ -132,104 +384,85 @@ class LandDetailScreen extends StatelessWidget {
                   ),
 
                   // Quick stats
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                    child: Row(
-                      children: [
-                        _StatItem(
-                          icon: Icons.straighten_outlined,
-                          label: '500 acres',
-                        ),
-                        const SizedBox(width: AppSpacing.lg),
-                        _StatItem(
-                          icon: Icons.people_outline_rounded,
-                          label: '4 hunters max',
-                        ),
-                        const SizedBox(width: AppSpacing.lg),
-                        _StatItem(
-                          icon: Icons.calendar_today_outlined,
-                          label: 'Full season',
-                        ),
-                      ],
+                  if (listing.acreage != null)
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                      child: Row(
+                        children: [
+                          _StatItem(
+                            icon: Icons.straighten_outlined,
+                            label: '${listing.acreage!.toStringAsFixed(0)} acres',
+                          ),
+                          if (listing.pricePerAcre != null) ...[
+                            const SizedBox(width: AppSpacing.lg),
+                            _StatItem(
+                              icon: Icons.attach_money_rounded,
+                              label: '\$${listing.pricePerAcre!.toStringAsFixed(0)}/acre',
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
 
                   const SizedBox(height: AppSpacing.xxl),
 
                   // Game available
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Game Available',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        Wrap(
-                          spacing: AppSpacing.sm,
-                          runSpacing: AppSpacing.sm,
-                          children: [
-                            AppCategoryChip(category: 'Whitetail'),
-                            AppCategoryChip(category: 'Turkey'),
-                            AppChip(label: 'Hog'),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xxl),
-
-                  // Description
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                    child: AppSurface(
+                  if (listing.speciesTags != null && listing.speciesTags!.isNotEmpty)
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Description',
-                            style: Theme.of(context).textTheme.titleSmall,
+                            'Game Available',
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            'Beautiful 500-acre property in the heart of Texas Hill Country. Excellent whitetail deer population with multiple mature bucks on camera. Property features rolling hills, oak motts, and several food plots. Includes a comfortable cabin with AC/heat, running water, and electricity. Perfect for a small group of serious hunters.',
-                            style: Theme.of(context).textTheme.bodyMedium,
+                          const SizedBox(height: AppSpacing.md),
+                          Wrap(
+                            spacing: AppSpacing.sm,
+                            runSpacing: AppSpacing.sm,
+                            children: listing.speciesTags!
+                                .map((tag) => AppChip(label: tag))
+                                .toList(),
                           ),
                         ],
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: AppSpacing.xxl),
+                  if (listing.speciesTags != null && listing.speciesTags!.isNotEmpty)
+                    const SizedBox(height: AppSpacing.xxl),
 
-                  // Amenities
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Amenities',
-                          style: Theme.of(context).textTheme.titleMedium,
+                  // Description
+                  if (listing.description != null && listing.description!.isNotEmpty)
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                      child: AppSurface(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Description',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              listing.description!,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: AppSpacing.md),
-                        _AmenityItem(icon: Icons.cabin_rounded, label: 'Cabin'),
-                        _AmenityItem(icon: Icons.water_drop_outlined, label: 'Running water'),
-                        _AmenityItem(icon: Icons.bolt_outlined, label: 'Electricity'),
-                        _AmenityItem(icon: Icons.local_parking_outlined, label: 'Parking'),
-                        _AmenityItem(icon: Icons.grass_outlined, label: 'Food plots'),
-                      ],
+                      ),
                     ),
-                  ),
 
                   const SizedBox(height: AppSpacing.xxl),
 
-                  // Contact
+                  // Contact section
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.screenPadding),
                     child: AppSurface(
                       child: Row(
                         children: [
@@ -237,12 +470,13 @@ class LandDetailScreen extends StatelessWidget {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                              color: AppColors.success.withValues(alpha: 0.1),
+                              borderRadius:
+                                  BorderRadius.circular(AppSpacing.radiusMd),
                             ),
                             child: const Icon(
                               Icons.person_rounded,
-                              color: AppColors.primary,
+                              color: AppColors.success,
                             ),
                           ),
                           const SizedBox(width: AppSpacing.md),
@@ -251,35 +485,103 @@ class LandDetailScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Listed by John Smith',
+                                  listing.ownerName ?? 'Property Owner',
                                   style: Theme.of(context).textTheme.titleSmall,
                                 ),
                                 Text(
-                                  'Member since 2022',
+                                  'Listed ${_formatDate(listing.createdAt)}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ],
                             ),
-                          ),
-                          AppButtonPrimary(
-                            label: 'Contact',
-                            icon: Icons.message_outlined,
-                            onPressed: () {},
-                            size: AppButtonSize.small,
                           ),
                         ],
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 120),
                 ],
               ),
             ),
           ),
         ],
       ),
+      
+      // Contact button
+      bottomNavigationBar: Container(
+        padding: EdgeInsets.only(
+          left: AppSpacing.screenPadding,
+          right: AppSpacing.screenPadding,
+          top: AppSpacing.md,
+          bottom: MediaQuery.of(context).padding.bottom + AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border(
+            top: BorderSide(color: AppColors.borderSubtle),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    listing.priceDisplay,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (listing.acreage != null)
+                    Text(
+                      '${listing.acreage!.toStringAsFixed(0)} acres',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            AppButtonPrimary(
+              label: 'Contact Owner',
+              icon: listing.contactMethod == 'email'
+                  ? Icons.email_outlined
+                  : Icons.phone_outlined,
+              onPressed: _contactOwner,
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
+    if (diff.inDays == 0) {
+      return 'today';
+    } else if (diff.inDays == 1) {
+      return 'yesterday';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays} days ago';
+    } else if (diff.inDays < 30) {
+      final weeks = (diff.inDays / 7).floor();
+      return '$weeks week${weeks > 1 ? 's' : ''} ago';
+    } else {
+      final months = (diff.inDays / 30).floor();
+      return '$months month${months > 1 ? 's' : ''} ago';
+    }
   }
 }
 
@@ -307,45 +609,6 @@ class _StatItem extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyMedium,
         ),
       ],
-    );
-  }
-}
-
-class _AmenityItem extends StatelessWidget {
-  const _AmenityItem({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: Icon(
-              icon,
-              size: 16,
-              color: AppColors.success,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        ],
-      ),
     );
   }
 }
