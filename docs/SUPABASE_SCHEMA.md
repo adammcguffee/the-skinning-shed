@@ -12,6 +12,7 @@
 | `trophy_photos` | Multiple photos per trophy | ✅ | 0 |
 | `weather_snapshots` | Historical weather at harvest | ✅ | 0 |
 | `moon_snapshots` | Moon phase at harvest | ✅ | 0 |
+| `weather_favorite_locations` | User's favorite weather locations | ✅ | 0 |
 | `analytics_buckets` | Denormalized research data | ✅ | 0 |
 | `land_listings` | Land for lease/sale | ✅ | 0 |
 | `land_photos` | Land listing photos | ✅ | 0 |
@@ -155,6 +156,22 @@ Buy/Sell/Trade classifieds.
 | `status` | listing_status | |
 | `expires_at` | TIMESTAMPTZ | Auto-expiration |
 
+### weather_favorite_locations
+
+User's saved weather location favorites. Syncs across web/mobile.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `user_id` | UUID (FK) | → auth.users.id |
+| `state_code` | TEXT | 2-letter state code |
+| `county_name` | TEXT | Full county name |
+| `county_fips` | TEXT | 5-digit FIPS code (optional) |
+| `label` | TEXT | Display label e.g. "Jefferson Co, AL" |
+| `sort_order` | INT | User ordering |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | |
+
 ---
 
 ## RLS Policies Summary
@@ -185,6 +202,10 @@ Buy/Sell/Trade classifieds.
 ### moderation_reports
 - ✅ Users can create reports
 - ✅ Users can view their own reports
+
+### weather_favorite_locations
+- ✅ Users can CRUD their own favorites
+- ✅ User-scoped via RLS (auth.uid() = user_id)
 
 ### Storage (all buckets)
 - ✅ Public read

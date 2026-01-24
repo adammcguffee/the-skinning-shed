@@ -107,6 +107,12 @@ Defined in `app/lib/app/theme/app_colors.dart`:
 
 ## Weather Screen Features
 
+- **Auto-Location Detection**: Automatically detects user's location on first visit (geolocation → nearest county)
+- **Quick Location Chips**: Local, Recent, and Favorite location shortcuts
+- **Synced Favorites**: User's favorite locations sync across web/mobile via Supabase
+- **Star Toggle**: One-tap add/remove favorites
+- **Source Labels**: Shows how location was selected (Local, Last viewed, Favorite, Manual)
+- **Privacy-Safe**: Only stores county identifiers, never GPS coordinates
 - **Hourly Cards**: time, temp, precip %, wind speed, wind direction (arrow + N/NE/E/etc)
 - **Clickable Detail Sheet**: feels like, wind/gusts/direction, humidity, pressure, visibility, precip, condition
 - **Wind Section**: Compass visualization with speed/direction/gusts

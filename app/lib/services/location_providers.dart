@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/us_counties.dart';
 import '../data/us_states.dart';
 import 'location_repository.dart';
 

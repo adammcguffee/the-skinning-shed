@@ -36,6 +36,10 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   shared_preferences: ^2.3.2
   
+  # Location
+  geolocator: ^13.0.2
+  geolocator_web: ^4.1.1
+  
   # UI
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1

@@ -5,12 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/data/us_states.dart';
-import 'package:shed/services/location_providers.dart';
+import 'package:shed/services/location_service.dart';
+import 'package:shed/services/supabase_service.dart';
+import 'package:shed/services/weather_favorites_service.dart';
+import 'package:shed/services/weather_providers.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// 🌤️ WEATHER SCREEN - 2025 CINEMATIC DARK THEME
 ///
 /// Premium weather with:
+/// - Auto-detect local weather (geolocation)
+/// - Quick location chips (Local, Last Viewed, Favorites)
+/// - Synced favorites via Supabase
 /// - Hourly forecast (scrollable)
 /// - Wind speed, direction, gusts
 /// - Temperature & precipitation
@@ -26,19 +32,115 @@ class WeatherScreen extends ConsumerStatefulWidget {
 class _WeatherScreenState extends ConsumerState<WeatherScreen> {
   USState? _selectedState;
   String? _selectedCounty;
+  String? _selectedCountyFips;
+  bool _didInit = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize location on first build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeLocation();
+    });
+  }
+
+  Future<void> _initializeLocation() async {
+    if (_didInit) return;
+    _didInit = true;
+    
+    // Initialize selected location (will try lastViewed then geolocation)
+    await ref.read(selectedLocationProvider.notifier).initializeLocation();
+    
+    // Fetch favorites if authenticated
+    if (ref.read(isAuthenticatedProvider)) {
+      await ref.read(weatherFavoritesProvider.notifier).fetchFavorites();
+    }
+  }
+
+  void _syncFromProviderState() {
+    final locationState = ref.read(selectedLocationProvider);
+    final selection = locationState.selection;
+    
+    if (selection != null) {
+      final state = USStates.byCode(selection.stateCode);
+      if (state != null && (_selectedState != state || _selectedCounty != selection.countyName)) {
+        setState(() {
+          _selectedState = state;
+          _selectedCounty = selection.countyName;
+          _selectedCountyFips = selection.countyFips;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleManualSelection(USState? state, String? county, String? fips) async {
+    if (state != null && county != null) {
+      final selection = CountySelection(
+        stateCode: state.code,
+        stateName: state.name,
+        countyName: county,
+        countyFips: fips,
+      );
+      await ref.read(selectedLocationProvider.notifier).setManualSelection(selection);
+    }
+  }
+
+  Future<void> _handleFavoriteSelection(WeatherFavoriteLocation favorite) async {
+    final stateName = USStates.byCode(favorite.stateCode)?.name ?? favorite.stateCode;
+    final selection = CountySelection(
+      stateCode: favorite.stateCode,
+      stateName: stateName,
+      countyName: favorite.countyName,
+      countyFips: favorite.countyFips,
+    );
+    await ref.read(selectedLocationProvider.notifier).setFavoriteSelection(selection);
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
+    
+    // Watch provider state and sync local state
+    final locationState = ref.watch(selectedLocationProvider);
+    final favoritesState = ref.watch(weatherFavoritesProvider);
+    final isAuthenticated = ref.watch(isAuthenticatedProvider);
+    final isFavorite = ref.watch(isCurrentLocationFavoriteProvider);
+    
+    // Sync local dropdown state from provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncFromProviderState();
+    });
 
     return CustomScrollView(
       slivers: [
         // Banner header is now rendered by AppScaffold
 
-        // Header
+        // Header with favorite toggle
         SliverToBoxAdapter(
-          child: _buildHeader(context, isWide),
+          child: _buildHeader(
+            context,
+            isWide,
+            locationState: locationState,
+            isFavorite: isFavorite,
+            isAuthenticated: isAuthenticated,
+          ),
+        ),
+
+        // Quick location chips
+        SliverToBoxAdapter(
+          child: _QuickLocationsRow(
+            favorites: favoritesState.favorites,
+            isAuthenticated: isAuthenticated,
+            isLoading: locationState.isLoading,
+            onLocalTap: () async {
+              await ref.read(selectedLocationProvider.notifier).detectLocalLocation();
+            },
+            onLastViewedTap: () async {
+              await ref.read(selectedLocationProvider.notifier).loadLastViewed();
+            },
+            onFavoriteTap: _handleFavoriteSelection,
+          ),
         ),
 
         // Location selector
@@ -46,20 +148,38 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
           child: _LocationSelector(
             selectedState: _selectedState,
             selectedCounty: _selectedCounty,
+            selectedCountyFips: _selectedCountyFips,
             onStateChanged: (state) {
               setState(() {
                 _selectedState = state;
                 _selectedCounty = null;
+                _selectedCountyFips = null;
               });
             },
-            onCountyChanged: (county) {
-              setState(() => _selectedCounty = county);
+            onCountyChanged: (county, fips) async {
+              setState(() {
+                _selectedCounty = county;
+                _selectedCountyFips = fips;
+              });
+              await _handleManualSelection(_selectedState, county, fips);
             },
           ),
         ),
 
+        // Loading state for location detection
+        if (locationState.isLoading)
+          SliverToBoxAdapter(
+            child: _LocationLoadingIndicator(),
+          ),
+
         // Weather content
-        if (_selectedState != null && _selectedCounty != null) ...[
+        if (_selectedState != null && _selectedCounty != null && !locationState.isLoading) ...[
+          // Source label
+          if (locationState.source != null)
+            SliverToBoxAdapter(
+              child: _SourceLabel(source: locationState.source!),
+            ),
+
           // Current conditions hero
           SliverToBoxAdapter(
             child: _CurrentConditionsHero(),
@@ -84,7 +204,7 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
           SliverToBoxAdapter(
             child: _HuntingTools(),
           ),
-        ] else
+        ] else if (!locationState.isLoading)
           SliverToBoxAdapter(
             child: _LocationPrompt(),
           ),
@@ -97,7 +217,16 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, bool isWide) {
+  Widget _buildHeader(
+    BuildContext context,
+    bool isWide, {
+    required SelectedLocationState locationState,
+    required bool isFavorite,
+    required bool isAuthenticated,
+  }) {
+    final selection = locationState.selection;
+    final hasSelection = selection != null;
+    
     return Container(
       padding: const EdgeInsets.only(
         bottom: AppSpacing.md,
@@ -137,8 +266,8 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
                   ),
                 ),
                 Text(
-                  _selectedState != null && _selectedCounty != null
-                      ? '$_selectedCounty, ${_selectedState!.name}'
+                  hasSelection
+                      ? selection.fullName
                       : 'Select a location',
                   style: const TextStyle(
                     fontSize: 14,
@@ -146,6 +275,368 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          
+          // Favorite toggle (only show when authenticated and has selection)
+          if (isAuthenticated && hasSelection) ...[
+            const SizedBox(width: AppSpacing.sm),
+            _FavoriteToggle(
+              isFavorite: isFavorite,
+              onToggle: () async {
+                if (isFavorite) {
+                  final removed = await ref
+                      .read(weatherFavoritesProvider.notifier)
+                      .removeFavoriteBySelection(selection);
+                  if (removed && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Removed from favorites'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                } else {
+                  final added = await ref
+                      .read(weatherFavoritesProvider.notifier)
+                      .addFavorite(selection);
+                  if (added && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Added to favorites'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FAVORITE TOGGLE
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _FavoriteToggle extends StatefulWidget {
+  const _FavoriteToggle({
+    required this.isFavorite,
+    required this.onToggle,
+  });
+  
+  final bool isFavorite;
+  final VoidCallback onToggle;
+  
+  @override
+  State<_FavoriteToggle> createState() => _FavoriteToggleState();
+}
+
+class _FavoriteToggleState extends State<_FavoriteToggle> {
+  bool _isLoading = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _isLoading ? null : () async {
+          setState(() => _isLoading = true);
+          widget.onToggle();
+          // Brief delay to prevent rapid tapping
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) setState(() => _isLoading = false);
+        },
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: widget.isFavorite
+                ? AppColors.accent.withOpacity(0.15)
+                : AppColors.surface,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: widget.isFavorite
+                  ? AppColors.accent.withOpacity(0.3)
+                  : AppColors.borderSubtle,
+            ),
+          ),
+          child: _isLoading
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(AppColors.accent),
+                  ),
+                )
+              : Icon(
+                  widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                  size: 24,
+                  color: widget.isFavorite ? AppColors.accent : AppColors.textSecondary,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUICK LOCATIONS ROW
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _QuickLocationsRow extends StatelessWidget {
+  const _QuickLocationsRow({
+    required this.favorites,
+    required this.isAuthenticated,
+    required this.isLoading,
+    required this.onLocalTap,
+    required this.onLastViewedTap,
+    required this.onFavoriteTap,
+  });
+  
+  final List<WeatherFavoriteLocation> favorites;
+  final bool isAuthenticated;
+  final bool isLoading;
+  final VoidCallback onLocalTap;
+  final VoidCallback onLastViewedTap;
+  final ValueChanged<WeatherFavoriteLocation> onFavoriteTap;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.sm,
+      ),
+      child: SizedBox(
+        height: 36,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            // Local chip (always visible)
+            _QuickLocationChip(
+              icon: Icons.my_location_rounded,
+              label: 'Local',
+              onTap: isLoading ? null : onLocalTap,
+              isLoading: isLoading,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            
+            // Last Viewed chip
+            _QuickLocationChip(
+              icon: Icons.history_rounded,
+              label: 'Recent',
+              onTap: onLastViewedTap,
+            ),
+            
+            // Favorite chips (only if authenticated and has favorites)
+            if (isAuthenticated && favorites.isNotEmpty) ...[
+              const SizedBox(width: AppSpacing.sm),
+              Container(
+                width: 1,
+                height: 24,
+                margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                color: AppColors.borderSubtle,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              ...favorites.map((fav) => Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
+                child: _QuickLocationChip(
+                  icon: Icons.star_rounded,
+                  label: fav.label,
+                  onTap: () => onFavoriteTap(fav),
+                  color: AppColors.accent,
+                ),
+              )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickLocationChip extends StatefulWidget {
+  const _QuickLocationChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+    this.isLoading = false,
+  });
+  
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final Color? color;
+  final bool isLoading;
+  
+  @override
+  State<_QuickLocationChip> createState() => _QuickLocationChipState();
+}
+
+class _QuickLocationChipState extends State<_QuickLocationChip> {
+  bool _isHovered = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = widget.color ?? AppColors.primary;
+    final isEnabled = widget.onTap != null && !widget.isLoading;
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isEnabled ? widget.onTap : null,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: _isHovered && isEnabled
+                  ? effectiveColor.withOpacity(0.12)
+                  : AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              border: Border.all(
+                color: _isHovered && isEnabled
+                    ? effectiveColor.withOpacity(0.3)
+                    : AppColors.borderSubtle,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.isLoading)
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(effectiveColor),
+                    ),
+                  )
+                else
+                  Icon(
+                    widget.icon,
+                    size: 16,
+                    color: isEnabled ? effectiveColor : AppColors.textTertiary,
+                  ),
+                const SizedBox(width: 6),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isEnabled ? AppColors.textPrimary : AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOCATION LOADING INDICATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _LocationLoadingIndicator extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(AppColors.accent),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            const Text(
+              'Detecting your location...',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOURCE LABEL
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _SourceLabel extends StatelessWidget {
+  const _SourceLabel({required this.source});
+  
+  final SelectionSource source;
+  
+  @override
+  Widget build(BuildContext context) {
+    final (icon, text, color) = switch (source) {
+      SelectionSource.local => (
+        Icons.my_location_rounded,
+        'Local (near you)',
+        AppColors.success,
+      ),
+      SelectionSource.lastViewed => (
+        Icons.history_rounded,
+        'Last viewed location',
+        AppColors.textSecondary,
+      ),
+      SelectionSource.favorite => (
+        Icons.star_rounded,
+        'Favorite',
+        AppColors.accent,
+      ),
+      SelectionSource.manual => (
+        Icons.touch_app_rounded,
+        'Selected',
+        AppColors.textSecondary,
+      ),
+    };
+    
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: AppSpacing.screenPadding,
+        right: AppSpacing.screenPadding,
+        bottom: AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -159,14 +650,16 @@ class _LocationSelector extends ConsumerWidget {
   const _LocationSelector({
     required this.selectedState,
     required this.selectedCounty,
+    required this.selectedCountyFips,
     required this.onStateChanged,
     required this.onCountyChanged,
   });
 
   final USState? selectedState;
   final String? selectedCounty;
+  final String? selectedCountyFips;
   final ValueChanged<USState?> onStateChanged;
-  final ValueChanged<String?> onCountyChanged;
+  final void Function(String? county, String? fips) onCountyChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -182,8 +675,16 @@ class _LocationSelector extends ConsumerWidget {
         child: LocationSelector(
           selectedState: selectedState,
           selectedCounty: selectedCounty,
+          selectedCountyFips: selectedCountyFips,
           onStateChanged: onStateChanged,
-          onCountyChanged: onCountyChanged,
+          onCountyChanged: (county) => onCountyChanged(county, null),
+          onCountyChangedWithFips: (selected) {
+            if (selected != null) {
+              onCountyChanged(selected.name, selected.fips);
+            } else {
+              onCountyChanged(null, null);
+            }
+          },
         ),
       ),
     );
