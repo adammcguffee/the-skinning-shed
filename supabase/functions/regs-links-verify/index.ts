@@ -161,6 +161,62 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    // Create client with user's JWT to verify auth
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Not authenticated',
+        error_code: 'NO_AUTH',
+        hint: 'Please log in to access admin functions.',
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Use anon key + user JWT to verify the user
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+    
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid or expired session',
+        error_code: 'INVALID_SESSION',
+        hint: 'Your session has expired. Please log out and log back in.',
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Check if user is admin
+    const { data: profile, error: profileError } = await supabaseAuth
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single();
+    
+    if (profileError || !profile?.is_admin) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Admin access required',
+        error_code: 'NOT_ADMIN',
+        hint: 'This function is restricted to administrators.',
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Use service role for actual operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false }
     });

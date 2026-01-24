@@ -1006,12 +1006,12 @@ class RegulationsService {
   /// Verify portal links (checks HTTP status of all URLs).
   Future<Map<String, dynamic>> verifyPortalLinks() async {
     final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
+    if (client == null) throw Exception('Not connected to Supabase');
     
     final response = await client.functions.invoke('regs-links-verify', body: {});
     
     if (response.status != 200) {
-      throw Exception('Failed to verify links: ${response.data}');
+      throw _parseEdgeFunctionError(response.status, response.data, 'verify links');
     }
     
     return response.data as Map<String, dynamic>;
@@ -1021,7 +1021,7 @@ class RegulationsService {
   /// Uses regs-discover-official to crawl state_official_roots domains.
   Future<Map<String, dynamic>> discoverOfficialLinks({int limit = 5, int offset = 0}) async {
     final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
+    if (client == null) throw Exception('Not connected to Supabase');
     
     final response = await client.functions.invoke('regs-discover-official', body: {
       'limit': limit,
@@ -1029,10 +1029,46 @@ class RegulationsService {
     });
     
     if (response.status != 200) {
-      throw Exception('Failed to discover links: ${response.data}');
+      throw _parseEdgeFunctionError(response.status, response.data, 'discover links');
     }
     
     return response.data as Map<String, dynamic>;
+  }
+  
+  /// Parse edge function errors into user-friendly exceptions.
+  Exception _parseEdgeFunctionError(int? status, dynamic data, String action) {
+    // Try to extract structured error from response
+    String errorMessage = 'Failed to $action';
+    String? hint;
+    String? errorCode;
+    
+    if (data is Map<String, dynamic>) {
+      errorMessage = data['error'] as String? ?? errorMessage;
+      hint = data['hint'] as String?;
+      errorCode = data['error_code'] as String?;
+    } else if (data != null) {
+      errorMessage = data.toString();
+    }
+    
+    // Build user-friendly message based on status code
+    switch (status) {
+      case 401:
+        if (errorCode == 'NO_AUTH') {
+          return Exception('Not logged in. Please sign in first.');
+        } else if (errorCode == 'INVALID_SESSION') {
+          return Exception('Session expired. Please log out and back in.');
+        }
+        return Exception('Authentication failed: $errorMessage');
+      case 403:
+        return Exception('Admin access required. $hint');
+      case 500:
+        return Exception('Server error: $errorMessage');
+      default:
+        if (hint != null) {
+          return Exception('$errorMessage. $hint');
+        }
+        return Exception(errorMessage);
+    }
   }
   
   /// Legacy discover method - redirects to official-only discovery.

@@ -1363,6 +1363,18 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // SETUP WIZARD - Clear step-by-step guide
+          _SetupWizardCard(
+            portalCount: _coverageStats['portal_coverage'] as int? ?? 0,
+            verifiedCount: _portalLinks.where((l) => l.hasAnyVerifiedLinks).length,
+            isVerifying: _isVerifyingLinks,
+            isDiscovering: _isRunningChecker,
+            onSeedPortal: _seedPortalLinks,
+            onVerify: _verifyPortalLinks,
+            onDiscover: _discoverPortalLinks,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          
           // Coverage Dashboard (portal-first)
           _CoverageDashboardCard(
             stats: _coverageStats,
@@ -1409,9 +1421,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           // Seed Portal Links (50)
           _ToolCard(
             icon: Icons.link_rounded,
-            title: 'Seed Portal Links (50)',
-            description: 'Populate portal buttons (seasons, regs, licensing, fishing) for all states',
-            buttonLabel: 'Seed Portal',
+            title: 'Step 1: Seed Portal Links',
+            description: 'Creates official agency link buttons for all 50 states (from official roots table)',
+            buttonLabel: 'Seed Portal Links',
             onPressed: _seedPortalLinks,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -1419,8 +1431,8 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           // Seed Extraction Sources (150)
           _ToolCard(
             icon: Icons.cloud_download_outlined,
-            title: 'Seed Extraction Sources (150)',
-            description: 'Populate 150 source URLs (50 states × 3 categories) for checker',
+            title: 'Seed Extraction Sources (Optional)',
+            description: 'Populate 150 source URLs for facts extraction (50 states × 3 categories)',
             buttonLabel: 'Seed Sources',
             onPressed: _seedSources,
           ),
@@ -1442,9 +1454,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           // Verify Links
           _ToolCard(
             icon: Icons.verified_rounded,
-            title: 'Verify Portal Links',
-            description: 'Check HTTP status of all portal URLs (50 states)',
-            buttonLabel: 'Verify Now',
+            title: 'Step 2: Verify Portal Links',
+            description: 'Checks each link responds with HTTP 200. Broken links are hidden from users.',
+            buttonLabel: 'Verify All Links',
             onPressed: _verifyPortalLinks,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -1452,9 +1464,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           // Discover Links (Official Domains Only)
           _ToolCard(
             icon: Icons.travel_explore_rounded,
-            title: 'Discover Links (Official Only)',
-            description: 'Crawl official state agency domains to find portal links (5 states/run)',
-            buttonLabel: 'Run Discovery',
+            title: 'Step 3: Discover Better Pages (Optional)',
+            description: 'Crawls official .gov sites to find season/regulation subpages. Runs 5 states per click.',
+            buttonLabel: 'Run Discovery (5 states)',
             onPressed: _discoverPortalLinks,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -2976,6 +2988,341 @@ class _LinkTextField extends StatelessWidget {
         fontSize: 12,
         fontFamily: 'monospace',
       ),
+    );
+  }
+}
+
+/// Setup Wizard card - guides admin through the setup process step by step.
+class _SetupWizardCard extends StatelessWidget {
+  const _SetupWizardCard({
+    required this.portalCount,
+    required this.verifiedCount,
+    required this.isVerifying,
+    required this.isDiscovering,
+    required this.onSeedPortal,
+    required this.onVerify,
+    required this.onDiscover,
+  });
+  
+  final int portalCount;
+  final int verifiedCount;
+  final bool isVerifying;
+  final bool isDiscovering;
+  final VoidCallback onSeedPortal;
+  final VoidCallback onVerify;
+  final VoidCallback onDiscover;
+  
+  @override
+  Widget build(BuildContext context) {
+    // Determine current step
+    final step1Done = portalCount >= 50;
+    final step2Done = verifiedCount >= 25; // At least half verified
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.accent.withValues(alpha: 0.15),
+            AppColors.primary.withValues(alpha: 0.1),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(Icons.rocket_launch_rounded, size: 20, color: AppColors.accent),
+              const SizedBox(width: AppSpacing.sm),
+              const Text(
+                'Setup Wizard',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              // Progress indicator
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  step2Done ? '✓ Complete' : step1Done ? '2/3 Steps' : '1/3 Steps',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: step2Done ? AppColors.success : AppColors.accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Follow these steps to set up official state portal links:',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Step 1: Seed Portal Links
+          _WizardStep(
+            number: 1,
+            title: 'Seed Portal Links',
+            description: 'Populates official agency URLs for all 50 states.',
+            isDone: step1Done,
+            isActive: !step1Done,
+            buttonLabel: step1Done ? 'Done ($portalCount/50)' : 'Seed Now',
+            onPressed: step1Done ? null : onSeedPortal,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Step 2: Verify Links
+          _WizardStep(
+            number: 2,
+            title: 'Verify Links',
+            description: 'Checks each URL is working (200 OK). Broken links are hidden.',
+            isDone: step2Done,
+            isActive: step1Done && !step2Done,
+            buttonLabel: isVerifying 
+                ? 'Verifying...' 
+                : step2Done 
+                    ? 'Done ($verifiedCount verified)' 
+                    : 'Verify All',
+            onPressed: isVerifying || !step1Done ? null : onVerify,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Step 3: Discover (Optional)
+          _WizardStep(
+            number: 3,
+            title: 'Discover Better Pages (Optional)',
+            description: 'Crawls official sites to find season/regulation subpages. 5 states per click.',
+            isDone: false,
+            isActive: step2Done,
+            isOptional: true,
+            buttonLabel: isDiscovering ? 'Discovering...' : 'Run Discovery',
+            onPressed: isDiscovering || !step2Done ? null : onDiscover,
+          ),
+          
+          const SizedBox(height: AppSpacing.md),
+          // Status summary
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: Row(
+              children: [
+                _StatusBadge(
+                  label: 'Portal',
+                  value: '$portalCount/50',
+                  color: portalCount >= 50 ? AppColors.success : AppColors.warning,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                _StatusBadge(
+                  label: 'Verified',
+                  value: '$verifiedCount',
+                  color: verifiedCount > 0 ? AppColors.success : AppColors.textTertiary,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single step in the setup wizard.
+class _WizardStep extends StatelessWidget {
+  const _WizardStep({
+    required this.number,
+    required this.title,
+    required this.description,
+    required this.isDone,
+    required this.isActive,
+    required this.buttonLabel,
+    this.isOptional = false,
+    this.onPressed,
+  });
+  
+  final int number;
+  final String title;
+  final String description;
+  final bool isDone;
+  final bool isActive;
+  final bool isOptional;
+  final String buttonLabel;
+  final VoidCallback? onPressed;
+  
+  @override
+  Widget build(BuildContext context) {
+    final color = isDone 
+        ? AppColors.success 
+        : isActive 
+            ? AppColors.accent 
+            : AppColors.textTertiary;
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: isActive 
+            ? AppColors.accent.withValues(alpha: 0.1) 
+            : AppColors.surface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: isActive 
+            ? Border.all(color: AppColors.accent.withValues(alpha: 0.3))
+            : null,
+      ),
+      child: Row(
+        children: [
+          // Step number/check
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: isDone
+                  ? Icon(Icons.check_rounded, size: 14, color: color)
+                  : Text(
+                      '$number',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          
+          // Title and description
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDone ? AppColors.textSecondary : AppColors.textPrimary,
+                        decoration: isDone ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    if (isOptional)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.textTertiary.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'OPTIONAL',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          
+          // Action button
+          SizedBox(
+            height: 28,
+            child: ElevatedButton(
+              onPressed: onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isActive ? AppColors.accent : AppColors.surface,
+                foregroundColor: isActive ? Colors.white : AppColors.textSecondary,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                elevation: 0,
+              ),
+              child: Text(buttonLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Status badge for the wizard summary.
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  
+  final String label;
+  final String value;
+  final Color color;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 }
