@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config/dev_flags.dart';
 import '../features/auth/auth_screen.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/feed/feed_screen.dart';
@@ -16,7 +15,6 @@ import '../features/swap_shop/swap_shop_screen.dart';
 import '../features/trophy_wall/trophy_detail_screen.dart';
 import '../features/trophy_wall/trophy_wall_screen.dart';
 import '../features/weather/weather_screen.dart';
-import '../services/dev_auth_service.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
 
@@ -25,53 +23,25 @@ final _shellNavigatorKey = GlobalKey<NavigatorState>();
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Auth state notifier that listens to Supabase auth changes
-/// Also checks for dev auth bypass when enabled.
 class AuthNotifier extends ChangeNotifier {
-  AuthNotifier(this._service, this._devAuthNotifier) {
+  AuthNotifier(this._service) {
     _subscription = _service.authStateChanges?.listen((state) {
       _session = state.session;
       notifyListeners();
     });
     _session = _service.currentSession;
-    
-    // Listen to dev auth notifier changes
-    _devAuthNotifier.addListener(_onDevAuthChanged);
   }
 
   final SupabaseService _service;
-  final DevAuthNotifier _devAuthNotifier;
   Session? _session;
   dynamic _subscription;
-  
-  void _onDevAuthChanged() {
-    notifyListeners();
-  }
 
-  /// Check if user is authenticated (real session OR dev bypass).
-  bool get isAuthenticated {
-    // Real Supabase session
-    if (_session != null) return true;
-    
-    // Dev bypass (only in debug mode with flag enabled)
-    if (DevFlags.isDevBypassAuthEnabled && _devAuthNotifier.isActive) {
-      return true;
-    }
-    
-    return false;
-  }
-  
-  /// Whether currently using dev bypass (not real auth).
-  bool get isDevBypass => 
-      DevFlags.isDevBypassAuthEnabled && 
-      _devAuthNotifier.isActive && 
-      _session == null;
-  
+  bool get isAuthenticated => _session != null;
   Session? get session => _session;
 
   @override
   void dispose() {
     _subscription?.cancel();
-    _devAuthNotifier.removeListener(_onDevAuthChanged);
     super.dispose();
   }
 }
@@ -79,8 +49,7 @@ class AuthNotifier extends ChangeNotifier {
 /// Provider for auth notifier
 final authNotifierProvider = ChangeNotifierProvider<AuthNotifier>((ref) {
   final service = ref.watch(supabaseServiceProvider);
-  final devAuthNotifier = ref.watch(devAuthNotifierProvider);
-  return AuthNotifier(service, devAuthNotifier);
+  return AuthNotifier(service);
 });
 
 /// Helper to get current index from location
