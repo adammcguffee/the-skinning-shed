@@ -8,6 +8,7 @@ import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/banner_header.dart';
 import 'package:shed/shared/widgets/modals/create_menu_sheet.dart';
+import 'package:shed/services/messaging_service.dart';
 import 'app_nav_rail.dart';
 
 /// 🏗️ 2025 PREMIUM APP SCAFFOLD - DARK THEME
@@ -42,7 +43,7 @@ class AppScaffold extends ConsumerWidget {
     }
   }
 
-  static const _destinations = [
+  static const _destinationsBase = [
     AppNavDestination(
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_rounded,
@@ -62,6 +63,12 @@ class AppScaffold extends ConsumerWidget {
       icon: Icons.landscape_outlined,
       selectedIcon: Icons.landscape_rounded,
       label: 'Land',
+    ),
+    // Messages is index 4 - badge added dynamically
+    AppNavDestination(
+      icon: Icons.chat_bubble_outline_rounded,
+      selectedIcon: Icons.chat_bubble_rounded,
+      label: 'Messages',
     ),
     AppNavDestination(
       icon: Icons.cloud_outlined,
@@ -84,6 +91,25 @@ class AppScaffold extends ConsumerWidget {
       label: 'Settings',
     ),
   ];
+  
+  /// Build destinations with unread badge for messages.
+  static List<AppNavDestination> _buildDestinations(int unreadCount) {
+    return _destinationsBase.asMap().entries.map((entry) {
+      final index = entry.key;
+      final dest = entry.value;
+      
+      // Add badge to Messages (index 4)
+      if (index == 4 && unreadCount > 0) {
+        return AppNavDestination(
+          icon: dest.icon,
+          selectedIcon: dest.selectedIcon,
+          label: dest.label,
+          badgeCount: unreadCount,
+        );
+      }
+      return dest;
+    }).toList();
+  }
 
   void _onDestinationSelected(BuildContext context, int index) {
     switch (index) {
@@ -100,15 +126,18 @@ class AppScaffold extends ConsumerWidget {
         context.go('/land');
         break;
       case 4:
-        context.go('/weather');
+        context.go('/messages');
         break;
       case 5:
-        context.go('/research');
+        context.go('/weather');
         break;
       case 6:
-        context.go('/regulations');
+        context.go('/research');
         break;
       case 7:
+        context.go('/regulations');
+        break;
+      case 8:
         context.go('/settings');
         break;
     }
@@ -121,10 +150,11 @@ class AppScaffold extends ConsumerWidget {
       case 1: return CreateContext.explore;
       case 2: return CreateContext.trophyWall;
       case 3: return CreateContext.land;
-      case 4: return CreateContext.other; // Weather
-      case 5: return CreateContext.other; // Research
-      case 6: return CreateContext.other; // Regulations
-      case 7: return CreateContext.other; // Settings
+      case 4: return CreateContext.other; // Messages
+      case 5: return CreateContext.other; // Weather
+      case 6: return CreateContext.other; // Research
+      case 7: return CreateContext.other; // Regulations
+      case 8: return CreateContext.other; // Settings
       default: return CreateContext.other;
     }
   }
@@ -156,6 +186,9 @@ class AppScaffold extends ConsumerWidget {
   }
 
   Widget _buildWideLayout(BuildContext context, WidgetRef ref) {
+    final unreadCount = ref.watch(unreadCountProvider);
+    final destinations = _buildDestinations(unreadCount);
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Row(
@@ -164,7 +197,7 @@ class AppScaffold extends ConsumerWidget {
           AppNavRail(
             selectedIndex: currentIndex,
             onDestinationSelected: (index) => _onDestinationSelected(context, index),
-            destinations: _destinations,
+            destinations: destinations,
             onPostTap: () => _onCreateTap(context, ref),
           ),
 
@@ -566,10 +599,16 @@ class _MoreSheet extends StatelessWidget {
               onTap: () => onDestinationSelected(3),
             ),
             _MoreSheetItem(
-              icon: Icons.cloud_outlined,
-              label: 'Weather & Tools',
+              icon: Icons.chat_bubble_outline_rounded,
+              label: 'Messages',
               isSelected: currentIndex == 4,
               onTap: () => onDestinationSelected(4),
+            ),
+            _MoreSheetItem(
+              icon: Icons.cloud_outlined,
+              label: 'Weather & Tools',
+              isSelected: currentIndex == 5,
+              onTap: () => onDestinationSelected(5),
             ),
             _MoreSheetItem(
               icon: Icons.storefront_outlined,
@@ -601,8 +640,8 @@ class _MoreSheet extends StatelessWidget {
             _MoreSheetItem(
               icon: Icons.settings_outlined,
               label: 'Settings',
-              isSelected: currentIndex == 5,
-              onTap: () => onDestinationSelected(5),
+              isSelected: currentIndex == 8,
+              onTap: () => onDestinationSelected(8),
             ),
 
             const SizedBox(height: AppSpacing.lg),

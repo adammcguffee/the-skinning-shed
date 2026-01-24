@@ -8,6 +8,8 @@ import '../features/auth/auth_screen.dart';
 import '../services/location_prefetch_service.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/feed/feed_screen.dart';
+import '../features/messages/messages_inbox_screen.dart';
+import '../features/messages/conversation_screen.dart';
 import '../features/land/land_create_screen.dart';
 import '../features/land/land_detail_screen.dart';
 import '../features/land/land_screen.dart';
@@ -101,10 +103,11 @@ int _getIndexFromLocation(String location) {
   if (location.startsWith('/explore')) return 1;
   if (location.startsWith('/trophy-wall')) return 2;
   if (location.startsWith('/land')) return 3;
-  if (location.startsWith('/weather')) return 4;
-  if (location.startsWith('/research')) return 5;
-  if (location.startsWith('/regulations')) return 6;
-  if (location.startsWith('/settings')) return 7;
+  if (location.startsWith('/messages')) return 4;
+  if (location.startsWith('/weather')) return 5;
+  if (location.startsWith('/research')) return 6;
+  if (location.startsWith('/regulations')) return 7;
+  if (location.startsWith('/settings')) return 8;
   return 0; // Feed is default
 }
 
@@ -213,7 +216,24 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: RegulationsScreen(),
             ),
           ),
+          
+          // Messages Inbox
+          GoRoute(
+            path: '/messages',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: MessagesInboxScreen(),
+            ),
+          ),
         ],
+      ),
+      
+      // Conversation detail (outside shell for full screen)
+      GoRoute(
+        path: '/messages/:conversationId',
+        builder: (context, state) {
+          final conversationId = state.pathParameters['conversationId']!;
+          return ConversationScreen(conversationId: conversationId);
+        },
       ),
       
       // State regulations detail (outside shell for full screen)

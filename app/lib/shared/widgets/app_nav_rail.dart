@@ -153,18 +153,47 @@ class _NavItemState extends State<_NavItem> {
                     ? Border.all(color: AppColors.accent.withOpacity(0.3))
                     : null,
               ),
-              child: Center(
-                child: Icon(
-                  widget.isSelected
-                      ? widget.destination.selectedIcon
-                      : widget.destination.icon,
-                  size: 22,
-                  color: widget.isSelected
-                      ? AppColors.accent
-                      : _isHovered
-                          ? AppColors.textPrimary
-                          : AppColors.textTertiary,
-                ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      widget.isSelected
+                          ? widget.destination.selectedIcon
+                          : widget.destination.icon,
+                      size: 22,
+                      color: widget.isSelected
+                          ? AppColors.accent
+                          : _isHovered
+                              ? AppColors.textPrimary
+                              : AppColors.textTertiary,
+                    ),
+                  ),
+                  // Badge
+                  if (widget.destination.hasBadge)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16),
+                        child: Text(
+                          widget.destination.badgeCount! > 99 
+                              ? '99+' 
+                              : widget.destination.badgeCount.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -241,9 +270,13 @@ class AppNavDestination {
     required this.icon,
     required this.selectedIcon,
     required this.label,
+    this.badgeCount,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+  final int? badgeCount;
+  
+  bool get hasBadge => badgeCount != null && badgeCount! > 0;
 }
