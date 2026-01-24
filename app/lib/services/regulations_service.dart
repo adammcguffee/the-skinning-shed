@@ -188,6 +188,10 @@ class StateRegulation {
     this.regionLabel = 'Statewide',
     this.regionScope = 'statewide',
     this.regionGeo,
+    this.confidenceScore = 0,
+    this.approvalMode = 'manual',
+    this.approvedBy,
+    this.extractionVersion,
   });
   
   final String id;
@@ -205,6 +209,11 @@ class StateRegulation {
   final String regionLabel;
   final String regionScope;
   final Map<String, dynamic>? regionGeo;
+  // Confidence and approval fields
+  final double confidenceScore;
+  final String approvalMode; // 'auto' or 'manual'
+  final String? approvedBy;
+  final String? extractionVersion;
   
   RegulationRegion get region => RegulationRegion(
     regionKey: regionKey,
@@ -214,6 +223,7 @@ class StateRegulation {
   );
   
   bool get isStatewide => regionKey == 'STATEWIDE';
+  bool get isAutoApproved => approvalMode == 'auto';
   
   factory StateRegulation.fromJson(Map<String, dynamic> json) {
     return StateRegulation(
@@ -238,6 +248,10 @@ class StateRegulation {
       regionLabel: json['region_label'] as String? ?? 'Statewide',
       regionScope: json['region_scope'] as String? ?? 'statewide',
       regionGeo: json['region_geo'] as Map<String, dynamic>?,
+      confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0,
+      approvalMode: json['approval_mode'] as String? ?? 'manual',
+      approvedBy: json['approved_by'] as String?,
+      extractionVersion: json['extraction_version'] as String?,
     );
   }
 }
@@ -261,6 +275,8 @@ class PendingRegulation {
     this.regionLabel = 'Statewide',
     this.regionScope = 'statewide',
     this.regionGeo,
+    this.confidenceScore = 0,
+    this.extractionWarnings = const [],
   });
   
   final String id;
@@ -280,6 +296,9 @@ class PendingRegulation {
   final String regionLabel;
   final String regionScope;
   final Map<String, dynamic>? regionGeo;
+  // Confidence fields
+  final double confidenceScore;
+  final List<String> extractionWarnings;
   
   RegulationRegion get region => RegulationRegion(
     regionKey: regionKey,
@@ -289,6 +308,7 @@ class PendingRegulation {
   );
   
   bool get isStatewide => regionKey == 'STATEWIDE';
+  bool get isHighConfidence => confidenceScore >= 0.85;
   
   factory PendingRegulation.fromJson(Map<String, dynamic> json) {
     return PendingRegulation(
@@ -315,6 +335,66 @@ class PendingRegulation {
       regionLabel: json['region_label'] as String? ?? 'Statewide',
       regionScope: json['region_scope'] as String? ?? 'statewide',
       regionGeo: json['region_geo'] as Map<String, dynamic>?,
+      confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0,
+      extractionWarnings: (json['extraction_warnings'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ?? [],
+    );
+  }
+}
+
+/// Audit log entry for regulation changes.
+class RegulationAuditEntry {
+  const RegulationAuditEntry({
+    required this.id,
+    required this.stateCode,
+    required this.category,
+    required this.regionKey,
+    required this.detectedAt,
+    this.previousHash,
+    required this.newHash,
+    required this.confidenceScore,
+    required this.approvalMode,
+    this.diffSummary,
+    this.extractionWarnings = const [],
+    this.approvedRowId,
+    this.pendingRowId,
+  });
+  
+  final String id;
+  final String stateCode;
+  final String category;
+  final String regionKey;
+  final DateTime detectedAt;
+  final String? previousHash;
+  final String newHash;
+  final double confidenceScore;
+  final String approvalMode; // 'auto', 'manual', 'pending'
+  final String? diffSummary;
+  final List<String> extractionWarnings;
+  final String? approvedRowId;
+  final String? pendingRowId;
+  
+  bool get wasAutoApproved => approvalMode == 'auto';
+  bool get wasPending => approvalMode == 'pending';
+  
+  factory RegulationAuditEntry.fromJson(Map<String, dynamic> json) {
+    return RegulationAuditEntry(
+      id: json['id'] as String,
+      stateCode: json['state_code'] as String,
+      category: json['category'] as String,
+      regionKey: json['region_key'] as String? ?? 'STATEWIDE',
+      detectedAt: DateTime.parse(json['detected_at'] as String),
+      previousHash: json['previous_hash'] as String?,
+      newHash: json['new_hash'] as String,
+      confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0,
+      approvalMode: json['approval_mode'] as String,
+      diffSummary: json['diff_summary'] as String?,
+      extractionWarnings: (json['extraction_warnings'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ?? [],
+      approvedRowId: json['approved_row_id'] as String?,
+      pendingRowId: json['pending_row_id'] as String?,
     );
   }
 }
@@ -452,6 +532,7 @@ class RegulationsService {
   }
   
   /// Fetch pending regulations (admin only).
+  /// Sorted by confidence ascending (lowest first) so admins review uncertain items first.
   Future<List<PendingRegulation>> fetchPendingRegulations() async {
     final client = _supabaseService.client;
     if (client == null) return [];
@@ -460,6 +541,7 @@ class RegulationsService {
         .from('state_regulations_pending')
         .select()
         .eq('status', 'pending')
+        .order('confidence_score', ascending: true)
         .order('created_at', ascending: false);
     
     return (response as List)
@@ -480,6 +562,8 @@ class RegulationsService {
         .single();
     
     final pending = PendingRegulation.fromJson(pendingResponse as Map<String, dynamic>);
+    final now = DateTime.now().toIso8601String();
+    final userId = client.auth.currentUser?.id;
     
     // Upsert into approved table (now includes region_key in conflict)
     await client.from('state_regulations_approved').upsert({
@@ -514,15 +598,17 @@ class RegulationsService {
         'notes': summary.notes,
       },
       'source_url': pending.sourceUrl,
-      'approved_at': DateTime.now().toIso8601String(),
-      'approved_by': client.auth.currentUser?.id,
+      'approved_at': now,
+      'approved_by': userId,
+      'approval_mode': 'manual',
+      'confidence_score': pending.confidenceScore,
     }, onConflict: 'state_code,category,season_year_label,region_key');
     
     // Update pending status
     await client.from('state_regulations_pending').update({
       'status': 'approved',
-      'reviewed_at': DateTime.now().toIso8601String(),
-      'reviewed_by': client.auth.currentUser?.id,
+      'reviewed_at': now,
+      'reviewed_by': userId,
     }).eq('id', pendingId);
   }
   
@@ -540,13 +626,14 @@ class RegulationsService {
   }
   
   /// Run the regulations checker edge function (admin only).
-  /// Returns a map with check results: checked, changed, results array.
+  /// Uses v3 with confidence-based auto-approval.
+  /// Returns a map with check results: checked, auto_approved, pending, results array.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
     final response = await client.functions.invoke(
-      'regulations-check',
+      'regulations-check-v3',
       body: {},
     );
     
@@ -555,6 +642,62 @@ class RegulationsService {
     }
     
     return response.data as Map<String, dynamic>;
+  }
+  
+  /// Fetch audit log entries (admin only).
+  Future<List<RegulationAuditEntry>> fetchAuditLog({
+    String? stateCode,
+    int limit = 50,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+    
+    var query = client
+        .from('state_regulations_audit_log')
+        .select();
+    
+    if (stateCode != null) {
+      query = query.eq('state_code', stateCode);
+    }
+    
+    final response = await query
+        .order('detected_at', ascending: false)
+        .limit(limit);
+    
+    return (response as List)
+        .map((json) => RegulationAuditEntry.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+  
+  /// Get checker run statistics (admin only).
+  /// Returns counts of recent auto-approved vs pending.
+  Future<Map<String, int>> getCheckerStats({int days = 7}) async {
+    final client = _supabaseService.client;
+    if (client == null) return {'auto_approved': 0, 'pending': 0, 'manual': 0};
+    
+    final cutoff = DateTime.now().subtract(Duration(days: days)).toIso8601String();
+    
+    final response = await client
+        .from('state_regulations_audit_log')
+        .select('approval_mode')
+        .gte('detected_at', cutoff);
+    
+    int autoApproved = 0;
+    int pending = 0;
+    int manual = 0;
+    
+    for (final row in response as List) {
+      final mode = row['approval_mode'] as String;
+      if (mode == 'auto') autoApproved++;
+      else if (mode == 'pending') pending++;
+      else if (mode == 'manual') manual++;
+    }
+    
+    return {
+      'auto_approved': autoApproved,
+      'pending': pending,
+      'manual': manual,
+    };
   }
   
   /// Fetch coverage data for all states (admin only).

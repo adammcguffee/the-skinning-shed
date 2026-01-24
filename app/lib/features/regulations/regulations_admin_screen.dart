@@ -29,8 +29,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   String? _error;
   List<PendingRegulation> _pendingRegulations = [];
   Map<String, Map<String, RegulationCoverage>> _coverage = {};
+  Map<String, int> _checkerStats = {'auto_approved': 0, 'pending': 0, 'manual': 0};
   bool _isRunningChecker = false;
   bool _showMissingOnly = false;
+  Map<String, dynamic>? _lastRunResult;
   
   @override
   void initState() {
@@ -55,11 +57,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final service = ref.read(regulationsServiceProvider);
       final pending = await service.fetchPendingRegulations();
       final coverage = await service.fetchCoverageData();
+      final stats = await service.getCheckerStats(days: 7);
       
       if (mounted) {
         setState(() {
           _pendingRegulations = pending;
           _coverage = coverage;
+          _checkerStats = stats;
           _isLoading = false;
         });
       }
@@ -183,10 +187,19 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final result = await service.runRegulationsChecker();
       
       if (mounted) {
+        setState(() => _lastRunResult = result);
+        
+        final autoApproved = result['auto_approved'] ?? 0;
+        final pending = result['pending'] ?? 0;
+        final checked = result['checked'] ?? 0;
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Check complete: ${result['checked']} sources, ${result['changed']} changed'),
-            backgroundColor: AppColors.success,
+            content: Text(
+              'Check complete: $checked sources. '
+              'Auto-approved: $autoApproved, Pending: $pending'
+            ),
+            backgroundColor: autoApproved > 0 ? AppColors.success : AppColors.info,
           ),
         );
         _loadData();
@@ -651,7 +664,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Checker stats header
+          _CheckerStatsCard(
+            stats: _checkerStats,
+            lastResult: _lastRunResult,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
           // Run Checker
           _RunCheckerButton(
             isRunning: _isRunningChecker,
@@ -831,6 +852,8 @@ class _PendingRegulationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final stateName = USStates.byCode(pending.stateCode)?.name ?? pending.stateCode;
     final showRegion = !pending.isStatewide;
+    final confidencePercent = (pending.confidenceScore * 100).toInt();
+    final isHighConfidence = pending.isHighConfidence;
     
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -840,7 +863,7 @@ class _PendingRegulationCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // Header with confidence badge
               Row(
                 children: [
                   Container(
@@ -871,6 +894,24 @@ class _PendingRegulationCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Confidence badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isHighConfidence 
+                          ? AppColors.success.withValues(alpha: 0.15)
+                          : AppColors.warning.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                    ),
+                    child: Text(
+                      '$confidencePercent%',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isHighConfidence ? AppColors.success : AppColors.warning,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -883,6 +924,30 @@ class _PendingRegulationCard extends StatelessWidget {
                   color: AppColors.textSecondary,
                 ),
               ),
+              
+              // Extraction warnings
+              if (pending.extractionWarnings.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: pending.extractionWarnings.map((warning) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      warning,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                  )).toList(),
+                ),
+              ],
               
               // Diff summary
               if (pending.diffSummary != null && pending.diffSummary!.isNotEmpty) ...[
@@ -1328,3 +1393,172 @@ const _allStatesSeedData = <Map<String, dynamic>>[
   {'state_code': 'WY', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Hunting/Turkey', 'source_name': 'Wyoming Game & Fish'},
   {'state_code': 'WY', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Fishing', 'source_name': 'Wyoming Game & Fish'},
 ];
+
+/// Stats card showing checker activity over the past week.
+class _CheckerStatsCard extends StatelessWidget {
+  const _CheckerStatsCard({
+    required this.stats,
+    this.lastResult,
+  });
+  
+  final Map<String, int> stats;
+  final Map<String, dynamic>? lastResult;
+  
+  @override
+  Widget build(BuildContext context) {
+    final autoApproved = stats['auto_approved'] ?? 0;
+    final pending = stats['pending'] ?? 0;
+    final manual = stats['manual'] ?? 0;
+    final total = autoApproved + pending + manual;
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.analytics_outlined,
+                size: 18,
+                color: AppColors.accent,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              const Text(
+                'Checker Activity (Last 7 Days)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Stats row
+          Row(
+            children: [
+              Expanded(
+                child: _StatItem(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Auto-Approved',
+                  value: autoApproved,
+                  color: AppColors.success,
+                ),
+              ),
+              Expanded(
+                child: _StatItem(
+                  icon: Icons.pending_rounded,
+                  label: 'Pending',
+                  value: pending,
+                  color: AppColors.warning,
+                ),
+              ),
+              Expanded(
+                child: _StatItem(
+                  icon: Icons.verified_user_rounded,
+                  label: 'Manual',
+                  value: manual,
+                  color: AppColors.info,
+                ),
+              ),
+            ],
+          ),
+          
+          if (total > 0) ...[
+            const SizedBox(height: AppSpacing.md),
+            // Auto-approval rate
+            Row(
+              children: [
+                Text(
+                  'Auto-approval rate: ',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  '${((autoApproved / total) * 100).toInt()}%',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: autoApproved > pending ? AppColors.success : AppColors.warning,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          
+          if (lastResult != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            const Divider(height: 1, color: AppColors.borderSubtle),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Last run: ${lastResult!['checked'] ?? 0} sources checked, '
+              '${lastResult!['auto_approved'] ?? 0} auto-approved, '
+              '${lastResult!['pending'] ?? 0} pending',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  const _StatItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  
+  final IconData icon;
+  final String label;
+  final int value;
+  final Color color;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: AppColors.textSecondary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}

@@ -525,16 +525,23 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title with state, category, region
-                  Text(
-                    showRegion
-                        ? '$stateName • ${regulation.category.label} • $regionLabel'
-                        : '$stateName • ${regulation.category.label}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
-                    ),
+                  // Title with state, category, region + approval badge
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          showRegion
+                              ? '$stateName • ${regulation.category.label} • $regionLabel'
+                              : '$stateName • ${regulation.category.label}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      _ApprovalBadge(isAuto: regulation.isAutoApproved),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -545,14 +552,35 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  if (regulation.approvedAt != null)
-                    Text(
-                      'Updated ${_formatDate(regulation.approvedAt!)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                  // Show last checked and approval info
+                  Row(
+                    children: [
+                      if (regulation.approvedAt != null)
+                        Text(
+                          'Updated ${_formatDate(regulation.approvedAt!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      if (regulation.lastCheckedAt != null) ...[
+                        Text(
+                          ' • ',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                        Text(
+                          'Checked ${_formatDate(regulation.lastCheckedAt!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1042,6 +1070,45 @@ class _SourceLinkState extends State<_SourceLink> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Badge showing if regulation was auto-approved or manually approved.
+class _ApprovalBadge extends StatelessWidget {
+  const _ApprovalBadge({required this.isAuto});
+  
+  final bool isAuto;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isAuto 
+            ? AppColors.info.withValues(alpha: 0.15)
+            : AppColors.success.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isAuto ? Icons.auto_awesome_rounded : Icons.verified_user_rounded,
+            size: 10,
+            color: isAuto ? AppColors.info : AppColors.success,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            isAuto ? 'Auto' : 'Verified',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: isAuto ? AppColors.info : AppColors.success,
+            ),
+          ),
+        ],
       ),
     );
   }
