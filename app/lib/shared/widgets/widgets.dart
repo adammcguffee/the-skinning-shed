@@ -14,3 +14,7 @@ export 'banner_header.dart';
 export 'animated_entry.dart';
 export 'location_picker.dart';
 export 'state_widgets.dart';
+
+// Layout utilities (micro-scroll prevention)
+export 'layout/no_micro_scroll_page.dart';
+export 'layout/sized_bottom_sheet.dart';

@@ -1075,12 +1075,9 @@ class _HourlyForecast extends StatelessWidget {
   }
 
   void _showHourlyDetails(BuildContext context, _HourData data) {
-    showModalBottomSheet(
+    showSizedBottomSheet(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _HourlyDetailSheet(data: data),
+      child: _HourlyDetailContent(data: data),
     );
   }
 }
@@ -1274,70 +1271,26 @@ class _HourCardState extends State<_HourCard> {
   }
 }
 
-/// Detail sheet shown when tapping an hourly card.
-/// Uses DraggableScrollableSheet for responsive scroll behavior.
-class _HourlyDetailSheet extends StatelessWidget {
-  const _HourlyDetailSheet({required this.data});
+/// Detail content for the hourly weather bottom sheet.
+/// Uses mainAxisSize.min to size-to-content (no micro-scroll).
+class _HourlyDetailContent extends StatelessWidget {
+  const _HourlyDetailContent({required this.data});
 
   final _HourData data;
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.55,
-      minChildSize: 0.35,
-      maxChildSize: 0.90,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Grab handle
-                  _GrabHandle(),
-                  const SizedBox(height: AppSpacing.lg),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row
+        _HeaderRow(data: data),
+        const SizedBox(height: AppSpacing.xl),
 
-                  // Header row
-                  _HeaderRow(data: data),
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // Details grid
-                  _MetricsGrid(data: data),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Grab handle for the bottom sheet.
-class _GrabHandle extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 40,
-        height: 4,
-        decoration: BoxDecoration(
-          color: AppColors.border,
-          borderRadius: BorderRadius.circular(2),
-        ),
-      ),
+        // Details grid
+        _MetricsGrid(data: data),
+      ],
     );
   }
 }

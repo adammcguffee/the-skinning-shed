@@ -96,7 +96,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // SAFE AUTH LAYOUT - NO IntrinsicHeight, NO Expanded, NO Spacer inside scroll
+    // SAFE AUTH LAYOUT - No micro-scroll on normal screens, graceful scroll when needed
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(
@@ -121,23 +121,29 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   physics: const ClampingScrollPhysics(),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: IntrinsicHeight(
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisSize: MainAxisSize.max,
                         children: [
+                          // Small top spacing
+                          const SizedBox(height: 16),
                           // Hero banner at top - full width
                           const BannerHeader.authHero(),
                           const SizedBox(height: 24),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 480),
-                                child: _buildFormCard(),
+                          // Form card - centered, takes remaining space
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 480),
+                                  child: _buildFormCard(),
+                                ),
                               ),
                             ),
                           ),
+                          // Small bottom spacing
+                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
