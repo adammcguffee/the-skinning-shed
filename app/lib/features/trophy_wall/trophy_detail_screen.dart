@@ -362,6 +362,8 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
     final county = _trophy!['county'] ?? '';
     final location = [county, state].where((s) => s.isNotEmpty).join(', ');
     final harvestDate = _trophy!['harvest_date'];
+    final harvestTime = _trophy!['harvest_time'] as String?;
+    final harvestTimeBucket = _trophy!['harvest_time_bucket'] as String?;
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
@@ -383,7 +385,7 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
 
-          // Location & date
+          // Location, date & time
           Wrap(
             spacing: AppSpacing.lg,
             runSpacing: AppSpacing.sm,
@@ -420,11 +422,55 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
                     ),
                   ],
                 ),
+              if (harvestTime != null || harvestTimeBucket != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 16,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      harvestTime != null 
+                          ? _formatTime(harvestTime)
+                          : _formatTimeBucket(harvestTimeBucket!),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  String _formatTime(String time) {
+    try {
+      final parts = time.split(':');
+      if (parts.isEmpty) return time;
+      final hour = int.parse(parts[0]);
+      final minute = parts.length > 1 ? parts[1] : '00';
+      final isPM = hour >= 12;
+      final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      return '$displayHour:$minute ${isPM ? 'PM' : 'AM'}';
+    } catch (_) {
+      return time;
+    }
+  }
+
+  String _formatTimeBucket(String bucket) {
+    switch (bucket) {
+      case 'early_morning': return 'Early Morning';
+      case 'morning': return 'Morning';
+      case 'midday': return 'Midday';
+      case 'afternoon': return 'Afternoon';
+      case 'evening': return 'Evening';
+      case 'night': return 'Night';
+      default: return bucket;
+    }
   }
 
   String _formatCategory(String category) {
@@ -564,8 +610,16 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
   }
 
   Widget _buildConditionsSection(BuildContext context) {
-    final weather = _trophy!['weather_snapshots'] as Map<String, dynamic>?;
-    final moon = _trophy!['moon_snapshots'] as Map<String, dynamic>?;
+    // weather_snapshots and moon_snapshots come as arrays from the join
+    final weatherList = _trophy!['weather_snapshots'] as List?;
+    final moonList = _trophy!['moon_snapshots'] as List?;
+    
+    final weather = weatherList?.isNotEmpty == true 
+        ? weatherList!.first as Map<String, dynamic>? 
+        : null;
+    final moon = moonList?.isNotEmpty == true 
+        ? moonList!.first as Map<String, dynamic>? 
+        : null;
     
     if (weather == null && moon == null) return const SizedBox.shrink();
 
@@ -579,31 +633,76 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: AppSpacing.md),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              if (weather?['temp_f'] != null)
-                _ConditionChip(
-                  icon: Icons.thermostat_outlined,
-                  label: '${weather!['temp_f'].round()}°F',
+          AppSurface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Main conditions row
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    if (weather?['temp_f'] != null)
+                      _ConditionChip(
+                        icon: Icons.thermostat_outlined,
+                        label: '${(weather!['temp_f'] as num).round()}°F',
+                      ),
+                    if (weather?['feels_like_f'] != null)
+                      _ConditionChip(
+                        icon: Icons.device_thermostat_rounded,
+                        label: 'Feels ${(weather!['feels_like_f'] as num).round()}°F',
+                      ),
+                    if (weather?['wind_speed'] != null)
+                      _ConditionChip(
+                        icon: Icons.air_rounded,
+                        label: '${weather!['wind_speed']} mph ${weather['wind_dir_text'] ?? ''}',
+                      ),
+                    if (weather?['pressure_inhg'] != null)
+                      _ConditionChip(
+                        icon: Icons.speed_outlined,
+                        label: '${(weather!['pressure_inhg'] as num).toStringAsFixed(2)} inHg',
+                      )
+                    else if (weather?['pressure_hpa'] != null)
+                      _ConditionChip(
+                        icon: Icons.speed_outlined,
+                        label: '${((weather!['pressure_hpa'] as num) * 0.02953).toStringAsFixed(2)} inHg',
+                      ),
+                    if (weather?['humidity_pct'] != null)
+                      _ConditionChip(
+                        icon: Icons.water_drop_outlined,
+                        label: '${(weather!['humidity_pct'] as num).round()}% humid',
+                      ),
+                    if (weather?['cloud_pct'] != null)
+                      _ConditionChip(
+                        icon: Icons.cloud_outlined,
+                        label: '${(weather!['cloud_pct'] as num).round()}% cloud',
+                      ),
+                    if (moon?['phase_name'] != null)
+                      _ConditionChip(
+                        icon: Icons.dark_mode_outlined,
+                        label: moon!['phase_name'],
+                      ),
+                    if (moon?['illumination_pct'] != null)
+                      _ConditionChip(
+                        icon: Icons.brightness_high_outlined,
+                        label: '${(moon!['illumination_pct'] as num).round()}% moon',
+                      ),
+                  ],
                 ),
-              if (weather?['wind_speed'] != null)
-                _ConditionChip(
-                  icon: Icons.air_rounded,
-                  label: '${weather!['wind_speed']} mph',
-                ),
-              if (weather?['pressure_hpa'] != null)
-                _ConditionChip(
-                  icon: Icons.speed_outlined,
-                  label: '${(weather!['pressure_hpa'] * 0.02953).toStringAsFixed(2)} inHg',
-                ),
-              if (moon?['phase_name'] != null)
-                _ConditionChip(
-                  icon: Icons.dark_mode_outlined,
-                  label: moon!['phase_name'],
-                ),
-            ],
+                // Condition text if available
+                if (weather?['condition_text'] != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    weather!['condition_text'],
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.xxl),
         ],
