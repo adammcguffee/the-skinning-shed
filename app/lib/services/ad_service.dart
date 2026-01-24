@@ -14,11 +14,13 @@ abstract final class AdPages {
   static const String feed = 'feed';
   static const String explore = 'explore';
   static const String trophyWall = 'trophy_wall';
-  static const String weather = 'weather';
   static const String land = 'land';
-  static const String swapShop = 'swap_shop';
-  static const String settings = 'settings';
+  static const String messages = 'messages';
+  static const String weather = 'weather';
   static const String research = 'research';
+  static const String regulations = 'regulations';
+  static const String settings = 'settings';
+  static const String swapShop = 'swap_shop';
 }
 
 /// Ad position within the header.
