@@ -654,6 +654,65 @@ class RegulationsService {
   
   final SupabaseService _supabaseService;
   
+  // ========================================================================
+  // ADMIN EDGE FUNCTION HELPER - Standardized JWT auth for all admin calls
+  // ========================================================================
+  
+  /// Invoke an admin-only Edge Function with explicit Authorization header.
+  /// 
+  /// This ensures the JWT is always sent, avoiding "Invalid JWT" errors.
+  /// Includes automatic retry on 401 after session refresh.
+  Future<Map<String, dynamic>> _invokeAdminFunction(
+    String functionName, {
+    Map<String, dynamic>? body,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) {
+      throw Exception('Not connected to Supabase');
+    }
+    
+    // Get current session
+    final session = _supabaseService.currentSession;
+    if (session == null) {
+      throw Exception('Not logged in. Please sign in first.');
+    }
+    
+    // First attempt
+    var response = await client.functions.invoke(
+      functionName,
+      body: body ?? {},
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
+    
+    // If 401, try refreshing the session and retry once
+    if (response.status == 401) {
+      try {
+        // Attempt to refresh the session
+        await client.auth.refreshSession();
+        final newSession = _supabaseService.currentSession;
+        
+        if (newSession != null) {
+          // Retry with new token
+          response = await client.functions.invoke(
+            functionName,
+            body: body ?? {},
+            headers: {'Authorization': 'Bearer ${newSession.accessToken}'},
+          );
+        }
+      } catch (e) {
+        // Refresh failed, throw original error
+        throw Exception('Session expired. Please log out and log back in.');
+      }
+    }
+    
+    // Handle error responses
+    if (response.status != 200) {
+      throw _parseEdgeFunctionError(response.status, response.data, functionName);
+    }
+    
+    return response.data as Map<String, dynamic>;
+  }
+  
   /// Fetch regulations for a specific state and category.
   Future<List<StateRegulation>> fetchRegulations({
     required String stateCode,
@@ -857,19 +916,7 @@ class RegulationsService {
   /// Uses v6: OpenAI normalization + strict validation + processes all 150.
   /// Returns a map with check results: checked, auto_approved, pending, skipped, failed.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
-    
-    final response = await client.functions.invoke(
-      'regulations-check-v6',
-      body: {},
-    );
-    
-    if (response.status != 200) {
-      throw Exception('Failed to run checker: ${response.data}');
-    }
-    
-    return response.data as Map<String, dynamic>;
+    return _invokeAdminFunction('regulations-check-v6');
   }
   
   /// Fetch coverage statistics for admin dashboard.
@@ -1005,34 +1052,16 @@ class RegulationsService {
   
   /// Verify portal links (checks HTTP status of all URLs).
   Future<Map<String, dynamic>> verifyPortalLinks() async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected to Supabase');
-    
-    final response = await client.functions.invoke('regs-links-verify', body: {});
-    
-    if (response.status != 200) {
-      throw _parseEdgeFunctionError(response.status, response.data, 'verify links');
-    }
-    
-    return response.data as Map<String, dynamic>;
+    return _invokeAdminFunction('regs-links-verify');
   }
   
   /// Discover portal links by crawling official domains (official-only).
   /// Uses regs-discover-official to crawl state_official_roots domains.
   Future<Map<String, dynamic>> discoverOfficialLinks({int limit = 5, int offset = 0}) async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected to Supabase');
-    
-    final response = await client.functions.invoke('regs-discover-official', body: {
+    return _invokeAdminFunction('regs-discover-official', body: {
       'limit': limit,
       'offset': offset,
     });
-    
-    if (response.status != 200) {
-      throw _parseEdgeFunctionError(response.status, response.data, 'discover links');
-    }
-    
-    return response.data as Map<String, dynamic>;
   }
   
   /// Parse edge function errors into user-friendly exceptions.
@@ -1531,9 +1560,16 @@ class RegulationsService {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected to Supabase');
     
-    final response = await client.functions.invoke('regs-discovery-start', body: {
-      'batch_size': batchSize,
-    });
+    final session = _supabaseService.currentSession;
+    if (session == null) {
+      throw Exception('Not logged in. Please sign in first.');
+    }
+    
+    final response = await client.functions.invoke(
+      'regs-discovery-start',
+      body: {'batch_size': batchSize},
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
     
     if (response.status != 200) {
       // Check for ALREADY_RUNNING which includes run info
@@ -1572,9 +1608,16 @@ class RegulationsService {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected to Supabase');
     
-    final response = await client.functions.invoke('regs-discovery-continue', body: {
-      'run_id': runId,
-    });
+    final session = _supabaseService.currentSession;
+    if (session == null) {
+      throw Exception('Not logged in. Please sign in first.');
+    }
+    
+    final response = await client.functions.invoke(
+      'regs-discovery-continue',
+      body: {'run_id': runId},
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
     
     if (response.status != 200) {
       throw _parseEdgeFunctionError(response.status, response.data, 'continue discovery');
