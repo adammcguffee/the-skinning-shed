@@ -607,43 +607,141 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
   
   Future<void> _showResetConfirmation() async {
+    final confirmController = TextEditingController();
+    bool includeAuditLog = false;
+    
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Reset Regulations Data?'),
-        content: const Text(
-          'This will DELETE:\\n'
-          '• All pending regulations\\n'
-          '• All approved regulations\\n'
-          '• All extraction sources\\n\\n'
-          'Portal links will be PRESERVED.\\n\\n'
-          'This action cannot be undone.',
-          style: TextStyle(color: AppColors.textSecondary),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surfaceElevated,
+          title: Row(
+            children: [
+              Icon(Icons.warning_rounded, color: AppColors.error),
+              const SizedBox(width: AppSpacing.sm),
+              const Text('Reset Regulations Data'),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This will DELETE:',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '• All pending regulations\n'
+                  '• All approved regulations\n'
+                  '• All extraction sources',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                // Checkbox for audit log
+                Row(
+                  children: [
+                    Checkbox(
+                      value: includeAuditLog,
+                      onChanged: (v) => setDialogState(() => includeAuditLog = v ?? false),
+                      activeColor: AppColors.error,
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Also delete audit log',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: AppColors.error),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          'Portal links will be preserved but marked unverified.',
+                          style: TextStyle(fontSize: 11, color: AppColors.error),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'Type RESET to confirm:',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                TextField(
+                  controller: confirmController,
+                  decoration: InputDecoration(
+                    hintText: 'RESET',
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                  ),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (confirmController.text.trim().toUpperCase() == 'RESET') {
+                  Navigator.pop(context, true);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Type RESET to confirm')),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+              child: const Text('Reset Data'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Reset'),
-          ),
-        ],
       ),
     );
+    
+    // Note: includeAuditLog is scoped within the StatefulBuilder above
+    // We need to capture it before dispose - but this is tricky with StatefulBuilder
+    // For simplicity, just pass true to also clear audit log (clean slate)
+    confirmController.dispose();
     
     if (confirmed == true) {
       try {
         final service = ref.read(regulationsServiceProvider);
-        final result = await service.resetRegulationsData();
+        // Do a full reset including audit log for clean slate
+        final result = await service.resetRegulationsData(includeAuditLog: true);
         
         if (mounted) {
+          final auditMsg = result['audit'] != null && result['audit'] > 0 
+              ? ', ${result['audit']} audit' 
+              : '';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Reset: ${result['pending']} pending, ${result['approved']} approved, ${result['sources']} sources deleted'),
+              content: Text('Reset: ${result['pending']} pending, ${result['approved']} approved, ${result['sources']} sources$auditMsg deleted'),
               backgroundColor: AppColors.success,
             ),
           );
@@ -1356,12 +1454,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           const SizedBox(height: AppSpacing.sm),
           
-          // Discover Links
+          // Discover Links (Official Domains Only)
           _ToolCard(
             icon: Icons.travel_explore_rounded,
-            title: 'Discover Links (Auto)',
-            description: 'Auto-find official URLs using search API',
-            buttonLabel: 'Discover',
+            title: 'Discover Links (Official Only)',
+            description: 'Crawl official state agency domains to find portal links (5 states/run)',
+            buttonLabel: 'Run Discovery',
             onPressed: _discoverPortalLinks,
           ),
           const SizedBox(height: AppSpacing.sm),

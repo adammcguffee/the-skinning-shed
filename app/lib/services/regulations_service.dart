@@ -543,6 +543,57 @@ class StatePortalLinks {
   };
 }
 
+/// Official state wildlife agency root domain.
+/// These are the ONLY allowed source domains for portal links.
+class OfficialRoot {
+  const OfficialRoot({
+    required this.stateCode,
+    required this.stateName,
+    required this.agencyName,
+    required this.officialRootUrl,
+    required this.officialDomain,
+    this.verifiedOk = false,
+    this.lastVerifiedAt,
+    this.verifyError,
+  });
+  
+  final String stateCode;
+  final String stateName;
+  final String agencyName;
+  final String officialRootUrl;
+  final String officialDomain;
+  final bool verifiedOk;
+  final DateTime? lastVerifiedAt;
+  final String? verifyError;
+  
+  /// Check if a URL is within this official domain (or subdomain).
+  bool isUrlAllowed(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final host = uri.host.toLowerCase();
+      final domain = officialDomain.toLowerCase();
+      return host == domain || host.endsWith('.$domain');
+    } catch (_) {
+      return false;
+    }
+  }
+  
+  factory OfficialRoot.fromJson(Map<String, dynamic> json) {
+    return OfficialRoot(
+      stateCode: json['state_code'] as String,
+      stateName: json['state_name'] as String,
+      agencyName: json['agency_name'] as String,
+      officialRootUrl: json['official_root_url'] as String,
+      officialDomain: json['official_domain'] as String,
+      verifiedOk: json['verified_ok'] as bool? ?? false,
+      lastVerifiedAt: json['last_verified_at'] != null
+          ? DateTime.tryParse(json['last_verified_at'] as String)
+          : null,
+      verifyError: json['verify_error'] as String?,
+    );
+  }
+}
+
 /// Source counts by category.
 class SourceCounts {
   const SourceCounts({
@@ -888,8 +939,9 @@ class RegulationsService {
   }
   
   /// Reset all regulations data (admin only).
-  /// Deletes pending, approved, and sources. Keeps portal links and audit log.
-  Future<Map<String, int>> resetRegulationsData() async {
+  /// Deletes pending, approved, sources, and optionally audit log.
+  /// Also resets portal links verification status.
+  Future<Map<String, int>> resetRegulationsData({bool includeAuditLog = false}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
@@ -897,11 +949,58 @@ class RegulationsService {
     final approvedRes = await client.from('state_regulations_approved').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     final sourcesRes = await client.from('state_regulations_sources').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     
+    // Optionally clear audit log
+    int auditDeleted = 0;
+    if (includeAuditLog) {
+      final auditRes = await client.from('state_regulations_audit_log').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      auditDeleted = (auditRes as List?)?.length ?? 0;
+    }
+    
+    // Reset portal links verification status (keep URLs but mark unverified)
+    await client.from('state_portal_links').update({
+      'verified_hunting_seasons_ok': false,
+      'verified_hunting_regs_ok': false,
+      'verified_fishing_regs_ok': false,
+      'verified_licensing_ok': false,
+      'verified_buy_license_ok': false,
+      'verified_records_ok': false,
+      'last_verified_at': null,
+    }).neq('state_code', '');
+    
     return {
       'pending': (pendingRes as List?)?.length ?? 0,
       'approved': (approvedRes as List?)?.length ?? 0,
       'sources': (sourcesRes as List?)?.length ?? 0,
+      'audit': auditDeleted,
     };
+  }
+  
+  /// Fetch official roots for all states (admin only).
+  Future<List<OfficialRoot>> fetchOfficialRoots() async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+    
+    final res = await client.from('state_official_roots')
+        .select()
+        .order('state_code');
+    
+    return (res as List)
+        .map((json) => OfficialRoot.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+  
+  /// Fetch official root for a single state.
+  Future<OfficialRoot?> fetchOfficialRoot(String stateCode) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+    
+    final res = await client.from('state_official_roots')
+        .select()
+        .eq('state_code', stateCode)
+        .maybeSingle();
+    
+    if (res == null) return null;
+    return OfficialRoot.fromJson(res as Map<String, dynamic>);
   }
   
   /// Verify portal links (checks HTTP status of all URLs).
@@ -918,12 +1017,13 @@ class RegulationsService {
     return response.data as Map<String, dynamic>;
   }
   
-  /// Discover portal links using search API (auto-find official URLs).
-  Future<Map<String, dynamic>> discoverPortalLinks({int limit = 10, int offset = 0}) async {
+  /// Discover portal links by crawling official domains (official-only).
+  /// Uses regs-discover-official to crawl state_official_roots domains.
+  Future<Map<String, dynamic>> discoverOfficialLinks({int limit = 5, int offset = 0}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
-    final response = await client.functions.invoke('regs-links-discover', body: {
+    final response = await client.functions.invoke('regs-discover-official', body: {
       'limit': limit,
       'offset': offset,
     });
@@ -933,6 +1033,11 @@ class RegulationsService {
     }
     
     return response.data as Map<String, dynamic>;
+  }
+  
+  /// Legacy discover method - redirects to official-only discovery.
+  Future<Map<String, dynamic>> discoverPortalLinks({int limit = 5, int offset = 0}) async {
+    return discoverOfficialLinks(limit: limit, offset: offset);
   }
   
   /// Fetch broken portal links for admin review (where URL exists but verification failed).
