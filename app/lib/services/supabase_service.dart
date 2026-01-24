@@ -50,12 +50,28 @@ class SupabaseService {
       defaultValue: '',
     );
     
+    // Validate: empty values
     if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
       _status = InitStatus.failure;
-      _errorMessage = 'Supabase credentials not provided.\n\n'
-          'Run with:\n'
-          '--dart-define=SUPABASE_URL=your_url\n'
-          '--dart-define=SUPABASE_ANON_KEY=your_key';
+      _errorMessage = _buildConfigErrorMessage('Supabase credentials not provided.');
+      return false;
+    }
+    
+    // Validate: placeholder values (fail fast, don't make requests to fake URLs)
+    if (_isPlaceholderUrl(supabaseUrl)) {
+      _status = InitStatus.failure;
+      _errorMessage = _buildConfigErrorMessage(
+        'Invalid SUPABASE_URL: appears to be a placeholder value.\n'
+        'Current: $supabaseUrl'
+      );
+      return false;
+    }
+    
+    if (_isPlaceholderKey(supabaseAnonKey)) {
+      _status = InitStatus.failure;
+      _errorMessage = _buildConfigErrorMessage(
+        'Invalid SUPABASE_ANON_KEY: appears to be a placeholder value.'
+      );
       return false;
     }
     
@@ -83,6 +99,42 @@ class SupabaseService {
       _errorMessage = 'Failed to initialize Supabase: $e';
       return false;
     }
+  }
+  
+  /// Check if URL looks like a placeholder.
+  static bool _isPlaceholderUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('yourproject') ||
+           lower.contains('your-project') ||
+           lower.contains('example.com') ||
+           lower.contains('placeholder') ||
+           lower.contains('xxx') ||
+           lower == 'https://supabase.co' ||
+           !url.contains('.supabase.co');
+  }
+  
+  /// Check if key looks like a placeholder.
+  static bool _isPlaceholderKey(String key) {
+    final lower = key.toLowerCase();
+    return lower.contains('your-anon-key') ||
+           lower.contains('anon-key-here') ||
+           lower.contains('placeholder') ||
+           lower.contains('xxx') ||
+           key.length < 20; // Real anon keys are much longer
+  }
+  
+  /// Build a consistent configuration error message.
+  static String _buildConfigErrorMessage(String reason) {
+    return '''$reason
+
+Run with valid Supabase credentials:
+
+flutter run -d chrome \\
+  --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co \\
+  --dart-define=SUPABASE_ANON_KEY=YOUR_ANON_KEY
+
+Get your credentials from:
+Supabase Dashboard → Project Settings → API''';
   }
   
   /// Get Supabase client instance.
