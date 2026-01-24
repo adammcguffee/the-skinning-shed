@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shed/services/edge_admin_client.dart';
 import 'package:shed/services/supabase_service.dart';
 
 /// Regulation category types.
@@ -656,63 +657,6 @@ class RegulationsService {
   
   // ========================================================================
   // ADMIN EDGE FUNCTION HELPER - Standardized JWT auth for all admin calls
-  // ========================================================================
-  
-  /// Invoke an admin-only Edge Function with explicit Authorization header.
-  /// 
-  /// This ensures the JWT is always sent, avoiding "Invalid JWT" errors.
-  /// Includes automatic retry on 401 after session refresh.
-  Future<Map<String, dynamic>> _invokeAdminFunction(
-    String functionName, {
-    Map<String, dynamic>? body,
-  }) async {
-    final client = _supabaseService.client;
-    if (client == null) {
-      throw Exception('Not connected to Supabase');
-    }
-    
-    // Get current session
-    final session = _supabaseService.currentSession;
-    if (session == null) {
-      throw Exception('Not logged in. Please sign in first.');
-    }
-    
-    // First attempt
-    var response = await client.functions.invoke(
-      functionName,
-      body: body ?? {},
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
-    );
-    
-    // If 401, try refreshing the session and retry once
-    if (response.status == 401) {
-      try {
-        // Attempt to refresh the session
-        await client.auth.refreshSession();
-        final newSession = _supabaseService.currentSession;
-        
-        if (newSession != null) {
-          // Retry with new token
-          response = await client.functions.invoke(
-            functionName,
-            body: body ?? {},
-            headers: {'Authorization': 'Bearer ${newSession.accessToken}'},
-          );
-        }
-      } catch (e) {
-        // Refresh failed, throw original error
-        throw Exception('Session expired. Please log out and log back in.');
-      }
-    }
-    
-    // Handle error responses
-    if (response.status != 200) {
-      throw _parseEdgeFunctionError(response.status, response.data, functionName);
-    }
-    
-    return response.data as Map<String, dynamic>;
-  }
-  
   /// Fetch regulations for a specific state and category.
   Future<List<StateRegulation>> fetchRegulations({
     required String stateCode,
@@ -916,7 +860,7 @@ class RegulationsService {
   /// Uses v6: OpenAI normalization + strict validation + processes all 150.
   /// Returns a map with check results: checked, auto_approved, pending, skipped, failed.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
-    return _invokeAdminFunction('regulations-check-v6');
+    return EdgeAdminClient.invokeAdminEdge('regulations-check-v6');
   }
   
   /// Fetch coverage statistics for admin dashboard.
@@ -1052,52 +996,21 @@ class RegulationsService {
   
   /// Verify portal links (checks HTTP status of all URLs).
   Future<Map<String, dynamic>> verifyPortalLinks() async {
-    return _invokeAdminFunction('regs-links-verify');
+    return EdgeAdminClient.invokeAdminEdge('regs-links-verify');
   }
   
+  /// Auth diagnostic (debug-only) - validates auth and returns JWT metadata.
+  Future<Map<String, dynamic>> runAuthDiagnostic() async {
+    return EdgeAdminClient.invokeAdminEdge('regs-auth-diagnostic');
+  }
+
   /// Discover portal links by crawling official domains (official-only).
   /// Uses regs-discover-official to crawl state_official_roots domains.
   Future<Map<String, dynamic>> discoverOfficialLinks({int limit = 5, int offset = 0}) async {
-    return _invokeAdminFunction('regs-discover-official', body: {
+    return EdgeAdminClient.invokeAdminEdge('regs-discover-official', body: {
       'limit': limit,
       'offset': offset,
     });
-  }
-  
-  /// Parse edge function errors into user-friendly exceptions.
-  Exception _parseEdgeFunctionError(int? status, dynamic data, String action) {
-    // Try to extract structured error from response
-    String errorMessage = 'Failed to $action';
-    String? hint;
-    String? errorCode;
-    
-    if (data is Map<String, dynamic>) {
-      errorMessage = data['error'] as String? ?? errorMessage;
-      hint = data['hint'] as String?;
-      errorCode = data['error_code'] as String?;
-    } else if (data != null) {
-      errorMessage = data.toString();
-    }
-    
-    // Build user-friendly message based on status code
-    switch (status) {
-      case 401:
-        if (errorCode == 'NO_AUTH') {
-          return Exception('Not logged in. Please sign in first.');
-        } else if (errorCode == 'INVALID_SESSION') {
-          return Exception('Session expired. Please log out and back in.');
-        }
-        return Exception('Authentication failed: $errorMessage');
-      case 403:
-        return Exception('Admin access required. $hint');
-      case 500:
-        return Exception('Server error: $errorMessage');
-      default:
-        if (hint != null) {
-          return Exception('$errorMessage. $hint');
-        }
-        return Exception(errorMessage);
-    }
   }
   
   /// Legacy discover method - redirects to official-only discovery.
@@ -1557,73 +1470,48 @@ class RegulationsService {
   /// Start a new discovery run for all states.
   /// Returns run_id and initial status.
   Future<DiscoveryRun> startDiscoveryRun({int batchSize = 5}) async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected to Supabase');
-    
-    final session = _supabaseService.currentSession;
-    if (session == null) {
-      throw Exception('Not logged in. Please sign in first.');
-    }
-    
-    final response = await client.functions.invoke(
-      'regs-discovery-start',
-      body: {'batch_size': batchSize},
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
-    );
-    
-    if (response.status != 200) {
-      // Check for ALREADY_RUNNING which includes run info
-      final data = response.data as Map<String, dynamic>?;
-      if (data?['error_code'] == 'ALREADY_RUNNING') {
-        // Return the existing run info
-        return DiscoveryRun(
-          id: data!['run_id'] as String,
-          status: 'running',
-          processed: data['processed'] as int? ?? 0,
-          total: data['total'] as int? ?? 50,
-          statsOk: 0,
-          statsSkipped: 0,
-          statsError: 0,
-        );
+    try {
+      final data = await EdgeAdminClient.invokeAdminEdge(
+        'regs-discovery-start',
+        body: {'batch_size': batchSize},
+      );
+      
+      return DiscoveryRun(
+        id: data['run_id'] as String,
+        status: data['status'] as String? ?? 'running',
+        processed: 0,
+        total: data['total'] as int? ?? 50,
+        batchSize: data['batch_size'] as int? ?? 5,
+        statsOk: 0,
+        statsSkipped: 0,
+        statsError: 0,
+      );
+    } on EdgeAdminException catch (e) {
+      if (e.status == 409 && e.data is Map<String, dynamic>) {
+        final data = e.data as Map<String, dynamic>;
+        if (data['error_code'] == 'ALREADY_RUNNING') {
+          return DiscoveryRun(
+            id: data['run_id'] as String,
+            status: 'running',
+            processed: data['processed'] as int? ?? 0,
+            total: data['total'] as int? ?? 50,
+            statsOk: 0,
+            statsSkipped: 0,
+            statsError: 0,
+          );
+        }
       }
-      throw _parseEdgeFunctionError(response.status, response.data, 'start discovery');
+      rethrow;
     }
-    
-    final data = response.data as Map<String, dynamic>;
-    return DiscoveryRun(
-      id: data['run_id'] as String,
-      status: data['status'] as String? ?? 'running',
-      processed: 0,
-      total: data['total'] as int? ?? 50,
-      batchSize: data['batch_size'] as int? ?? 5,
-      statsOk: 0,
-      statsSkipped: 0,
-      statsError: 0,
-    );
   }
   
   /// Continue a discovery run by processing the next batch.
   /// Returns updated run status and batch results.
   Future<DiscoveryRunProgress> continueDiscoveryRun(String runId) async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected to Supabase');
-    
-    final session = _supabaseService.currentSession;
-    if (session == null) {
-      throw Exception('Not logged in. Please sign in first.');
-    }
-    
-    final response = await client.functions.invoke(
+    final data = await EdgeAdminClient.invokeAdminEdge(
       'regs-discovery-continue',
       body: {'run_id': runId},
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
     );
-    
-    if (response.status != 200) {
-      throw _parseEdgeFunctionError(response.status, response.data, 'continue discovery');
-    }
-    
-    final data = response.data as Map<String, dynamic>;
     final stats = data['stats'] as Map<String, dynamic>? ?? {};
     final batchResults = (data['batch_results'] as List?)
         ?.map((r) => DiscoveryBatchResult.fromJson(r as Map<String, dynamic>))

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -428,6 +429,33 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     } finally {
       if (mounted) {
         setState(() => _isVerifyingLinks = false);
+      }
+    }
+  }
+
+  Future<void> _runAuthDiagnostic() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.runAuthDiagnostic();
+      final debug = (result['auth_debug'] as Map?) ?? {};
+      final headerPresent = debug['header_present'] == true;
+      final tokenLength = debug['token_length'] ?? 0;
+      final userId = result['user_id'] ?? 'unknown';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Auth ok. user=$userId header=$headerPresent tokenLen=$tokenLength',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Auth diagnostic error: $e')),
+        );
       }
     }
   }
@@ -1627,6 +1655,18 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             onPressed: _showBrokenLinksReport,
           ),
           const SizedBox(height: AppSpacing.md),
+
+          // Debug-only Auth Diagnostic
+          if (kDebugMode) ...[
+            _ToolCard(
+              icon: Icons.bug_report_outlined,
+              title: 'Auth Diagnostic (Debug)',
+              description: 'Echoes auth header presence, token length, and user id',
+              buttonLabel: 'Run Diagnostic',
+              onPressed: _runAuthDiagnostic,
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           
           // Import/Export section
           Padding(

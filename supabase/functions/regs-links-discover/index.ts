@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { requireAdmin } from "../_shared/admin_auth.ts";
 
 /**
  * regs-links-discover Edge Function
@@ -121,6 +121,14 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   
   try {
+    const auth = await requireAdmin(req);
+    if (!auth.ok) {
+      return new Response(JSON.stringify(auth), {
+        status: auth.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
     const searchApiKey = Deno.env.get('BRAVE_SEARCH_API_KEY');
     if (!searchApiKey) {
       return new Response(JSON.stringify({ 
@@ -129,9 +137,7 @@ Deno.serve(async (req: Request) => {
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
+    const supabase = auth.admin!;
     
     const now = new Date().toISOString();
     let updated = 0;

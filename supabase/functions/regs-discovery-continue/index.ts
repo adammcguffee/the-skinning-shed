@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { requireAdmin } from "../_shared/admin_auth.ts";
 
 /**
  * regs-discovery-continue Edge Function
@@ -377,61 +378,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
-    // Verify admin auth
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Not authenticated',
-        error_code: 'NO_AUTH',
-      }), {
-        status: 401,
+    const auth = await requireAdmin(req);
+    if (!auth.ok) {
+      return new Response(JSON.stringify(auth), {
+        status: auth.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
     
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false }
-    });
-    
-    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Invalid session',
-        error_code: 'INVALID_SESSION',
-      }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-    
-    const { data: profile } = await supabaseAuth
-      .from('profiles')
-      .select('is_admin')
-      .eq('id', user.id)
-      .single();
-    
-    if (!profile?.is_admin) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Admin access required',
-        error_code: 'NOT_ADMIN',
-      }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-    
-    // Use service role for operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false }
-    });
+    const supabase = auth.admin!;
 
     // Parse request body for run_id
     let runId: string | undefined;
