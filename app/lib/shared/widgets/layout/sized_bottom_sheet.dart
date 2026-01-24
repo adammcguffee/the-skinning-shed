@@ -28,6 +28,7 @@ Future<T?> showSizedBottomSheet<T>({
   double maxHeightFraction = 0.85,
   bool showDragHandle = true,
   bool isDismissible = true,
+  bool enableDrag = true,
   Color? backgroundColor,
   BorderRadius? borderRadius,
 }) {
@@ -36,7 +37,9 @@ Future<T?> showSizedBottomSheet<T>({
     isScrollControlled: true,
     useSafeArea: true,
     isDismissible: isDismissible,
+    enableDrag: enableDrag,
     backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withOpacity(0.5),
     constraints: BoxConstraints(maxWidth: maxWidth),
     builder: (context) => _SizedBottomSheetContainer(
       maxHeightFraction: maxHeightFraction,
