@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/ad_service.dart';
 import 'package:shed/services/auth_service.dart';
 import 'package:shed/services/supabase_service.dart';
+import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// Provider to check if current user is admin.
@@ -167,6 +170,36 @@ class SettingsScreen extends ConsumerWidget {
                 },
               ),
 
+              // Debug section (only in debug builds)
+              if (kDebugMode)
+                SliverToBoxAdapter(
+                  child: _SettingsSection(
+                    title: 'Developer',
+                    children: [
+                      _SettingsToggleItem(
+                        icon: Icons.bug_report_outlined,
+                        title: 'Show Ad Slot Overlay',
+                        subtitle: 'Display ad slot boundaries',
+                        provider: showAdDebugOverlayProvider,
+                      ),
+                      _SettingsItem(
+                        icon: Icons.refresh_rounded,
+                        title: 'Clear Ad Cache',
+                        subtitle: 'Force reload all ads',
+                        onTap: () {
+                          ref.read(adServiceProvider).clearCache();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Ad cache cleared'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
               // Sign out
               SliverToBoxAdapter(
                 child: Padding(
@@ -318,6 +351,71 @@ class _SettingsItemState extends State<_SettingsItem> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Settings item with a toggle switch.
+class _SettingsToggleItem extends ConsumerWidget {
+  const _SettingsToggleItem({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.provider,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final StateProvider<bool> provider;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(provider);
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.backgroundAlt,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: (newValue) {
+              ref.read(provider.notifier).state = newValue;
+            },
+            activeColor: AppColors.accent,
+          ),
+        ],
       ),
     );
   }

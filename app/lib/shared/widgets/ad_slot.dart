@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../services/ad_service.dart';
+
+/// Debug overlay provider - toggle to show ad slot boundaries.
+/// Only functional in debug builds.
+final showAdDebugOverlayProvider = StateProvider<bool>((ref) => false);
 
 /// A widget that displays an ad creative in the header area.
 /// 
@@ -103,6 +108,22 @@ class _AdSlotState extends ConsumerState<AdSlot> {
 
   @override
   Widget build(BuildContext context) {
+    final showDebugOverlay = kDebugMode && ref.watch(showAdDebugOverlayProvider);
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Check responsive visibility
+    final isTabletOrAbove = screenWidth >= AppSpacing.breakpointTablet;
+    final isDesktop = screenWidth >= AppSpacing.breakpointDesktop;
+    
+    // Determine if slot should be visible
+    final shouldShowSlot = isTabletOrAbove && 
+        (widget.position == AdPosition.right || isDesktop);
+
+    // In debug mode with overlay, always show the slot boundary
+    if (showDebugOverlay && shouldShowSlot) {
+      return _buildDebugOverlay(context);
+    }
+
     // Hide during loading to prevent layout jumps
     if (_loading) {
       return const SizedBox.shrink();
@@ -113,16 +134,13 @@ class _AdSlotState extends ConsumerState<AdSlot> {
       return const SizedBox.shrink();
     }
 
-    // Responsive: check screen width
-    final screenWidth = MediaQuery.of(context).size.width;
-    
     // Hide on mobile (< 768px)
-    if (screenWidth < AppSpacing.breakpointTablet) {
+    if (!isTabletOrAbove) {
       return const SizedBox.shrink();
     }
     
     // On tablet (768-1024), only show right ad to save space
-    if (screenWidth < AppSpacing.breakpointDesktop && widget.position == AdPosition.left) {
+    if (!isDesktop && widget.position == AdPosition.left) {
       return const SizedBox.shrink();
     }
 
@@ -166,6 +184,82 @@ class _AdSlotState extends ConsumerState<AdSlot> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Build debug overlay showing slot boundary and key.
+  Widget _buildDebugOverlay(BuildContext context) {
+    final slotKey = '${widget.page}:${widget.position}';
+    final hasAd = _creative != null;
+
+    return Container(
+      width: widget.maxWidth,
+      height: widget.maxHeight,
+      decoration: BoxDecoration(
+        color: hasAd 
+            ? Colors.green.withValues(alpha: 0.15)
+            : Colors.orange.withValues(alpha: 0.15),
+        border: Border.all(
+          color: hasAd ? Colors.green : Colors.orange,
+          width: 2,
+        ),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      ),
+      child: Stack(
+        children: [
+          // Show actual ad if available
+          if (hasAd && _creative != null)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd - 2),
+                child: Opacity(
+                  opacity: 0.7,
+                  child: Image.network(
+                    _creative!.imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+          // Debug label
+          Positioned(
+            top: 4,
+            left: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    slotKey,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  Text(
+                    hasAd ? 'AD LOADED' : 'NO AD',
+                    style: TextStyle(
+                      color: hasAd ? Colors.greenAccent : Colors.orangeAccent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
