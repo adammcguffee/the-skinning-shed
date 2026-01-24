@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { requireAdmin } from "../_shared/admin_auth.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 /**
  * regulations-check-v3 Edge Function (v3.1.0)
@@ -553,15 +553,12 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const auth = await requireAdmin(req);
-    if (!auth.ok) {
-      return new Response(JSON.stringify(auth), {
-        status: auth.status,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    const supabase = auth.admin!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false }
+    });
 
     // Fetch ALL sources (no pagination needed for < 1000)
     const { data: sources, error: sourcesError } = await supabase

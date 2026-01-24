@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shed/services/edge_admin_client.dart';
 import 'package:shed/services/supabase_service.dart';
 
 /// Regulation category types.
@@ -404,7 +403,6 @@ class RegulationAuditEntry {
 }
 
 /// State portal links for quick access to official agency pages.
-/// Links are only shown in UI if verified OK AND within 14 days.
 class StatePortalLinks {
   const StatePortalLinks({
     required this.stateCode,
@@ -417,14 +415,6 @@ class StatePortalLinks {
     this.fishingUrl,
     this.recordsUrl,
     this.notes,
-    // Verification status booleans - THE GATEKEEPER
-    this.verifiedSeasonsOk = false,
-    this.verifiedRegsOk = false,
-    this.verifiedFishingOk = false,
-    this.verifiedLicensingOk = false,
-    this.verifiedBuyLicenseOk = false,
-    this.verifiedRecordsOk = false,
-    this.lastVerifiedAt,
   });
   
   final String stateCode;
@@ -438,51 +428,6 @@ class StatePortalLinks {
   final String? recordsUrl;
   final String? notes;
   
-  // Verification status - must be true AND recent to show link
-  final bool verifiedSeasonsOk;
-  final bool verifiedRegsOk;
-  final bool verifiedFishingOk;
-  final bool verifiedLicensingOk;
-  final bool verifiedBuyLicenseOk;
-  final bool verifiedRecordsOk;
-  final DateTime? lastVerifiedAt;
-  
-  /// Maximum age for verification to be considered valid (14 days).
-  static const verificationMaxAgeDays = 14;
-  
-  /// Check if verification is recent enough (within 14 days).
-  bool get isVerificationRecent {
-    if (lastVerifiedAt == null) return false;
-    final age = DateTime.now().difference(lastVerifiedAt!);
-    return age.inDays <= verificationMaxAgeDays;
-  }
-  
-  // GATED ACCESSORS: Only true if URL exists AND verified OK AND recent
-  bool get canShowSeasons => 
-      seasonsUrl != null && seasonsUrl!.isNotEmpty && 
-      verifiedSeasonsOk && isVerificationRecent;
-  
-  bool get canShowRegulations => 
-      regulationsUrl != null && regulationsUrl!.isNotEmpty && 
-      verifiedRegsOk && isVerificationRecent;
-  
-  bool get canShowFishing => 
-      fishingUrl != null && fishingUrl!.isNotEmpty && 
-      verifiedFishingOk && isVerificationRecent;
-  
-  bool get canShowLicensing => 
-      licensingUrl != null && licensingUrl!.isNotEmpty && 
-      verifiedLicensingOk && isVerificationRecent;
-  
-  bool get canShowBuyLicense => 
-      buyLicenseUrl != null && buyLicenseUrl!.isNotEmpty && 
-      verifiedBuyLicenseOk && isVerificationRecent;
-  
-  bool get canShowRecords => 
-      recordsUrl != null && recordsUrl!.isNotEmpty && 
-      verifiedRecordsOk && isVerificationRecent;
-  
-  // Legacy accessors (just check URL presence) - use canShow* instead
   bool get hasSeasons => seasonsUrl != null && seasonsUrl!.isNotEmpty;
   bool get hasRegulations => regulationsUrl != null && regulationsUrl!.isNotEmpty;
   bool get hasLicensing => licensingUrl != null && licensingUrl!.isNotEmpty;
@@ -490,43 +435,18 @@ class StatePortalLinks {
   bool get hasFishing => fishingUrl != null && fishingUrl!.isNotEmpty;
   bool get hasRecords => recordsUrl != null && recordsUrl!.isNotEmpty;
   
-  /// Count of links that can be shown (verified + recent).
-  int get verifiedLinkCount {
-    int count = 0;
-    if (canShowSeasons) count++;
-    if (canShowRegulations) count++;
-    if (canShowFishing) count++;
-    if (canShowLicensing) count++;
-    if (canShowBuyLicense) count++;
-    if (canShowRecords) count++;
-    return count;
-  }
-  
-  /// True if at least one link can be shown.
-  bool get hasAnyVerifiedLinks => verifiedLinkCount > 0;
-  
   factory StatePortalLinks.fromJson(Map<String, dynamic> json) {
     return StatePortalLinks(
       stateCode: json['state_code'] as String,
       stateName: json['state_name'] as String,
       agencyName: json['agency_name'] as String?,
-      seasonsUrl: json['hunting_seasons_url'] as String? ?? json['seasons_url'] as String?,
-      regulationsUrl: json['hunting_regs_url'] as String? ?? json['regulations_url'] as String?,
+      seasonsUrl: json['seasons_url'] as String?,
+      regulationsUrl: json['regulations_url'] as String?,
       licensingUrl: json['licensing_url'] as String?,
       buyLicenseUrl: json['buy_license_url'] as String?,
-      fishingUrl: json['fishing_regs_url'] as String? ?? json['fishing_url'] as String?,
+      fishingUrl: json['fishing_url'] as String?,
       recordsUrl: json['records_url'] as String?,
       notes: json['notes'] as String?,
-      // Parse verification booleans
-      verifiedSeasonsOk: json['verified_hunting_seasons_ok'] as bool? ?? false,
-      verifiedRegsOk: json['verified_hunting_regs_ok'] as bool? ?? false,
-      verifiedFishingOk: json['verified_fishing_regs_ok'] as bool? ?? false,
-      verifiedLicensingOk: json['verified_licensing_ok'] as bool? ?? false,
-      verifiedBuyLicenseOk: json['verified_buy_license_ok'] as bool? ?? false,
-      verifiedRecordsOk: json['verified_records_ok'] as bool? ?? false,
-      lastVerifiedAt: json['last_verified_at'] != null
-          ? DateTime.tryParse(json['last_verified_at'] as String)
-          : null,
     );
   }
   
@@ -534,65 +454,14 @@ class StatePortalLinks {
     'state_code': stateCode,
     'state_name': stateName,
     if (agencyName != null) 'agency_name': agencyName,
-    if (seasonsUrl != null) 'hunting_seasons_url': seasonsUrl,
-    if (regulationsUrl != null) 'hunting_regs_url': regulationsUrl,
+    if (seasonsUrl != null) 'seasons_url': seasonsUrl,
+    if (regulationsUrl != null) 'regulations_url': regulationsUrl,
     if (licensingUrl != null) 'licensing_url': licensingUrl,
     if (buyLicenseUrl != null) 'buy_license_url': buyLicenseUrl,
-    if (fishingUrl != null) 'fishing_regs_url': fishingUrl,
+    if (fishingUrl != null) 'fishing_url': fishingUrl,
     if (recordsUrl != null) 'records_url': recordsUrl,
     if (notes != null) 'notes': notes,
   };
-}
-
-/// Official state wildlife agency root domain.
-/// These are the ONLY allowed source domains for portal links.
-class OfficialRoot {
-  const OfficialRoot({
-    required this.stateCode,
-    required this.stateName,
-    required this.agencyName,
-    required this.officialRootUrl,
-    required this.officialDomain,
-    this.verifiedOk = false,
-    this.lastVerifiedAt,
-    this.verifyError,
-  });
-  
-  final String stateCode;
-  final String stateName;
-  final String agencyName;
-  final String officialRootUrl;
-  final String officialDomain;
-  final bool verifiedOk;
-  final DateTime? lastVerifiedAt;
-  final String? verifyError;
-  
-  /// Check if a URL is within this official domain (or subdomain).
-  bool isUrlAllowed(String url) {
-    try {
-      final uri = Uri.parse(url);
-      final host = uri.host.toLowerCase();
-      final domain = officialDomain.toLowerCase();
-      return host == domain || host.endsWith('.$domain');
-    } catch (_) {
-      return false;
-    }
-  }
-  
-  factory OfficialRoot.fromJson(Map<String, dynamic> json) {
-    return OfficialRoot(
-      stateCode: json['state_code'] as String,
-      stateName: json['state_name'] as String,
-      agencyName: json['agency_name'] as String,
-      officialRootUrl: json['official_root_url'] as String,
-      officialDomain: json['official_domain'] as String,
-      verifiedOk: json['verified_ok'] as bool? ?? false,
-      lastVerifiedAt: json['last_verified_at'] != null
-          ? DateTime.tryParse(json['last_verified_at'] as String)
-          : null,
-      verifyError: json['verify_error'] as String?,
-    );
-  }
 }
 
 /// Source counts by category.
@@ -655,8 +524,6 @@ class RegulationsService {
   
   final SupabaseService _supabaseService;
   
-  // ========================================================================
-  // ADMIN EDGE FUNCTION HELPER - Standardized JWT auth for all admin calls
   /// Fetch regulations for a specific state and category.
   Future<List<StateRegulation>> fetchRegulations({
     required String stateCode,
@@ -860,7 +727,19 @@ class RegulationsService {
   /// Uses v6: OpenAI normalization + strict validation + processes all 150.
   /// Returns a map with check results: checked, auto_approved, pending, skipped, failed.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
-    return EdgeAdminClient.invokeAdminEdge('regulations-check-v6');
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final response = await client.functions.invoke(
+      'regulations-check-v6',
+      body: {},
+    );
+    
+    if (response.status != 200) {
+      throw Exception('Failed to run checker: ${response.data}');
+    }
+    
+    return response.data as Map<String, dynamic>;
   }
   
   /// Fetch coverage statistics for admin dashboard.
@@ -927,204 +806,6 @@ class RegulationsService {
         .select('id');
     
     return (res as List).length;
-  }
-  
-  /// Reset all regulations data (admin only).
-  /// Deletes pending, approved, sources, and optionally audit log.
-  /// Also resets portal links verification status.
-  Future<Map<String, int>> resetRegulationsData({bool includeAuditLog = false}) async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
-    
-    final pendingRes = await client.from('state_regulations_pending').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    final approvedRes = await client.from('state_regulations_approved').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    final sourcesRes = await client.from('state_regulations_sources').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    
-    // Optionally clear audit log
-    int auditDeleted = 0;
-    if (includeAuditLog) {
-      final auditRes = await client.from('state_regulations_audit_log').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      auditDeleted = (auditRes as List?)?.length ?? 0;
-    }
-    
-    // Reset portal links verification status (keep URLs but mark unverified)
-    await client.from('state_portal_links').update({
-      'verified_hunting_seasons_ok': false,
-      'verified_hunting_regs_ok': false,
-      'verified_fishing_regs_ok': false,
-      'verified_licensing_ok': false,
-      'verified_buy_license_ok': false,
-      'verified_records_ok': false,
-      'last_verified_at': null,
-    }).neq('state_code', '');
-    
-    return {
-      'pending': (pendingRes as List?)?.length ?? 0,
-      'approved': (approvedRes as List?)?.length ?? 0,
-      'sources': (sourcesRes as List?)?.length ?? 0,
-      'audit': auditDeleted,
-    };
-  }
-  
-  /// Fetch official roots for all states (admin only).
-  Future<List<OfficialRoot>> fetchOfficialRoots() async {
-    final client = _supabaseService.client;
-    if (client == null) return [];
-    
-    final res = await client.from('state_official_roots')
-        .select()
-        .order('state_code');
-    
-    return (res as List)
-        .map((json) => OfficialRoot.fromJson(json as Map<String, dynamic>))
-        .toList();
-  }
-  
-  /// Fetch official root for a single state.
-  Future<OfficialRoot?> fetchOfficialRoot(String stateCode) async {
-    final client = _supabaseService.client;
-    if (client == null) return null;
-    
-    final res = await client.from('state_official_roots')
-        .select()
-        .eq('state_code', stateCode)
-        .maybeSingle();
-    
-    if (res == null) return null;
-    return OfficialRoot.fromJson(res as Map<String, dynamic>);
-  }
-  
-  /// Verify portal links (checks HTTP status of all URLs).
-  Future<Map<String, dynamic>> verifyPortalLinks() async {
-    return EdgeAdminClient.invokeAdminEdge('regs-links-verify');
-  }
-  
-  /// Auth diagnostic (debug-only) - validates auth and returns JWT metadata.
-  Future<Map<String, dynamic>> runAuthDiagnostic() async {
-    return EdgeAdminClient.invokeAdminEdge('regs-auth-diagnostic');
-  }
-
-  /// Discover portal links by crawling official domains (official-only).
-  /// Uses regs-discover-official to crawl state_official_roots domains.
-  Future<Map<String, dynamic>> discoverOfficialLinks({int limit = 5, int offset = 0}) async {
-    return EdgeAdminClient.invokeAdminEdge('regs-discover-official', body: {
-      'limit': limit,
-      'offset': offset,
-    });
-  }
-  
-  /// Legacy discover method - redirects to official-only discovery.
-  Future<Map<String, dynamic>> discoverPortalLinks({int limit = 5, int offset = 0}) async {
-    return discoverOfficialLinks(limit: limit, offset: offset);
-  }
-  
-  /// Fetch broken portal links for admin review (where URL exists but verification failed).
-  Future<List<Map<String, dynamic>>> fetchBrokenLinks() async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
-    
-    // Fetch all states with their URLs and verification status
-    final res = await client.from('state_portal_links')
-        .select()
-        .order('state_code');
-    
-    final broken = <Map<String, dynamic>>[];
-    
-    for (final row in res as List) {
-      final state = row as Map<String, dynamic>;
-      final stateCode = state['state_code'] as String;
-      final stateName = state['state_name'] as String;
-      
-      // Check each URL field
-      final fields = [
-        {'url': 'hunting_seasons_url', 'ok': 'verified_hunting_seasons_ok', 'label': 'Hunting Seasons'},
-        {'url': 'hunting_regs_url', 'ok': 'verified_hunting_regs_ok', 'label': 'Hunting Regs'},
-        {'url': 'fishing_regs_url', 'ok': 'verified_fishing_regs_ok', 'label': 'Fishing Regs'},
-        {'url': 'licensing_url', 'ok': 'verified_licensing_ok', 'label': 'Licensing'},
-        {'url': 'buy_license_url', 'ok': 'verified_buy_license_ok', 'label': 'Buy License'},
-        {'url': 'records_url', 'ok': 'verified_records_ok', 'label': 'Records'},
-      ];
-      
-      for (final field in fields) {
-        final url = state[field['url']] as String?;
-        final isOk = state[field['ok']] as bool? ?? false;
-        
-        // Broken = URL exists but not verified OK
-        if (url != null && url.isNotEmpty && !isOk) {
-          broken.add({
-            'state_code': stateCode,
-            'state_name': stateName,
-            'field': field['label'],
-            'url': url,
-            'verified_ok': false,
-          });
-        }
-      }
-    }
-    
-    return broken;
-  }
-  
-  /// Fetch all portal links for coverage matrix.
-  Future<List<StatePortalLinks>> fetchAllPortalLinks() async {
-    final client = _supabaseService.client;
-    if (client == null) return [];
-    
-    final res = await client.from('state_portal_links')
-        .select()
-        .order('state_code');
-    
-    return (res as List)
-        .map((json) => StatePortalLinks.fromJson(json as Map<String, dynamic>))
-        .toList();
-  }
-  
-  /// Update a single portal link field for a state.
-  Future<void> updatePortalLink({
-    required String stateCode,
-    String? huntingSeasonsUrl,
-    String? huntingRegsUrl,
-    String? fishingRegsUrl,
-    String? licensingUrl,
-    String? buyLicenseUrl,
-    String? recordsUrl,
-  }) async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
-    
-    final updates = <String, dynamic>{
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-    
-    // Only include fields that were provided (null = keep existing, empty string = clear)
-    if (huntingSeasonsUrl != null) {
-      updates['hunting_seasons_url'] = huntingSeasonsUrl.isEmpty ? null : huntingSeasonsUrl;
-      updates['verified_hunting_seasons_ok'] = false; // Reset verification
-    }
-    if (huntingRegsUrl != null) {
-      updates['hunting_regs_url'] = huntingRegsUrl.isEmpty ? null : huntingRegsUrl;
-      updates['verified_hunting_regs_ok'] = false;
-    }
-    if (fishingRegsUrl != null) {
-      updates['fishing_regs_url'] = fishingRegsUrl.isEmpty ? null : fishingRegsUrl;
-      updates['verified_fishing_regs_ok'] = false;
-    }
-    if (licensingUrl != null) {
-      updates['licensing_url'] = licensingUrl.isEmpty ? null : licensingUrl;
-      updates['verified_licensing_ok'] = false;
-    }
-    if (buyLicenseUrl != null) {
-      updates['buy_license_url'] = buyLicenseUrl.isEmpty ? null : buyLicenseUrl;
-      updates['verified_buy_license_ok'] = false;
-    }
-    if (recordsUrl != null) {
-      updates['records_url'] = recordsUrl.isEmpty ? null : recordsUrl;
-      updates['verified_records_ok'] = false;
-    }
-    
-    await client.from('state_portal_links')
-        .update(updates)
-        .eq('state_code', stateCode);
   }
   
   /// Fetch audit log entries (admin only).
@@ -1461,325 +1142,6 @@ class RegulationsService {
     }
     
     return {'inserted': inserted, 'updated': updated};
-  }
-  
-  // ========================================================================
-  // DISCOVERY RUN METHODS - Full 50-state discovery with progress tracking
-  // ========================================================================
-  
-  /// Start a new discovery run for all states.
-  /// Returns run_id and initial status.
-  Future<DiscoveryRun> startDiscoveryRun({int batchSize = 5}) async {
-    try {
-      final data = await EdgeAdminClient.invokeAdminEdge(
-        'regs-discovery-start',
-        body: {'batch_size': batchSize},
-      );
-      
-      return DiscoveryRun(
-        id: data['run_id'] as String,
-        status: data['status'] as String? ?? 'running',
-        processed: 0,
-        total: data['total'] as int? ?? 50,
-        batchSize: data['batch_size'] as int? ?? 5,
-        statsOk: 0,
-        statsSkipped: 0,
-        statsError: 0,
-      );
-    } on EdgeAdminException catch (e) {
-      if (e.status == 409 && e.data is Map<String, dynamic>) {
-        final data = e.data as Map<String, dynamic>;
-        if (data['error_code'] == 'ALREADY_RUNNING') {
-          return DiscoveryRun(
-            id: data['run_id'] as String,
-            status: 'running',
-            processed: data['processed'] as int? ?? 0,
-            total: data['total'] as int? ?? 50,
-            statsOk: 0,
-            statsSkipped: 0,
-            statsError: 0,
-          );
-        }
-      }
-      rethrow;
-    }
-  }
-  
-  /// Continue a discovery run by processing the next batch.
-  /// Returns updated run status and batch results.
-  Future<DiscoveryRunProgress> continueDiscoveryRun(String runId) async {
-    final data = await EdgeAdminClient.invokeAdminEdge(
-      'regs-discovery-continue',
-      body: {'run_id': runId},
-    );
-    final stats = data['stats'] as Map<String, dynamic>? ?? {};
-    final batchResults = (data['batch_results'] as List?)
-        ?.map((r) => DiscoveryBatchResult.fromJson(r as Map<String, dynamic>))
-        .toList() ?? [];
-    
-    return DiscoveryRunProgress(
-      runId: data['run_id'] as String,
-      status: data['status'] as String? ?? 'running',
-      processed: data['processed'] as int? ?? 0,
-      total: data['total'] as int? ?? 50,
-      lastStateCode: data['last_state_code'] as String?,
-      statsOk: stats['ok'] as int? ?? 0,
-      statsSkipped: stats['skipped'] as int? ?? 0,
-      statsError: stats['error'] as int? ?? 0,
-      batchResults: batchResults,
-    );
-  }
-  
-  /// Get the current active discovery run (if any).
-  /// Used to resume progress after page refresh.
-  Future<DiscoveryRun?> getActiveDiscoveryRun() async {
-    final client = _supabaseService.client;
-    if (client == null) return null;
-    
-    try {
-      final res = await client
-          .from('reg_discovery_runs')
-          .select()
-          .eq('status', 'running')
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      
-      if (res == null) return null;
-      return DiscoveryRun.fromJson(res as Map<String, dynamic>);
-    } catch (e) {
-      print('Error getting active discovery run: $e');
-      return null;
-    }
-  }
-  
-  /// Get a specific discovery run by ID.
-  Future<DiscoveryRun?> getDiscoveryRun(String runId) async {
-    final client = _supabaseService.client;
-    if (client == null) return null;
-    
-    try {
-      final res = await client
-          .from('reg_discovery_runs')
-          .select()
-          .eq('id', runId)
-          .single();
-      
-      return DiscoveryRun.fromJson(res as Map<String, dynamic>);
-    } catch (e) {
-      print('Error getting discovery run: $e');
-      return null;
-    }
-  }
-  
-  /// Get per-state audit results for a discovery run.
-  Future<List<DiscoveryRunItem>> getDiscoveryRunItems(String runId) async {
-    final client = _supabaseService.client;
-    if (client == null) return [];
-    
-    final res = await client
-        .from('reg_discovery_run_items')
-        .select()
-        .eq('run_id', runId)
-        .order('state_code');
-    
-    return (res as List)
-        .map((json) => DiscoveryRunItem.fromJson(json as Map<String, dynamic>))
-        .toList();
-  }
-  
-  /// Get recent discovery runs for history.
-  Future<List<DiscoveryRun>> getRecentDiscoveryRuns({int limit = 10}) async {
-    final client = _supabaseService.client;
-    if (client == null) return [];
-    
-    final res = await client
-        .from('reg_discovery_runs')
-        .select()
-        .order('created_at', ascending: false)
-        .limit(limit);
-    
-    return (res as List)
-        .map((json) => DiscoveryRun.fromJson(json as Map<String, dynamic>))
-        .toList();
-  }
-  
-  /// Cancel an active discovery run.
-  Future<void> cancelDiscoveryRun(String runId) async {
-    final client = _supabaseService.client;
-    if (client == null) throw Exception('Not connected');
-    
-    await client.from('reg_discovery_runs')
-        .update({'status': 'canceled', 'finished_at': DateTime.now().toIso8601String()})
-        .eq('id', runId);
-  }
-}
-
-// ============================================================================
-// DISCOVERY RUN MODELS
-// ============================================================================
-
-/// Represents a discovery run job.
-class DiscoveryRun {
-  final String id;
-  final String status;
-  final int processed;
-  final int total;
-  final int? batchSize;
-  final String? lastStateCode;
-  final DateTime? startedAt;
-  final DateTime? finishedAt;
-  final int statsOk;
-  final int statsSkipped;
-  final int statsError;
-  
-  DiscoveryRun({
-    required this.id,
-    required this.status,
-    required this.processed,
-    required this.total,
-    this.batchSize,
-    this.lastStateCode,
-    this.startedAt,
-    this.finishedAt,
-    this.statsOk = 0,
-    this.statsSkipped = 0,
-    this.statsError = 0,
-  });
-  
-  factory DiscoveryRun.fromJson(Map<String, dynamic> json) {
-    return DiscoveryRun(
-      id: json['id'] as String,
-      status: json['status'] as String? ?? 'unknown',
-      processed: json['processed'] as int? ?? 0,
-      total: json['total'] as int? ?? 50,
-      batchSize: json['batch_size'] as int?,
-      lastStateCode: json['last_state_code'] as String?,
-      startedAt: json['started_at'] != null 
-          ? DateTime.tryParse(json['started_at'] as String)
-          : null,
-      finishedAt: json['finished_at'] != null 
-          ? DateTime.tryParse(json['finished_at'] as String)
-          : null,
-      statsOk: json['stats_ok'] as int? ?? 0,
-      statsSkipped: json['stats_skipped'] as int? ?? 0,
-      statsError: json['stats_error'] as int? ?? 0,
-    );
-  }
-  
-  bool get isRunning => status == 'running';
-  bool get isDone => status == 'done';
-  bool get isCanceled => status == 'canceled';
-  bool get isError => status == 'error';
-  
-  double get progress => total > 0 ? processed / total : 0;
-  String get progressText => '$processed/$total';
-}
-
-/// Progress update from continuing a discovery run.
-class DiscoveryRunProgress {
-  final String runId;
-  final String status;
-  final int processed;
-  final int total;
-  final String? lastStateCode;
-  final int statsOk;
-  final int statsSkipped;
-  final int statsError;
-  final List<DiscoveryBatchResult> batchResults;
-  
-  DiscoveryRunProgress({
-    required this.runId,
-    required this.status,
-    required this.processed,
-    required this.total,
-    this.lastStateCode,
-    this.statsOk = 0,
-    this.statsSkipped = 0,
-    this.statsError = 0,
-    this.batchResults = const [],
-  });
-  
-  bool get isRunning => status == 'running';
-  bool get isDone => status == 'done';
-  double get progress => total > 0 ? processed / total : 0;
-}
-
-/// Result of processing a single state in a batch.
-class DiscoveryBatchResult {
-  final String stateCode;
-  final String status;
-  final String? message;
-  final int linksFound;
-  
-  DiscoveryBatchResult({
-    required this.stateCode,
-    required this.status,
-    this.message,
-    this.linksFound = 0,
-  });
-  
-  factory DiscoveryBatchResult.fromJson(Map<String, dynamic> json) {
-    return DiscoveryBatchResult(
-      stateCode: json['state_code'] as String,
-      status: json['status'] as String? ?? 'unknown',
-      message: json['message'] as String?,
-      linksFound: json['links_found'] as int? ?? 0,
-    );
-  }
-}
-
-/// Per-state audit item from a discovery run.
-class DiscoveryRunItem {
-  final String runId;
-  final String stateCode;
-  final String status;
-  final String? message;
-  final Map<String, dynamic>? discovered;
-  final Map<String, dynamic>? verified;
-  final int pagesCrawled;
-  final int linksFound;
-  final DateTime? updatedAt;
-  
-  DiscoveryRunItem({
-    required this.runId,
-    required this.stateCode,
-    required this.status,
-    this.message,
-    this.discovered,
-    this.verified,
-    this.pagesCrawled = 0,
-    this.linksFound = 0,
-    this.updatedAt,
-  });
-  
-  factory DiscoveryRunItem.fromJson(Map<String, dynamic> json) {
-    return DiscoveryRunItem(
-      runId: json['run_id'] as String,
-      stateCode: json['state_code'] as String,
-      status: json['status'] as String? ?? 'unknown',
-      message: json['message'] as String?,
-      discovered: json['discovered'] as Map<String, dynamic>?,
-      verified: json['verified'] as Map<String, dynamic>?,
-      pagesCrawled: json['pages_crawled'] as int? ?? 0,
-      linksFound: json['links_found'] as int? ?? 0,
-      updatedAt: json['updated_at'] != null 
-          ? DateTime.tryParse(json['updated_at'] as String)
-          : null,
-    );
-  }
-  
-  bool get isOk => status == 'ok';
-  bool get isSkipped => status == 'skipped';
-  bool get isError => status == 'error';
-  
-  /// Get list of discovered URLs as key-value pairs.
-  List<MapEntry<String, String>> get discoveredUrls {
-    if (discovered == null) return [];
-    return discovered!.entries
-        .where((e) => e.value != null && e.value is String)
-        .map((e) => MapEntry(e.key.replaceAll('_url', ''), e.value as String))
-        .toList();
   }
 }
 

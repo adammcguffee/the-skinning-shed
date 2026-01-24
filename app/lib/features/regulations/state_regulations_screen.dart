@@ -248,9 +248,6 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   Widget _buildPortalLinksSection() {
     final links = _portalLinks!;
     
-    // Check if any verified links are available
-    final hasAnyVerified = links.hasAnyVerifiedLinks;
-    
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenPadding,
@@ -271,111 +268,64 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
             // Header
             Row(
               children: [
-                Icon(
-                  hasAnyVerified ? Icons.verified_rounded : Icons.info_outline_rounded,
-                  size: 16,
-                  color: hasAnyVerified ? AppColors.success : AppColors.warning,
-                ),
+                Icon(Icons.public_rounded, size: 16, color: AppColors.accent),
                 const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Official ${links.agencyName ?? 'State Agency'}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        hasAnyVerified
-                            ? 'Official state agency sources only'
-                            : 'Links being verified - check back soon',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: hasAnyVerified ? AppColors.textSecondary : AppColors.warning,
-                        ),
-                      ),
-                    ],
+                Text(
+                  links.agencyName ?? 'Official Portal',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
             
-            // Portal buttons grid - ONLY SHOW VERIFIED LINKS
-            if (hasAnyVerified)
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: [
-                  // Only show buttons for links that are verified OK AND recent
-                  if (links.canShowSeasons)
-                    _PortalButton(
-                      icon: Icons.calendar_today_rounded,
-                      label: 'Seasons',
-                      url: links.seasonsUrl!,
-                    ),
-                  if (links.canShowRegulations)
-                    _PortalButton(
-                      icon: Icons.description_rounded,
-                      label: 'Regulations',
-                      url: links.regulationsUrl!,
-                    ),
-                  if (links.canShowLicensing)
-                    _PortalButton(
-                      icon: Icons.badge_rounded,
-                      label: 'Licensing',
-                      url: links.licensingUrl!,
-                    ),
-                  if (links.canShowBuyLicense)
-                    _PortalButton(
-                      icon: Icons.shopping_cart_rounded,
-                      label: 'Buy License',
-                      url: links.buyLicenseUrl!,
-                      isPrimary: true,
-                    ),
-                  if (links.canShowFishing)
-                    _PortalButton(
-                      icon: Icons.phishing_rounded,
-                      label: 'Fishing',
-                      url: links.fishingUrl!,
-                    ),
-                  if (links.canShowRecords)
-                    _PortalButton(
-                      icon: Icons.emoji_events_rounded,
-                      label: 'Records',
-                      url: links.recordsUrl!,
-                    ),
-                ],
-              )
-            else
-              // No verified links available - show placeholder
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.link_off_rounded, size: 18, color: AppColors.warning),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        'Official links are being verified. Please check your state wildlife agency website directly.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.warning,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            // Portal buttons grid
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                if (links.hasSeasons)
+                  _PortalButton(
+                    icon: Icons.calendar_today_rounded,
+                    label: 'Seasons',
+                    url: links.seasonsUrl!,
+                  ),
+                if (links.hasRegulations)
+                  _PortalButton(
+                    icon: Icons.description_rounded,
+                    label: 'Regulations',
+                    url: links.regulationsUrl!,
+                  ),
+                if (links.hasLicensing)
+                  _PortalButton(
+                    icon: Icons.badge_rounded,
+                    label: 'Licensing',
+                    url: links.licensingUrl!,
+                  ),
+                if (links.hasBuyLicense)
+                  _PortalButton(
+                    icon: Icons.shopping_cart_rounded,
+                    label: 'Buy License',
+                    url: links.buyLicenseUrl!,
+                    isPrimary: true,
+                  ),
+                if (links.hasFishing)
+                  _PortalButton(
+                    icon: Icons.phishing_rounded,
+                    label: 'Fishing',
+                    url: links.fishingUrl!,
+                  ),
+                if (links.hasRecords)
+                  _PortalButton(
+                    icon: Icons.emoji_events_rounded,
+                    label: 'Records',
+                    url: links.recordsUrl!,
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -548,29 +498,6 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     );
   }
 
-  /// Check if a regulation should be displayed.
-  /// Only show if: manual approval OR (auto + 95%+ confidence).
-  /// Also require source URL to be present (official source).
-  bool _shouldShowRegulation(StateRegulation regulation) {
-    // Must have a source URL (official source)
-    if (regulation.sourceUrl == null || regulation.sourceUrl!.isEmpty) {
-      return false;
-    }
-    
-    // Manual approval = always show
-    if (regulation.approvalMode == 'manual') {
-      return true;
-    }
-    
-    // Auto approval requires 95%+ confidence
-    if (regulation.approvalMode == 'auto' && regulation.confidenceScore >= 0.95) {
-      return true;
-    }
-    
-    // Otherwise don't show
-    return false;
-  }
-
   Widget _buildCategoryContent(RegulationCategory category) {
     final regulations = _regulations[category] ?? [];
     final stateName = _state?.name ?? widget.stateCode;
@@ -582,28 +509,24 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           )
         : null;
     
-    // Filter to only show regulations that meet trust criteria
-    final trustedRegulations = regulations.where(_shouldShowRegulation).toList();
-    
-    if (trustedRegulations.isEmpty) {
+    if (regulations.isEmpty) {
       return Column(
         children: [
           // Region selector even if no data yet
           _buildRegionSelector(category),
           
           Expanded(
-            child: _NoTrustedFactsState(
+            child: _EmptyRegulationsState(
               stateName: stateName,
               category: category,
-              hasPortalLinks: _portalLinks?.hasAnyVerifiedLinks ?? false,
             ),
           ),
         ],
       );
     }
     
-    // Show the most recent trusted regulation
-    final regulation = trustedRegulations.first;
+    // Show the most recent regulation
+    final regulation = regulations.first;
     
     return Column(
       children: [
@@ -1067,105 +990,6 @@ class _NoteCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// State shown when no trusted facts are available (facts don't meet approval criteria).
-/// Guides user to official portal links above.
-class _NoTrustedFactsState extends StatelessWidget {
-  const _NoTrustedFactsState({
-    required this.stateName,
-    required this.category,
-    required this.hasPortalLinks,
-  });
-  
-  final String stateName;
-  final RegulationCategory category;
-  final bool hasPortalLinks;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Icon - pointing up if we have portal links
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: hasPortalLinks 
-                    ? AppColors.success.withValues(alpha: 0.1)
-                    : AppColors.info.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-              ),
-              child: Icon(
-                hasPortalLinks ? Icons.arrow_upward_rounded : Icons.description_outlined,
-                size: 36,
-                color: hasPortalLinks ? AppColors.success : AppColors.info,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            
-            // Title
-            Text(
-              hasPortalLinks 
-                  ? 'View Official Sources Above'
-                  : 'No Verified Information',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            
-            // Description
-            Text(
-              hasPortalLinks
-                  ? 'Use the official ${category.label.toLowerCase()} links above for accurate, up-to-date regulations from your state wildlife agency.'
-                  : 'We don\'t have verified ${category.label.toLowerCase()} information for $stateName. Please check your state wildlife agency directly.',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            
-            // Trust disclaimer
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                border: Border.all(color: AppColors.borderSubtle),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.verified_user_rounded, size: 16, color: AppColors.success),
-                  const SizedBox(width: AppSpacing.sm),
-                  Flexible(
-                    child: Text(
-                      'We only show verified information from official sources.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );
