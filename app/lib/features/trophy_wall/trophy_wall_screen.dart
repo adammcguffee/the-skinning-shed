@@ -532,11 +532,13 @@ class _ProfileHeader extends ConsumerWidget {
     String userId,
     bool showFollowers,
   ) {
-    showModalBottomSheet(
+    // Use showShedCenterModal for proper full-screen barrier dismiss
+    showShedCenterModal(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => _FollowListSheet(
+      title: showFollowers ? 'Followers' : 'Following',
+      maxWidth: 480,
+      maxHeight: MediaQuery.of(context).size.height * 0.7,
+      child: _FollowListContent(
         userId: userId,
         showFollowers: showFollowers,
       ),
@@ -691,9 +693,9 @@ class _FollowButtonState extends State<_FollowButton> {
   }
 }
 
-/// Bottom sheet showing followers or following list
-class _FollowListSheet extends ConsumerStatefulWidget {
-  const _FollowListSheet({
+/// Content for followers or following list (used inside showShedCenterModal)
+class _FollowListContent extends ConsumerStatefulWidget {
+  const _FollowListContent({
     required this.userId,
     required this.showFollowers,
   });
@@ -702,10 +704,10 @@ class _FollowListSheet extends ConsumerStatefulWidget {
   final bool showFollowers;
 
   @override
-  ConsumerState<_FollowListSheet> createState() => _FollowListSheetState();
+  ConsumerState<_FollowListContent> createState() => _FollowListContentState();
 }
 
-class _FollowListSheetState extends ConsumerState<_FollowListSheet> {
+class _FollowListContentState extends ConsumerState<_FollowListContent> {
   List<UserSummary>? _users;
   bool _isLoading = true;
   String? _error;
@@ -742,84 +744,69 @@ class _FollowListSheetState extends ConsumerState<_FollowListSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.showFollowers ? 'Followers' : 'Following';
+    if (_isLoading) {
+      return const SizedBox(
+        height: 200,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(AppSpacing.radiusXl),
-            ),
-          ),
+    if (_error != null) {
+      return SizedBox(
+        height: 200,
+        child: Center(
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle and header
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Content
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _error != null
-                        ? Center(
-                            child: Text(
-                              _error!,
-                              style: TextStyle(color: AppColors.error),
-                            ),
-                          )
-                        : _users == null || _users!.isEmpty
-                            ? Center(
-                                child: Text(
-                                  widget.showFollowers
-                                      ? 'No followers yet'
-                                      : 'Not following anyone',
-                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                ),
-                              )
-                            : ListView.builder(
-                                controller: scrollController,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: AppSpacing.lg,
-                                ),
-                                itemCount: _users!.length,
-                                itemBuilder: (context, index) {
-                                  return _UserListTile(
-                                    user: _users![index],
-                                    onFollowToggle: () => _toggleFollow(index),
-                                  );
-                                },
-                              ),
+              Icon(Icons.error_outline_rounded, color: AppColors.error, size: 32),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Error loading users',
+                style: TextStyle(color: AppColors.error),
               ),
             ],
           ),
-        );
-      },
+        ),
+      );
+    }
+    
+    if (_users == null || _users!.isEmpty) {
+      return SizedBox(
+        height: 200,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.showFollowers ? Icons.people_outline_rounded : Icons.person_search_rounded,
+                color: AppColors.textTertiary,
+                size: 48,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                widget.showFollowers
+                    ? 'No followers yet'
+                    : 'Not following anyone',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Use Column instead of ListView for modal content (modal handles scrolling)
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int index = 0; index < _users!.length; index++)
+          _UserListTile(
+            user: _users![index],
+            onFollowToggle: () => _toggleFollow(index),
+          ),
+      ],
     );
   }
 

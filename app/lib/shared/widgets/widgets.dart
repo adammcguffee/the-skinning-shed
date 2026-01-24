@@ -16,9 +16,10 @@ export 'animated_entry.dart';
 export 'location_picker.dart';
 export 'state_widgets.dart';
 
-// Layout utilities (micro-scroll prevention)
+// Layout utilities (micro-scroll prevention, responsive helpers)
 export 'layout/no_micro_scroll_page.dart';
 export 'layout/sized_bottom_sheet.dart';
+export 'layout/responsive.dart';
 
 // Modal system (global dismiss behavior)
 export 'modals/shed_modal.dart';
