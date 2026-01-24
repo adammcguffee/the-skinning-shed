@@ -96,7 +96,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // SAFE AUTH LAYOUT - No micro-scroll on normal screens, graceful scroll when needed
+    // SAFE AUTH LAYOUT - fills viewport, scrolls only when needed (keyboard, small screen)
+    // Pattern: LayoutBuilder → SizedBox (bounded) → Column with Expanded (NOT inside scroll)
+    // The SingleChildScrollView wraps content that CAN scroll if it overflows.
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(
@@ -117,36 +119,40 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             behavior: const NoScrollbarScrollBehavior(),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: IntrinsicHeight(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.max,
-                        children: [
-                          // Small top spacing
-                          const SizedBox(height: 16),
-                          // Hero banner at top - full width
-                          const BannerHeader.authHero(),
-                          const SizedBox(height: 24),
-                          // Form card - centered, takes remaining space
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24),
-                              child: Center(
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 480),
-                                  child: _buildFormCard(),
+                // Use SizedBox to provide bounded height, then Column with Expanded is safe
+                return SizedBox(
+                  height: constraints.maxHeight,
+                  width: constraints.maxWidth,
+                  child: Column(
+                    children: [
+                      // Scrollable content area
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const ClampingScrollPhysics(),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Hero banner at top - full width
+                                const BannerHeader.authHero(),
+                                const SizedBox(height: 24),
+                                // Form card - centered
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 480),
+                                      child: _buildFormCard(),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
-                          // Small bottom spacing
-                          const SizedBox(height: 16),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 );
               },

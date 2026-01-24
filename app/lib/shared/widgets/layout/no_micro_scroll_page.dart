@@ -1,25 +1,27 @@
 import 'package:flutter/material.dart';
 
-/// A layout utility that eliminates micro-scroll on full-screen pages.
+/// A layout utility for full-screen pages that need to fill the viewport
+/// but also support scrolling when content overflows (keyboard, small screens).
 ///
-/// This widget ensures:
-/// - Content fills the viewport exactly when it fits
-/// - Scrolling is enabled gracefully when content exceeds viewport (small screens, keyboard, accessibility)
-/// - No "tiny bounce" or micro-scroll on normal desktop/tablet screens
+/// IMPORTANT: Do NOT use Expanded, Flexible, or Spacer inside the child!
+/// Those widgets require bounded constraints which scroll views don't provide.
 ///
 /// Usage:
 /// ```dart
 /// NoMicroScrollPage(
 ///   child: Column(
-///     mainAxisSize: MainAxisSize.max, // Important!
+///     mainAxisSize: MainAxisSize.min, // Use min, NOT max!
 ///     children: [
-///       // Your content here
-///       const Spacer(), // Optional: push content to top
-///       // More content
+///       HeaderWidget(),
+///       SizedBox(height: 24),
+///       BodyContent(), // No Expanded here!
 ///     ],
 ///   ),
 /// )
 /// ```
+///
+/// For pages with sections that should expand to fill space, use the
+/// [BoundedPage] pattern instead (see below).
 class NoMicroScrollPage extends StatelessWidget {
   const NoMicroScrollPage({
     super.key,
@@ -28,7 +30,9 @@ class NoMicroScrollPage extends StatelessWidget {
     this.padding = EdgeInsets.zero,
   });
 
-  /// The content to display. Should use `mainAxisSize: MainAxisSize.max` if a Column.
+  /// The content to display. 
+  /// IMPORTANT: Use `mainAxisSize: MainAxisSize.min` for Columns.
+  /// Do NOT use Expanded/Flexible/Spacer inside.
   final Widget child;
   
   /// Scroll physics. Defaults to ClampingScrollPhysics for no overscroll bounce.
@@ -47,11 +51,11 @@ class NoMicroScrollPage extends StatelessWidget {
             constraints: BoxConstraints(
               minHeight: constraints.maxHeight,
             ),
-            child: IntrinsicHeight(
-              child: Padding(
-                padding: padding,
-                child: child,
-              ),
+            // No IntrinsicHeight - it doesn't work well with unbounded scroll
+            // Just let content size itself naturally
+            child: Padding(
+              padding: padding,
+              child: child,
             ),
           ),
         );
@@ -60,7 +64,58 @@ class NoMicroScrollPage extends StatelessWidget {
   }
 }
 
-/// A variant that includes SafeArea handling.
+/// A bounded page layout that fills the viewport exactly.
+/// Use this when you need Expanded/Flexible children.
+///
+/// The scrollable area is INSIDE the Expanded section, not wrapping the whole page.
+///
+/// Usage:
+/// ```dart
+/// BoundedPage(
+///   header: BannerHeader(),
+///   body: MyScrollableContent(), // This is wrapped in Expanded
+///   footer: BottomBar(), // Optional
+/// )
+/// ```
+class BoundedPage extends StatelessWidget {
+  const BoundedPage({
+    super.key,
+    this.header,
+    required this.body,
+    this.footer,
+  });
+
+  /// Optional header widget (not scrollable).
+  final Widget? header;
+  
+  /// Main body content. Will be wrapped in Expanded to fill remaining space.
+  /// If this needs to scroll, wrap it in SingleChildScrollView internally.
+  final Widget body;
+  
+  /// Optional footer widget (not scrollable).
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SizedBox(
+          height: constraints.maxHeight,
+          width: constraints.maxWidth,
+          child: Column(
+            children: [
+              if (header != null) header!,
+              Expanded(child: body),
+              if (footer != null) footer!,
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A variant of NoMicroScrollPage that includes SafeArea handling.
 class NoMicroScrollSafePage extends StatelessWidget {
   const NoMicroScrollSafePage({
     super.key,
