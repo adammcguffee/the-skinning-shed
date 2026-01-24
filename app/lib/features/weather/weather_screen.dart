@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/data/us_states.dart';
+import 'package:shed/data/county_centroids.dart';
 import 'package:shed/services/location_service.dart';
+import 'package:shed/services/solunar_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/weather_favorites_service.dart';
 import 'package:shed/services/weather_providers.dart';
@@ -246,6 +248,8 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
               daily: weatherState.data!.daily,
               hourly: weatherState.data!.hourly,
               current: weatherState.data!.current,
+              lat: weatherState.data!.lat,
+              lon: weatherState.data!.lon,
             ),
           ),
         ] else if (hasSelection && !isLoading && weatherState.error != null)
@@ -854,41 +858,36 @@ class _CurrentConditionsHero extends StatelessWidget {
   
   final LiveWeatherData data;
   
-  String _getWeatherSummary() {
-    final current = data.current;
-    final parts = <String>[];
-    
-    // Condition
-    parts.add(current.conditionText);
-    
-    // Wind description
-    if (current.windSpeedMph < 5) {
-      parts.add('Calm winds');
-    } else if (current.windSpeedMph < 15) {
-      parts.add('Light wind');
-    } else if (current.windSpeedMph < 25) {
-      parts.add('Moderate wind');
-    } else {
-      parts.add('Strong wind');
-    }
-    
-    // Precipitation hint
-    if (current.precipProbability > 50) {
-      parts.add('Rain likely');
-    } else if (current.precipProbability > 20) {
-      parts.add('Chance of rain');
-    }
-    
-    return parts.join(' • ');
+  String _getPrecipType() {
+    final temp = data.current.tempF;
+    final precip = data.current.precipProbability;
+    if (precip < 20) return '';
+    if (temp <= 28) return 'Snow likely';
+    if (temp <= 34) return 'Freezing rain risk';
+    return 'Rain';
+  }
+  
+  String _getPressureTrend() {
+    if (data.hourly.length < 6) return 'Steady';
+    final now = data.hourly.first.pressureInHg;
+    final later = data.hourly[5].pressureInHg;
+    final diff = later - now;
+    if (diff > 0.05) return 'Rising ↑';
+    if (diff < -0.05) return 'Falling ↓';
+    return 'Steady →';
   }
   
   List<Widget> _getAlertChips() {
     final current = data.current;
     final chips = <Widget>[];
     
-    // Freezing risk
-    if (current.tempF <= 34 && current.precipProbability > 20) {
-      chips.add(_AlertChip(label: 'Freezing risk', color: AppColors.info));
+    // Precipitation type chip
+    final precipType = _getPrecipType();
+    if (precipType.isNotEmpty) {
+      final color = precipType.contains('Snow') || precipType.contains('Freezing')
+          ? AppColors.info
+          : AppColors.warning;
+      chips.add(_AlertChip(label: precipType, color: color));
     }
     
     // High wind
@@ -919,9 +918,9 @@ class _CurrentConditionsHero extends StatelessWidget {
     final alertChips = _getAlertChips();
     
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding, vertical: AppSpacing.sm),
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -937,11 +936,11 @@ class _CurrentConditionsHero extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: Temp + Icon
+            // Main hero row: Temp + Large Icon
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Left: Temperature block
+                // Left: Temperature + condition
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -952,110 +951,60 @@ class _CurrentConditionsHero extends StatelessWidget {
                           Text(
                             '${current.tempF.round()}',
                             style: const TextStyle(
-                              fontSize: 64,
+                              fontSize: 72,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                               height: 1,
                             ),
                           ),
                           const Padding(
-                            padding: EdgeInsets.only(top: 8),
+                            padding: EdgeInsets.only(top: 10),
                             child: Text(
                               '°F',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white70,
-                              ),
+                              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w500, color: Colors.white70),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         current.conditionText,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white70,
-                        ),
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.white),
                       ),
                       Text(
                         'Feels like ${current.feelsLikeF.round()}°F',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.white54,
-                        ),
+                        style: const TextStyle(fontSize: 13, color: Colors.white54),
                       ),
                     ],
                   ),
                 ),
                 
-                // Right: Icon + Wind highlight
-                Column(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                      ),
-                      child: Icon(icon, size: 40, color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    // Wind mini badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Transform.rotate(
-                            angle: current.windDirDeg * math.pi / 180,
-                            child: const Icon(Icons.navigation_rounded, size: 12, color: Colors.white70),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${current.windSpeedMph.round()} mph',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                // Right: Large icon
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                  ),
+                  child: Icon(icon, size: 64, color: Colors.white.withOpacity(0.9)),
                 ),
               ],
             ),
             
-            const SizedBox(height: AppSpacing.md),
-            
-            // Weather summary line
-            Text(
-              _getWeatherSummary(),
-              style: const TextStyle(
-                fontSize: 13,
-                color: Colors.white60,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
+            const SizedBox(height: AppSpacing.sm),
             
             // Alert chips
-            if (alertChips.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: alertChips,
-              ),
-            ],
+            if (alertChips.isNotEmpty)
+              Wrap(spacing: 8, runSpacing: 4, children: alertChips),
             
             const SizedBox(height: AppSpacing.md),
             
-            // Metrics grid - 2x3
+            // "Now Strip" - compact stat tiles
+            _NowStrip(current: current, pressureTrend: _getPressureTrend()),
+            
+            const SizedBox(height: AppSpacing.md),
+            
+            // Metrics grid - dense 2x3
             _MetricsPillGrid(current: current),
             
             const SizedBox(height: AppSpacing.sm),
@@ -1066,15 +1015,109 @@ class _CurrentConditionsHero extends StatelessWidget {
               children: [
                 Icon(Icons.update_rounded, size: 12, color: Colors.white38),
                 const SizedBox(width: 4),
-                Text(
-                  'Updated ${_getUpdatedAgo()}',
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
-                ),
+                Text('Updated ${_getUpdatedAgo()}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "Now Strip" - compact horizontal stat tiles for immediate conditions
+class _NowStrip extends StatelessWidget {
+  const _NowStrip({required this.current, required this.pressureTrend});
+  
+  final CurrentWeather current;
+  final String pressureTrend;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      ),
+      child: Row(
+        children: [
+          // Wind tile
+          Expanded(
+            child: _NowTile(
+              icon: Icons.air_rounded,
+              label: 'Wind',
+              value: '${current.windSpeedMph.round()} ${current.windDirText}',
+              trailing: Transform.rotate(
+                angle: current.windDirDeg * math.pi / 180,
+                child: const Icon(Icons.navigation_rounded, size: 14, color: Colors.white70),
+              ),
+            ),
+          ),
+          _verticalDivider(),
+          // Precip tile
+          Expanded(
+            child: _NowTile(
+              icon: Icons.umbrella_outlined,
+              label: 'Precip',
+              value: '${current.precipProbability}%',
+            ),
+          ),
+          _verticalDivider(),
+          // Pressure trend tile
+          Expanded(
+            child: _NowTile(
+              icon: Icons.compress_rounded,
+              label: 'Pressure',
+              value: pressureTrend,
+            ),
+          ),
+          _verticalDivider(),
+          // Visibility tile
+          Expanded(
+            child: _NowTile(
+              icon: Icons.visibility_outlined,
+              label: 'Vis.',
+              value: '${current.visibility.round()} mi',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _verticalDivider() => Container(
+    width: 1,
+    height: 32,
+    margin: const EdgeInsets.symmetric(horizontal: 6),
+    color: Colors.white.withOpacity(0.15),
+  );
+}
+
+class _NowTile extends StatelessWidget {
+  const _NowTile({required this.icon, required this.label, required this.value, this.trailing});
+  
+  final IconData icon;
+  final String label;
+  final String value;
+  final Widget? trailing;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: Colors.white54),
+            if (trailing != null) ...[const SizedBox(width: 2), trailing!],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white), textAlign: TextAlign.center),
+        Text(label, style: const TextStyle(fontSize: 9, color: Colors.white38)),
+      ],
     );
   }
 }
@@ -1088,16 +1131,13 @@ class _AlertChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withOpacity(0.25),
         borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withOpacity(0.5)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
-      ),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }
@@ -1110,15 +1150,13 @@ class _MetricsPillGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 6,
+      runSpacing: 6,
       children: [
         _MetricPill(icon: Icons.water_drop_outlined, label: 'Humidity', value: '${current.humidity}%'),
-        _MetricPill(icon: Icons.umbrella_outlined, label: 'Precip', value: '${current.precipProbability}%'),
-        _MetricPill(icon: Icons.air_rounded, label: 'Wind', value: '${current.windSpeedMph.round()} mph ${current.windDirText}'),
         _MetricPill(icon: Icons.speed_rounded, label: 'Gusts', value: '${current.gustsMph.round()} mph'),
         _MetricPill(icon: Icons.compress_rounded, label: 'Pressure', value: '${current.pressureInHg.toStringAsFixed(2)}"'),
-        _MetricPill(icon: Icons.visibility_outlined, label: 'Visibility', value: '${current.visibility.round()} mi'),
+        _MetricPill(icon: Icons.cloud_outlined, label: 'Cloud', value: '${current.cloudCover}%'),
       ],
     );
   }
@@ -1134,22 +1172,22 @@ class _MetricPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withOpacity(0.12),
         borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-        border: Border.all(color: Colors.white.withOpacity(0.15)),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white54),
-          const SizedBox(width: 6),
+          Icon(icon, size: 18, color: Colors.white70),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontSize: 9, color: Colors.white38)),
-              Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+              Text(label, style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.45))),
+              Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
             ],
           ),
         ],
@@ -1244,7 +1282,7 @@ class _HourlyForecast extends StatelessWidget {
   }
 
   void _showHourlyDetails(BuildContext context, _HourData data) {
-    showSizedBottomSheet(
+    showShedModal(
       context: context,
       child: _HourlyDetailContent(data: data),
     );
@@ -1984,7 +2022,7 @@ class _DailyForecast extends StatelessWidget {
   final List<HourlyForecast>? hourly;
   
   void _showDayDetails(BuildContext context, DailyForecast day, int dayIndex) {
-    showSizedBottomSheet(
+    showShedModal(
       context: context,
       child: _DayDetailContent(day: day, dayIndex: dayIndex),
     );
@@ -2375,27 +2413,25 @@ class _DayMetric extends StatelessWidget {
 
 /// Hunting tools section - clickable with detail modals
 class _HuntingTools extends StatelessWidget {
-  const _HuntingTools({required this.daily, this.hourly, this.current});
+  const _HuntingTools({required this.daily, this.hourly, this.current, this.lat, this.lon});
   
   final List<DailyForecast> daily;
   final List<HourlyForecast>? hourly;
   final CurrentWeather? current;
+  final double? lat;
+  final double? lon;
   
-  String _formatTime(DateTime time) {
+  String _formatTimeShort(DateTime time) {
     final hour = time.hour;
-    final minute = time.minute;
-    final suffix = hour >= 12 ? 'PM' : 'AM';
+    final suffix = hour >= 12 ? 'p' : 'a';
     final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-    return '$displayHour:${minute.toString().padLeft(2, '0')} $suffix';
+    return '$displayHour:${time.minute.toString().padLeft(2, '0')}$suffix';
   }
   
-  String _getGoldenHour(DateTime time, {required bool before}) {
-    final adjusted = before 
-        ? time.subtract(const Duration(minutes: 30))
-        : time.add(const Duration(minutes: 30));
-    return before 
-        ? '${_formatTime(adjusted)}-${_formatTime(time)}'
-        : '${_formatTime(time)}-${_formatTime(adjusted)}';
+  SolunarTimes? _getSolunarTimes() {
+    if (lat == null || lon == null) return null;
+    final solunar = SolunarService();
+    return solunar.getSolunarTimes(date: DateTime.now(), latitude: lat!, longitude: lon!);
   }
   
   @override
@@ -2403,12 +2439,16 @@ class _HuntingTools extends StatelessWidget {
     final today = daily.isNotEmpty ? daily.first : null;
     final moonService = WeatherService();
     final moon = moonService.getMoonPhase(DateTime.now());
+    final solunar = _getSolunarTimes();
     
-    final activityLevel = moon.phaseNumber == 0 || moon.phaseNumber == 4
-        ? 'High'
-        : moon.phaseNumber == 2 || moon.phaseNumber == 6
-            ? 'Moderate'
-            : 'Low';
+    // Next Solunar period
+    String nextPeriodText = '—';
+    if (solunar != null) {
+      final next = solunar.getNextPeriod(DateTime.now());
+      if (next != null) {
+        nextPeriodText = '${next.type}: ${_formatTimeShort(next.start)}';
+      }
+    }
     
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
@@ -2417,64 +2457,63 @@ class _HuntingTools extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
-                'Hunting Tools',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-              ),
+              const Text('Hunting Tools', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
               const Spacer(),
               Text('Tap for details', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
               Expanded(
-                child: _ToolCard(
+                child: _DenseToolCard(
                   icon: Icons.air_rounded,
                   title: 'Wind',
-                  value: current != null ? '${current!.windSpeedMph.round()} mph' : '-- mph',
-                  subtitle: current != null ? '${current!.windDirText} • Gusts ${current!.gustsMph.round()}' : 'Direction --',
+                  mainValue: current != null ? '${current!.windSpeedMph.round()} mph' : '—',
+                  line1: current != null ? '${current!.windDirText} direction' : '—',
+                  line2: current != null ? 'Gusts ${current!.gustsMph.round()} mph' : '—',
                   color: AppColors.accent,
                   onTap: () => _showWindModal(context),
                 ),
               ),
-              const SizedBox(width: AppSpacing.md),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: _ToolCard(
+                child: _DenseToolCard(
                   icon: Icons.compress_rounded,
                   title: 'Pressure',
-                  value: current != null ? '${current!.pressureInHg.toStringAsFixed(2)}"' : '--"',
-                  subtitle: _getPressureTrend(),
+                  mainValue: current != null ? '${current!.pressureInHg.toStringAsFixed(2)}"' : '—',
+                  line1: _getPressureTrend(),
+                  line2: current != null ? '${(current!.pressureInHg * 33.8639).round()} hPa' : '—',
                   color: AppColors.primary,
                   onTap: () => _showPressureModal(context),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
               Expanded(
-                child: _ToolCard(
+                child: _DenseToolCard(
                   icon: Icons.dark_mode_outlined,
-                  title: 'Moon Phase',
-                  value: moon.phaseName,
-                  subtitle: '${moon.illuminationPct.round()}% illuminated',
+                  title: 'Moon',
+                  mainValue: moon.phaseName,
+                  line1: '${moon.illuminationPct.round()}% illuminated',
+                  line2: moon.isWaxing ? 'Waxing' : 'Waning',
                   color: AppColors.info,
                   onTap: () => _showMoonModal(context, moon),
                 ),
               ),
-              const SizedBox(width: AppSpacing.md),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: _ToolCard(
+                child: _DenseToolCard(
                   icon: Icons.schedule_rounded,
-                  title: 'Activity',
-                  value: activityLevel,
-                  subtitle: today != null 
-                      ? 'Best: ${_formatTime(today.sunrise)}, ${_formatTime(today.sunset.subtract(const Duration(hours: 1)))}'
-                      : 'Best: Dawn & Dusk',
+                  title: 'Solunar',
+                  mainValue: nextPeriodText,
+                  line1: solunar?.major1 != null ? 'Major: ${_formatTimeShort(solunar!.major1!.start)}' : 'Major: —',
+                  line2: solunar?.minor1 != null ? 'Minor: ${_formatTimeShort(solunar!.minor1!.start)}' : 'Minor: —',
                   color: AppColors.success,
-                  onTap: () => _showActivityModal(context, today, moon),
+                  onTap: () => _showActivityModal(context, today, moon, solunar),
                 ),
               ),
             ],
@@ -2495,56 +2534,47 @@ class _HuntingTools extends StatelessWidget {
   }
   
   void _showWindModal(BuildContext context) {
-    showSizedBottomSheet(
-      context: context,
-      child: _WindToolContent(current: current, hourly: hourly),
-    );
+    showShedModal(context: context, child: _WindToolContent(current: current, hourly: hourly));
   }
   
   void _showPressureModal(BuildContext context) {
-    showSizedBottomSheet(
-      context: context,
-      child: _PressureToolContent(current: current, hourly: hourly),
-    );
+    showShedModal(context: context, child: _PressureToolContent(current: current, hourly: hourly));
   }
   
   void _showMoonModal(BuildContext context, MoonSnapshot moon) {
-    showSizedBottomSheet(
-      context: context,
-      child: _MoonToolContent(moon: moon),
-    );
+    showShedModal(context: context, child: _MoonToolContent(moon: moon));
   }
   
-  void _showActivityModal(BuildContext context, DailyForecast? today, MoonSnapshot moon) {
-    showSizedBottomSheet(
-      context: context,
-      child: _ActivityToolContent(today: today, hourly: hourly, moon: moon),
-    );
+  void _showActivityModal(BuildContext context, DailyForecast? today, MoonSnapshot moon, SolunarTimes? solunar) {
+    showShedModal(context: context, child: _SolunarActivityContent(today: today, hourly: hourly, moon: moon, solunar: solunar));
   }
 }
 
-class _ToolCard extends StatefulWidget {
-  const _ToolCard({
+/// Dense tool card with more data visible
+class _DenseToolCard extends StatefulWidget {
+  const _DenseToolCard({
     required this.icon,
     required this.title,
-    required this.value,
-    required this.subtitle,
+    required this.mainValue,
+    required this.line1,
+    required this.line2,
     required this.color,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
-  final String value;
-  final String subtitle;
+  final String mainValue;
+  final String line1;
+  final String line2;
   final Color color;
   final VoidCallback onTap;
 
   @override
-  State<_ToolCard> createState() => _ToolCardState();
+  State<_DenseToolCard> createState() => _DenseToolCardState();
 }
 
-class _ToolCardState extends State<_ToolCard> {
+class _DenseToolCardState extends State<_DenseToolCard> {
   bool _isHovered = false;
   bool _isPressed = false;
 
@@ -2560,38 +2590,41 @@ class _ToolCardState extends State<_ToolCard> {
         onTapCancel: () => setState(() => _isPressed = false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(AppSpacing.cardPadding),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
             color: _isHovered || _isPressed ? AppColors.surfaceHover : AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-            border: Border.all(
-              color: _isHovered ? widget.color.withOpacity(0.3) : AppColors.borderSubtle,
-            ),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: _isHovered ? widget.color.withOpacity(0.3) : AppColors.borderSubtle),
           ),
           transform: _isPressed ? (Matrix4.identity()..scale(0.98)) : Matrix4.identity(),
           transformAlignment: Alignment.center,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header row: icon + title + chevron
               Row(
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       color: widget.color.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                     ),
                     child: Icon(widget.icon, color: widget.color, size: 18),
                   ),
-                  const Spacer(),
-                  Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.textTertiary),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+                  Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.textTertiary),
                 ],
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(widget.title, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-              Text(widget.value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: widget.color)),
-              Text(widget.subtitle, style: const TextStyle(fontSize: 10, color: AppColors.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 6),
+              // Main value
+              Text(widget.mainValue, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: widget.color)),
+              const SizedBox(height: 2),
+              // Secondary info
+              Text(widget.line1, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(widget.line2, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
           ),
         ),
@@ -2871,40 +2904,14 @@ class _MoonToolContent extends StatelessWidget {
   }
 }
 
-class _ActivityToolContent extends StatelessWidget {
-  const _ActivityToolContent({this.today, this.hourly, required this.moon});
+/// Solunar-based Activity Forecast modal
+class _SolunarActivityContent extends StatelessWidget {
+  const _SolunarActivityContent({this.today, this.hourly, required this.moon, this.solunar});
   
   final DailyForecast? today;
   final List<HourlyForecast>? hourly;
   final MoonSnapshot moon;
-  
-  String _formatTime(DateTime time) {
-    final hour = time.hour;
-    final suffix = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-    return '$displayHour $suffix';
-  }
-  
-  int _getActivityScore(HourlyForecast h, DailyForecast? day) {
-    int score = 50;
-    
-    // Dawn/dusk bonus
-    final hour = DateTime.now().hour + (hourly?.indexOf(h) ?? 0);
-    if (hour >= 5 && hour <= 8) score += 25; // Dawn
-    if (hour >= 16 && hour <= 19) score += 25; // Dusk
-    
-    // Wind penalty
-    if (h.windSpeedMph > 20) score -= 20;
-    else if (h.windSpeedMph < 10) score += 10;
-    
-    // Precip penalty
-    if (h.precipProbability > 50) score -= 15;
-    
-    // Moon bonus
-    if (moon.phaseNumber == 0 || moon.phaseNumber == 4) score += 10;
-    
-    return score.clamp(0, 100);
-  }
+  final SolunarTimes? solunar;
   
   @override
   Widget build(BuildContext context) {
@@ -2912,54 +2919,11 @@ class _ActivityToolContent extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ToolHeader(icon: Icons.schedule_rounded, title: 'Activity Forecast', color: AppColors.success),
+        _ToolHeader(icon: Icons.schedule_rounded, title: 'Solunar Activity', color: AppColors.success),
         const SizedBox(height: AppSpacing.lg),
         
-        // Activity by hour
-        if (hourly != null && hourly!.isNotEmpty) ...[
-          const Text('Predicted Activity (Next 12h)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            height: 70,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: hourly!.length > 12 ? 12 : hourly!.length,
-              itemBuilder: (context, i) {
-                final h = hourly![i];
-                final score = _getActivityScore(h, today);
-                final barHeight = (score / 100) * 30;
-                final color = score >= 70 ? AppColors.success : score >= 40 ? AppColors.warning : AppColors.error;
-                
-                return Container(
-                  width: 44,
-                  margin: const EdgeInsets.only(right: 6),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text('$score', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
-                      const SizedBox(height: 2),
-                      Container(
-                        height: barHeight,
-                        width: 24,
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: color.withOpacity(0.5)),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(h.timeLabel, style: const TextStyle(fontSize: 9, color: AppColors.textTertiary)),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-        ],
-        
-        // Best times
-        if (today != null)
+        // Solunar Major/Minor periods
+        if (solunar != null) ...[
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
@@ -2970,23 +2934,106 @@ class _ActivityToolContent extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Best Windows Today', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded, size: 18, color: AppColors.success),
+                    const SizedBox(width: 8),
+                    const Text('Major Periods (~2h peak activity)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.success)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _SolunarPeriodTile(period: solunar!.major1, label: 'Major 1')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _SolunarPeriodTile(period: solunar!.major2, label: 'Major 2')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.info.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(color: AppColors.info.withOpacity(0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.star_half_rounded, size: 18, color: AppColors.info),
+                    const SizedBox(width: 8),
+                    const Text('Minor Periods (~1h activity)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.info)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _SolunarPeriodTile(period: solunar!.minor1, label: 'Minor 1', color: AppColors.info)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _SolunarPeriodTile(period: solunar!.minor2, label: 'Minor 2', color: AppColors.info)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textTertiary),
+                SizedBox(width: 8),
+                Expanded(child: Text('Solunar times unavailable for this location.', style: TextStyle(fontSize: 13, color: AppColors.textSecondary))),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        
+        // Dawn/Dusk reference (separate from Solunar)
+        if (today != null)
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Dawn & Dusk Reference', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.wb_twilight_rounded, size: 16, color: AppColors.success),
-                    const SizedBox(width: 8),
-                    Text('Dawn: ${_formatTime(today!.sunrise.subtract(const Duration(minutes: 30)))} - ${_formatTime(today!.sunrise.add(const Duration(hours: 2)))}',
-                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.nightlight_round, size: 16, color: AppColors.success),
-                    const SizedBox(width: 8),
-                    Text('Dusk: ${_formatTime(today!.sunset.subtract(const Duration(hours: 2)))} - ${_formatTime(today!.sunset)}',
-                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.wb_twilight_rounded, size: 14, color: AppColors.accent),
+                          const SizedBox(width: 6),
+                          Text('Sunrise: ${_fmtTime(today!.sunrise)}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.nightlight_round, size: 14, color: AppColors.primary),
+                          const SizedBox(width: 6),
+                          Text('Sunset: ${_fmtTime(today!.sunset)}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -2995,8 +3042,141 @@ class _ActivityToolContent extends StatelessWidget {
         
         const SizedBox(height: AppSpacing.md),
         
-        _ToolGuidance(text: 'Activity scores are estimates based on time of day, wind, precipitation, and moon phase. Use as guidance only - actual animal behavior varies.'),
+        // Weather adjustment note
+        if (hourly != null && hourly!.isNotEmpty)
+          _WeatherAdjustmentNote(hourly: hourly!),
+        
+        const SizedBox(height: AppSpacing.md),
+        
+        _ToolGuidance(text: 'Solunar theory suggests game activity peaks when the moon is overhead or underfoot (Major) and at moonrise/moonset (Minor). Weather conditions may shift actual behavior. Use as guidance only.'),
       ],
+    );
+  }
+  
+  String _fmtTime(DateTime t) {
+    final h = t.hour;
+    final m = t.minute;
+    final suffix = h >= 12 ? 'PM' : 'AM';
+    final displayH = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '$displayH:${m.toString().padLeft(2, '0')} $suffix';
+  }
+}
+
+class _SolunarPeriodTile extends StatelessWidget {
+  const _SolunarPeriodTile({this.period, required this.label, this.color});
+  
+  final SolunarPeriod? period;
+  final String label;
+  final Color? color;
+  
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppColors.success;
+    if (period == null) {
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        ),
+        child: Column(
+          children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+            const Text('—', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
+          ],
+        ),
+      );
+    }
+    
+    final isActive = period!.isActive(DateTime.now());
+    
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isActive ? c.withOpacity(0.15) : AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: isActive ? Border.all(color: c.withOpacity(0.4)) : null,
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(label, style: TextStyle(fontSize: 11, color: isActive ? c : AppColors.textTertiary)),
+              if (isActive) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: c,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('NOW', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.white)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(period!.timeRange, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isActive ? c : AppColors.textPrimary)),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeatherAdjustmentNote extends StatelessWidget {
+  const _WeatherAdjustmentNote({required this.hourly});
+  
+  final List<HourlyForecast> hourly;
+  
+  @override
+  Widget build(BuildContext context) {
+    final notes = <String>[];
+    final next6h = hourly.take(6).toList();
+    
+    // Check wind
+    final avgWind = next6h.map((h) => h.windSpeedMph).reduce((a, b) => a + b) / next6h.length;
+    if (avgWind > 20) {
+      notes.add('High winds may reduce activity');
+    } else if (avgWind < 8) {
+      notes.add('Calm winds favorable');
+    }
+    
+    // Check precip
+    final maxPrecip = next6h.map((h) => h.precipProbability).reduce(math.max);
+    if (maxPrecip > 60) {
+      notes.add('Rain may shift feeding earlier');
+    }
+    
+    // Check pressure trend
+    if (hourly.length >= 6) {
+      final diff = hourly[5].pressureInHg - hourly.first.pressureInHg;
+      if (diff < -0.08) {
+        notes.add('Falling pressure often increases movement');
+      }
+    }
+    
+    if (notes.isEmpty) return const SizedBox.shrink();
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.wb_cloudy_outlined, size: 14, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Weather factors: ${notes.join('. ')}.',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
