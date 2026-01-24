@@ -1,10 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
-import 'package:shed/services/ad_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
@@ -50,9 +48,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     try {
       final trophyService = ref.read(trophyServiceProvider);
-      // Use selected category for filtering (null for 'all')
-      final categoryFilter = _selectedCategory == 'all' ? null : _selectedCategory;
-      final trophies = await trophyService.fetchFeed(category: categoryFilter);
+      final trophies = await trophyService.fetchFeed();
       setState(() {
         _trophies = trophies;
         _isLoading = false;
@@ -63,11 +59,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         _isLoading = false;
       });
     }
-  }
-  
-  void _onCategoryChanged(String category) {
-    setState(() => _selectedCategory = category);
-    _loadTrophies(); // Reload with new filter
   }
 
   @override
@@ -106,46 +97,27 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         AppSpacing.screenPadding,
         AppSpacing.sm,
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Left side: Title
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Trophy Feed',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Latest trophies from the community',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
+        children: const [
+          Text(
+            'Trophy Feed',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
             ),
           ),
-          
-          // Right side: Ad Test button (debug only)
-          if (kDebugMode)
-            _AdTestButton(onTap: () => _showAdDiagnostics(context)),
+          SizedBox(height: 4),
+          Text(
+            'Latest trophies from the community',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
-    );
-  }
-  
-  void _showAdDiagnostics(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => _AdDiagnosticsDialog(),
     );
   }
 
@@ -165,7 +137,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 child: _CategoryChip(
                   category: category,
                   isSelected: _selectedCategory == category.id,
-                  onTap: () => _onCategoryChanged(category.id),
+                  onTap: () => setState(() => _selectedCategory = category.id),
                 ),
               ),
           ],
@@ -181,7 +153,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     if (_error != null) {
       return SliverFillRemaining(
-        child: _buildErrorState(),
+        child: AppErrorState(
+          message: _error!,
+          onRetry: _loadTrophies,
+        ),
       );
     }
 
@@ -244,389 +219,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           ),
           childCount: _trophies.length,
         ),
-      ),
-    );
-  }
-  
-  Widget _buildErrorState() {
-    // Check if it's a config/connection error
-    final isConfigError = _error?.contains('ClientException') == true ||
-                          _error?.contains('Failed to fetch') == true ||
-                          _error?.contains('yourproject') == true;
-    
-    if (isConfigError && kDebugMode) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.warning),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'Connection Error',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Unable to fetch data from Supabase.\nCheck your configuration and network.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                AppButtonSecondary(
-                  label: 'Try Again',
-                  icon: Icons.refresh_rounded,
-                  onPressed: _loadTrophies,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-    
-    return AppErrorState(
-      message: _error!,
-      onRetry: _loadTrophies,
-    );
-  }
-}
-
-/// Ad Test button - debug only
-class _AdTestButton extends StatefulWidget {
-  const _AdTestButton({required this.onTap});
-  
-  final VoidCallback onTap;
-  
-  @override
-  State<_AdTestButton> createState() => _AdTestButtonState();
-}
-
-class _AdTestButtonState extends State<_AdTestButton> {
-  bool _isHovered = false;
-  
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
-          decoration: BoxDecoration(
-            color: _isHovered 
-                ? AppColors.warning.withOpacity(0.2) 
-                : AppColors.warning.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(
-              color: AppColors.warning.withOpacity(0.3),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.ads_click_rounded,
-                size: 14,
-                color: AppColors.warning,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Ad Test',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.warning,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Ad diagnostics dialog
-class _AdDiagnosticsDialog extends ConsumerStatefulWidget {
-  @override
-  ConsumerState<_AdDiagnosticsDialog> createState() => _AdDiagnosticsDialogState();
-}
-
-class _AdDiagnosticsDialogState extends ConsumerState<_AdDiagnosticsDialog> {
-  AdCreative? _leftAd;
-  AdCreative? _rightAd;
-  bool _isLoading = true;
-  String? _error;
-  
-  @override
-  void initState() {
-    super.initState();
-    _loadAds();
-  }
-  
-  Future<void> _loadAds() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    
-    try {
-      final adService = ref.read(adServiceProvider);
-      final results = await adService.prefetchAdsForPage(AdPages.feed);
-      setState(() {
-        _leftAd = results.left;
-        _rightAd = results.right;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
-  
-  void _refreshAds() {
-    final adService = ref.read(adServiceProvider);
-    adService.clearCache();
-    _loadAds();
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final breakpoint = screenWidth >= AppSpacing.breakpointDesktop
-        ? 'Desktop (≥1024px)'
-        : screenWidth >= AppSpacing.breakpointTablet
-            ? 'Tablet (≥768px)'
-            : 'Mobile (<768px)';
-    
-    return Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Icon(Icons.ads_click_rounded, color: AppColors.warning),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'Ad Diagnostics',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.close_rounded, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              
-              // Breakpoint info
-              _DiagRow(label: 'Screen Width', value: '${screenWidth.toInt()}px'),
-              _DiagRow(label: 'Breakpoint', value: breakpoint),
-              _DiagRow(label: 'ADS_BUCKET_PUBLIC', value: kAdsBucketPublic.toString()),
-              _DiagRow(label: 'Page', value: 'feed'),
-              
-              const SizedBox(height: AppSpacing.lg),
-              const Divider(),
-              const SizedBox(height: AppSpacing.lg),
-              
-              // Ad slots
-              Text(
-                'Ad Slots',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              
-              if (_isLoading)
-                const Center(child: CircularProgressIndicator())
-              else if (_error != null)
-                Text('Error: $_error', style: TextStyle(color: AppColors.error))
-              else ...[
-                _AdSlotInfo(
-                  position: 'Left',
-                  ad: _leftAd,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _AdSlotInfo(
-                  position: 'Right',
-                  ad: _rightAd,
-                ),
-              ],
-              
-              const SizedBox(height: AppSpacing.xl),
-              
-              // Refresh button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _refreshAds,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Refresh Ads'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DiagRow extends StatelessWidget {
-  const _DiagRow({required this.label, required this.value});
-  
-  final String label;
-  final String value;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdSlotInfo extends StatelessWidget {
-  const _AdSlotInfo({required this.position, required this.ad});
-  
-  final String position;
-  final AdCreative? ad;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundAlt,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(
-          color: ad != null 
-              ? AppColors.success.withOpacity(0.3) 
-              : AppColors.borderSubtle,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                ad != null ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                size: 16,
-                color: ad != null ? AppColors.success : AppColors.textTertiary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$position Slot',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                ad != null ? 'Active' : 'Empty',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: ad != null ? AppColors.success : AppColors.textTertiary,
-                ),
-              ),
-            ],
-          ),
-          if (ad != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Label: ${ad!.label ?? 'N/A'}',
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-            ),
-            Text(
-              'URL: ${ad!.imageUrl.length > 50 ? '${ad!.imageUrl.substring(0, 50)}...' : ad!.imageUrl}',
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontFamily: 'monospace'),
-            ),
-            if (ad!.clickUrl != null)
-              Text(
-                'Click: ${ad!.clickUrl}',
-                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-              ),
-          ] else
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.sm),
-              child: Text(
-                'No ad configured for slot: feed_${position.toLowerCase()}',
-                style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
-              ),
-            ),
-        ],
       ),
     );
   }

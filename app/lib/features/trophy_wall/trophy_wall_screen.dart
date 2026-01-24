@@ -1,12 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shed/app/router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
-import 'package:shed/config/dev_flags.dart';
-import 'package:shed/services/dev_user_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
@@ -31,7 +27,6 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   List<Map<String, dynamic>> _trophies = [];
   bool _isLoading = true;
   String? _error;
-  String? _effectiveUserId;
 
   @override
   void initState() {
@@ -39,44 +34,15 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
     _loadTrophies();
   }
 
-  /// Get the user ID to display trophies for.
-  String? _getEffectiveUserId() {
-    // Explicit user ID passed via route (viewing another user)
-    if (widget.userId != null) return widget.userId;
-    
-    // Real Supabase user
-    final supabaseUser = ref.read(supabaseClientProvider)?.auth.currentUser;
-    if (supabaseUser != null) return supabaseUser.id;
-    
-    // Dev user selection (in dev bypass mode)
-    if (DevFlags.isDevBypassAuthEnabled) {
-      final devUser = ref.read(devUserNotifierProvider);
-      return devUser.selectedUserId;
-    }
-    
-    return null;
-  }
-
   Future<void> _loadTrophies() async {
-    final userId = _getEffectiveUserId();
-    
     setState(() {
       _isLoading = true;
       _error = null;
-      _effectiveUserId = userId;
     });
-
-    // No user ID available - don't try to load
-    if (userId == null || userId.isEmpty) {
-      setState(() {
-        _trophies = [];
-        _isLoading = false;
-      });
-      return;
-    }
 
     try {
       final trophyService = ref.read(trophyServiceProvider);
+      final userId = widget.userId ?? ref.read(supabaseClientProvider)?.auth.currentUser?.id ?? '';
       final trophies = await trophyService.fetchUserTrophies(userId);
       setState(() {
         _trophies = trophies;
@@ -94,40 +60,14 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
-    
-    // Check if we're in dev mode without a user selected
-    final authNotifier = ref.watch(authNotifierProvider);
-    final isDevBypass = authNotifier.isDevBypass;
-    final devUser = ref.watch(devUserNotifierProvider);
-    
-    // If dev bypass mode and no user selected (and not viewing a specific user via route),
-    // show the user picker
-    if (isDevBypass && widget.userId == null && !devUser.hasSelectedUser) {
-      return _DevUserPickerView(
-        onUserSelected: () => _loadTrophies(),
-      );
-    }
 
     return CustomScrollView(
       slivers: [
-        // Dev mode indicator
-        if (isDevBypass && devUser.hasSelectedUser)
-          SliverToBoxAdapter(
-            child: _DevModeUserBanner(
-              username: devUser.selectedUsername ?? 'Unknown',
-              onChangeUser: () {
-                devUser.clearSelection();
-              },
-            ),
-          ),
-        
         // Profile header with banner
         SliverToBoxAdapter(
           child: _ProfileHeader(
             isWide: isWide,
             trophyCount: _trophies.length,
-            username: devUser.selectedUsername,
-            isDevMode: isDevBypass,
           ),
         ),
 
@@ -143,18 +83,19 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
           )
         else if (_error != null)
           SliverToBoxAdapter(
-            child: _buildErrorState(),
+            child: AppErrorState(
+              message: _error!,
+              onRetry: _loadTrophies,
+            ),
           )
         else if (_trophies.isEmpty)
           SliverToBoxAdapter(
             child: AppEmptyState(
               icon: Icons.emoji_events_outlined,
               title: 'No trophies yet',
-              message: isDevBypass 
-                  ? 'This user hasn\'t posted any trophies yet.'
-                  : 'Start building your trophy wall by posting your first harvest.',
-              actionLabel: isDevBypass ? null : 'Post Trophy',
-              onAction: isDevBypass ? null : () => context.push('/post'),
+              message: 'Start building your trophy wall by posting your first harvest.',
+              actionLabel: 'Post Trophy',
+              onAction: () => context.push('/post'),
             ),
           )
         else
@@ -165,60 +106,6 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
           child: SizedBox(height: 100),
         ),
       ],
-    );
-  }
-  
-  Widget _buildErrorState() {
-    // Check if it's a config/connection error
-    final isConfigError = _error?.contains('ClientException') == true ||
-                          _error?.contains('Failed to fetch') == true;
-    
-    if (isConfigError && kDebugMode) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-            border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-          ),
-          child: Column(
-            children: [
-              Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.warning),
-              const SizedBox(height: AppSpacing.lg),
-              Text(
-                'Connection Error',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Unable to fetch data from Supabase.\nCheck your configuration and network.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              AppButtonSecondary(
-                label: 'Try Again',
-                icon: Icons.refresh_rounded,
-                onPressed: _loadTrophies,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    
-    return AppErrorState(
-      message: _error!,
-      onRetry: _loadTrophies,
     );
   }
 
@@ -267,327 +154,15 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   }
 }
 
-/// Dev mode banner showing current user
-class _DevModeUserBanner extends StatelessWidget {
-  const _DevModeUserBanner({
-    required this.username,
-    required this.onChangeUser,
-  });
-  
-  final String username;
-  final VoidCallback onChangeUser;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        AppSpacing.screenPadding,
-        AppSpacing.sm,
-        AppSpacing.screenPadding,
-        0,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.warning.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.bug_report_rounded, size: 16, color: AppColors.warning),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              'Viewing as: $username (Dev Mode)',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: AppColors.warning,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: onChangeUser,
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.warning,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              textStyle: const TextStyle(fontSize: 12),
-            ),
-            child: const Text('Change'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Dev user picker view
-class _DevUserPickerView extends ConsumerStatefulWidget {
-  const _DevUserPickerView({required this.onUserSelected});
-  
-  final VoidCallback onUserSelected;
-  
-  @override
-  ConsumerState<_DevUserPickerView> createState() => _DevUserPickerViewState();
-}
-
-class _DevUserPickerViewState extends ConsumerState<_DevUserPickerView> {
-  @override
-  void initState() {
-    super.initState();
-    // Load available profiles
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(devUserNotifierProvider).loadAvailableProfiles();
-    });
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    final devUser = ref.watch(devUserNotifierProvider);
-    
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Container(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-              border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-              boxShadow: AppColors.shadowElevated,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.person_search_rounded,
-                    size: 32,
-                    color: AppColors.warning,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                
-                // Title
-                Text(
-                  'Select a Profile',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                
-                // Subtitle
-                Text(
-                  'In dev mode, choose a profile to preview their Trophy Wall.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                
-                // Loading or list
-                if (devUser.isLoadingProfiles)
-                  const Padding(
-                    padding: EdgeInsets.all(AppSpacing.xl),
-                    child: CircularProgressIndicator(),
-                  )
-                else if (devUser.availableProfiles.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.people_outline_rounded,
-                          size: 48,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        Text(
-                          'No profiles found',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        AppButtonSecondary(
-                          label: 'Refresh',
-                          icon: Icons.refresh_rounded,
-                          onPressed: () => devUser.loadAvailableProfiles(),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundAlt,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                      border: Border.all(color: AppColors.borderSubtle),
-                    ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: devUser.availableProfiles.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final profile = devUser.availableProfiles[index];
-                        return _ProfileListTile(
-                          profile: profile,
-                          onTap: () async {
-                            await devUser.selectUser(profile.id, profile.username);
-                            widget.onUserSelected();
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                
-                const SizedBox(height: AppSpacing.xl),
-                
-                // Dev mode badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundAlt,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.bug_report_rounded, size: 12, color: AppColors.warning),
-                      const SizedBox(width: 4),
-                      Text(
-                        'DEV MODE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.warning,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileListTile extends StatefulWidget {
-  const _ProfileListTile({
-    required this.profile,
-    required this.onTap,
-  });
-  
-  final DevUserProfile profile;
-  final VoidCallback onTap;
-  
-  @override
-  State<_ProfileListTile> createState() => _ProfileListTileState();
-}
-
-class _ProfileListTileState extends State<_ProfileListTile> {
-  bool _isHovered = false;
-  
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          color: _isHovered ? AppColors.surfaceHover : Colors.transparent,
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: AppColors.accent,
-                child: Text(
-                  widget.profile.username[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.profile.displayLabel,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      '@${widget.profile.username}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textTertiary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Premium dark profile header with banner, avatar, stats, and edit
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.isWide,
     required this.trophyCount,
-    this.username,
-    this.isDevMode = false,
   });
 
   final bool isWide;
   final int trophyCount;
-  final String? username;
-  final bool isDevMode;
 
   @override
   Widget build(BuildContext context) {
@@ -650,9 +225,9 @@ class _ProfileHeader extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Name
-                        Text(
-                          username ?? 'Hunter Name',
-                          style: const TextStyle(
+                        const Text(
+                          'Hunter Name',
+                          style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
@@ -661,9 +236,9 @@ class _ProfileHeader extends StatelessWidget {
                         const SizedBox(height: 4),
 
                         // Handle
-                        Text(
-                          '@${username?.toLowerCase() ?? 'huntername'}',
-                          style: const TextStyle(
+                        const Text(
+                          '@huntername',
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             color: AppColors.accent,
