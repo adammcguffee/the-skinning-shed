@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/ad_service.dart';
+import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/banner_header.dart';
+import 'package:shed/shared/widgets/modals/create_menu_sheet.dart';
 import 'app_nav_rail.dart';
 
 /// 🏗️ 2025 PREMIUM APP SCAFFOLD - DARK THEME
@@ -96,8 +98,31 @@ class AppScaffold extends ConsumerWidget {
     }
   }
 
-  void _onPostTap(BuildContext context) {
-    context.push('/post');
+  /// Get the create context based on current page.
+  CreateContext get _createContext {
+    switch (currentIndex) {
+      case 0: return CreateContext.feed;
+      case 1: return CreateContext.explore;
+      case 2: return CreateContext.trophyWall;
+      case 3: return CreateContext.land;
+      case 4: return CreateContext.other; // Weather
+      case 5: return CreateContext.other; // Settings
+      default: return CreateContext.other;
+    }
+  }
+  
+  void _onCreateTap(BuildContext context, WidgetRef ref) {
+    final isAuthenticated = ref.read(isAuthenticatedProvider);
+    
+    showCreateMenu(
+      context: context,
+      createContext: _createContext,
+      isAuthenticated: isAuthenticated,
+      onLoginRequired: () {
+        // Navigate to auth
+        context.go('/auth');
+      },
+    );
   }
 
   @override
@@ -106,13 +131,13 @@ class AppScaffold extends ConsumerWidget {
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
     if (isWide) {
-      return _buildWideLayout(context);
+      return _buildWideLayout(context, ref);
     } else {
-      return _buildNarrowLayout(context);
+      return _buildNarrowLayout(context, ref);
     }
   }
 
-  Widget _buildWideLayout(BuildContext context) {
+  Widget _buildWideLayout(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Row(
@@ -122,7 +147,7 @@ class AppScaffold extends ConsumerWidget {
             selectedIndex: currentIndex,
             onDestinationSelected: (index) => _onDestinationSelected(context, index),
             destinations: _destinations,
-            onPostTap: () => _onPostTap(context),
+            onPostTap: () => _onCreateTap(context, ref),
           ),
 
           // Main content - MUST give child space via Expanded
@@ -191,7 +216,7 @@ class AppScaffold extends ConsumerWidget {
     );
   }
 
-  Widget _buildNarrowLayout(BuildContext context) {
+  Widget _buildNarrowLayout(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Container(
@@ -254,7 +279,7 @@ class AppScaffold extends ConsumerWidget {
         onDestinationSelected: (index) => _onDestinationSelected(context, index),
       ),
       floatingActionButton: _MobilePostFab(
-        onTap: () => _onPostTap(context),
+        onTap: () => _onCreateTap(context, ref),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
@@ -391,32 +416,86 @@ class _MobileNavItem extends StatelessWidget {
   }
 }
 
-class _MobilePostFab extends StatelessWidget {
+class _MobilePostFab extends StatefulWidget {
   const _MobilePostFab({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
+  State<_MobilePostFab> createState() => _MobilePostFabState();
+}
+
+class _MobilePostFabState extends State<_MobilePostFab> {
+  bool _isHovered = false;
+  
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 56,
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        gradient: AppColors.accentGradient,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.shadowAccent,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: const Center(
-            child: Icon(
-              Icons.add_rounded,
-              color: AppColors.textInverse,
-              size: 28,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Tooltip(
+        message: 'Create',
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          boxShadow: AppColors.shadowCard,
+        ),
+        textStyle: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+        child: GestureDetector(
+          onLongPress: () {
+            // Show tooltip-like feedback on long press (mobile)
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Create new content'),
+                duration: const Duration(seconds: 1),
+                backgroundColor: AppColors.surface,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+              ),
+            );
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 56,
+            height: 56,
+            margin: const EdgeInsets.only(bottom: 8),
+            transform: _isHovered 
+                ? (Matrix4.identity()..scale(1.08))
+                : Matrix4.identity(),
+            transformAlignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppColors.accentGradient,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: _isHovered 
+                  ? [
+                      ...AppColors.shadowAccent,
+                      BoxShadow(
+                        color: AppColors.accent.withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : AppColors.shadowAccent,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(16),
+                child: const Center(
+                  child: Icon(
+                    Icons.add_rounded,
+                    color: AppColors.textInverse,
+                    size: 28,
+                  ),
+                ),
+              ),
             ),
           ),
         ),

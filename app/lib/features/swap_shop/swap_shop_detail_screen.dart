@@ -1,0 +1,551 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/swap_shop_service.dart';
+import 'package:shed/shared/widgets/widgets.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// 🛒 SWAP SHOP DETAIL SCREEN - 2025 PREMIUM
+class SwapShopDetailScreen extends ConsumerStatefulWidget {
+  const SwapShopDetailScreen({super.key, required this.listingId});
+
+  final String listingId;
+
+  @override
+  ConsumerState<SwapShopDetailScreen> createState() =>
+      _SwapShopDetailScreenState();
+}
+
+class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
+  SwapShopListing? _listing;
+  bool _isLoading = true;
+  String? _error;
+  int _currentPhotoIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadListing();
+  }
+
+  Future<void> _loadListing() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final service = ref.read(swapShopServiceProvider);
+      final listing = await service.fetchListing(widget.listingId);
+
+      if (listing == null) {
+        setState(() {
+          _error = 'Listing not found';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _listing = listing;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _contactSeller() async {
+    if (_listing == null) return;
+
+    final contactMethod = _listing!.contactMethod;
+    final contactValue = _listing!.contactValue;
+
+    if (contactMethod == 'email') {
+      final uri = Uri(
+        scheme: 'mailto',
+        path: contactValue,
+        query: 'subject=Interested in: ${_listing!.title}',
+      );
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        _showContactInfo(contactValue, 'Email');
+      }
+    } else if (contactMethod == 'phone') {
+      final uri = Uri(scheme: 'tel', path: contactValue);
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        _showContactInfo(contactValue, 'Phone');
+      }
+    } else {
+      _showContactInfo(contactValue, 'Contact');
+    }
+  }
+
+  void _showContactInfo(String value, String label) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy_rounded),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: value));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Copied to clipboard'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null || _listing == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: Center(
+          child: AppErrorState(
+            message: _error ?? 'Listing not found',
+            onRetry: _loadListing,
+          ),
+        ),
+      );
+    }
+
+    final listing = _listing!;
+    final service = ref.read(swapShopServiceProvider);
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: CustomScrollView(
+        slivers: [
+          // Photo carousel in app bar
+          SliverAppBar(
+            expandedHeight: 350,
+            pinned: true,
+            backgroundColor: AppColors.surface,
+            leading: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              ),
+              onPressed: () => context.pop(),
+            ),
+            actions: [
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.share_outlined, color: Colors.white),
+                ),
+                onPressed: () {
+                  // Copy link to clipboard
+                  final url = 'https://theskinningshed.com/swap-shop/${listing.id}';
+                  Clipboard.setData(ClipboardData(text: url));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Link copied to clipboard'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              background: listing.photos.isEmpty
+                  ? Container(
+                      color: AppColors.backgroundAlt,
+                      child: const Center(
+                        child: Icon(
+                          Icons.image_outlined,
+                          size: 64,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    )
+                  : Stack(
+                      children: [
+                        PageView.builder(
+                          itemCount: listing.photos.length,
+                          onPageChanged: (i) =>
+                              setState(() => _currentPhotoIndex = i),
+                          itemBuilder: (context, index) {
+                            return Image.network(
+                              service.getPhotoUrl(listing.photos[index]),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: AppColors.backgroundAlt,
+                                child: const Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 48,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        if (listing.photos.length > 1)
+                          Positioned(
+                            bottom: 16,
+                            left: 0,
+                            right: 0,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(
+                                listing.photos.length,
+                                (index) => Container(
+                                  width: index == _currentPhotoIndex ? 20 : 8,
+                                  height: 8,
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 2),
+                                  decoration: BoxDecoration(
+                                    color: index == _currentPhotoIndex
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+
+          // Content
+          SliverToBoxAdapter(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: AppColors.backgroundGradient,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Price and title
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Price
+                        if (listing.price != null)
+                          Text(
+                            '\$${listing.price!.toStringAsFixed(0)}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineLarge
+                                ?.copyWith(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        const SizedBox(height: AppSpacing.sm),
+
+                        // Title
+                        Text(
+                          listing.title,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+
+                        // Location and category
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_outlined,
+                              size: 16,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              listing.locationDisplay,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Container(
+                              width: 4,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: AppColors.textTertiary,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Text(
+                              listing.category,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+
+                        // Condition
+                        if (listing.condition != null) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          AppChip(
+                            label: listing.condition!,
+                            size: AppChipSize.small,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Description
+                  if (listing.description != null &&
+                      listing.description!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.screenPadding),
+                      child: AppSurface(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Description',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              listing.description!,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // Seller info
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.screenPadding),
+                    child: AppSurface(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.1),
+                              borderRadius:
+                                  BorderRadius.circular(AppSpacing.radiusMd),
+                            ),
+                            child: listing.sellerAvatarPath != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(
+                                        AppSpacing.radiusMd),
+                                    child: Image.network(
+                                      service
+                                          .getPhotoUrl(listing.sellerAvatarPath!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.person_rounded,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person_rounded,
+                                    color: AppColors.primary,
+                                  ),
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  listing.sellerName ?? 'Seller',
+                                  style:
+                                      Theme.of(context).textTheme.titleSmall,
+                                ),
+                                Text(
+                                  'Listed ${_formatDate(listing.createdAt)}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 120),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+
+      // Contact button
+      bottomNavigationBar: Container(
+        padding: EdgeInsets.only(
+          left: AppSpacing.screenPadding,
+          right: AppSpacing.screenPadding,
+          top: AppSpacing.md,
+          bottom: MediaQuery.of(context).padding.bottom + AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border(
+            top: BorderSide(color: AppColors.borderSubtle),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Price display
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (listing.price != null)
+                    Text(
+                      '\$${listing.price!.toStringAsFixed(0)}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  Text(
+                    listing.title,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+
+            // Contact button
+            AppButtonPrimary(
+              label: 'Contact Seller',
+              icon: listing.contactMethod == 'email'
+                  ? Icons.email_outlined
+                  : Icons.phone_outlined,
+              onPressed: _contactSeller,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
+    if (diff.inDays == 0) {
+      return 'today';
+    } else if (diff.inDays == 1) {
+      return 'yesterday';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays} days ago';
+    } else if (diff.inDays < 30) {
+      final weeks = (diff.inDays / 7).floor();
+      return '$weeks week${weeks > 1 ? 's' : ''} ago';
+    } else {
+      final months = (diff.inDays / 30).floor();
+      return '$months month${months > 1 ? 's' : ''} ago';
+    }
+  }
+}

@@ -8,11 +8,14 @@ import '../features/auth/auth_screen.dart';
 import '../services/location_prefetch_service.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/feed/feed_screen.dart';
+import '../features/land/land_create_screen.dart';
 import '../features/land/land_detail_screen.dart';
 import '../features/land/land_screen.dart';
 import '../features/post/post_screen.dart';
 import '../features/research/research_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/swap_shop/swap_shop_create_screen.dart';
+import '../features/swap_shop/swap_shop_detail_screen.dart';
 import '../features/swap_shop/swap_shop_screen.dart';
 import '../features/trophy_wall/trophy_detail_screen.dart';
 import '../features/trophy_wall/trophy_wall_screen.dart';
@@ -206,10 +209,27 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PostScreen(),
       ),
       
-      // Swap Shop (full screen)
+      // Swap Shop
       GoRoute(
         path: '/swap-shop',
         builder: (context, state) => const SwapShopScreen(),
+      ),
+      GoRoute(
+        path: '/swap-shop/create',
+        builder: (context, state) => const SwapShopCreateScreen(),
+      ),
+      GoRoute(
+        path: '/swap-shop/detail/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return SwapShopDetailScreen(listingId: id);
+        },
+      ),
+      
+      // Land create
+      GoRoute(
+        path: '/land/create',
+        builder: (context, state) => const LandCreateScreen(),
       ),
       
       // Trophy detail
