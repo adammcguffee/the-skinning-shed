@@ -359,6 +359,7 @@ class _MobileBottomNav extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      useRootNavigator: true, // Ensures modal sits above entire app shell
       builder: (context) => _MoreSheet(
         currentIndex: currentIndex,
         onDestinationSelected: (index) {

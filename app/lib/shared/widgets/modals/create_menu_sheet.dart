@@ -33,6 +33,7 @@ Future<void> showCreateMenu({
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
+    useRootNavigator: true, // Ensures modal sits above entire app shell
     builder: (context) => _CreateMenuContent(
       createContext: createContext,
       isAuthenticated: isAuthenticated,

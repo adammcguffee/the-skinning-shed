@@ -127,6 +127,7 @@ class LocationSelector extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      useRootNavigator: true, // Ensures modal sits above entire app shell
       builder: (context) => StatePickerSheet(
         selectedState: selectedState,
         onSelected: (state) {
@@ -143,6 +144,7 @@ class LocationSelector extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      useRootNavigator: true, // Ensures modal sits above entire app shell
       builder: (context) => CountyPickerSheet(
         stateCode: selectedState!.code,
         selectedCountyFips: selectedCountyFips,

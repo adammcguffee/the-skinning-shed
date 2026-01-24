@@ -95,6 +95,8 @@ class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      useRootNavigator: true, // Ensures modal sits above entire app shell
+      isScrollControlled: true,
       builder: (context) => Container(
         padding: const EdgeInsets.all(AppSpacing.xl),
         decoration: BoxDecoration(

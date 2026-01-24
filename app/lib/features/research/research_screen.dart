@@ -327,6 +327,7 @@ class _ResearchScreenState extends ConsumerState<ResearchScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      useRootNavigator: true, // Ensures modal sits above entire app shell
       builder: (context) => const _HowItWorksSheet(),
     );
   }
