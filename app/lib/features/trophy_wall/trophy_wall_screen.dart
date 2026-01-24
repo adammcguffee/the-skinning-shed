@@ -7,9 +7,17 @@ import 'package:shed/services/follow_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/season_utils.dart';
 
 // Season filter value - null means "All Time"
 typedef SeasonYear = int?;
+
+/// Species category filter for trophy wall.
+enum SpeciesCategory {
+  all,
+  game,
+  fish,
+}
 
 /// User profile data model.
 class UserProfile {
@@ -75,6 +83,7 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   bool _isLoading = true;
   String? _error;
   SeasonYear _selectedSeason; // null = All Time
+  SpeciesCategory _selectedCategory = SpeciesCategory.all;
   UserProfile? _profile;
   bool _isOwnProfile = false;
   String? _targetUserId;
@@ -118,7 +127,7 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
       
       setState(() {
         _allTrophies = trophies;
-        _filteredTrophies = _filterBySeason(trophies, _selectedSeason);
+        _filteredTrophies = _applyFilters(trophies);
         _isLoading = false;
       });
     } catch (e) {
@@ -129,32 +138,73 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
     }
   }
   
-  List<Map<String, dynamic>> _filterBySeason(List<Map<String, dynamic>> trophies, SeasonYear season) {
-    if (season == null) return trophies;
+  /// Apply both category and season filters.
+  List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> trophies) {
+    var filtered = trophies;
     
-    return trophies.where((t) {
-      final dateStr = t['harvest_date'] as String?;
-      if (dateStr == null) return false;
-      try {
-        final date = DateTime.parse(dateStr);
-        // Hunting season typically runs from fall of one year to spring of next
-        // For simplicity, we'll match by the fall year (e.g., 2024-25 = Aug 2024 - Jul 2025)
-        if (date.month >= 8) {
-          return date.year == season;
+    // Filter by species category
+    if (_selectedCategory != SpeciesCategory.all) {
+      filtered = filtered.where((t) {
+        final category = t['species']?['category'] as String?;
+        if (_selectedCategory == SpeciesCategory.game) {
+          return category == 'game';
         } else {
-          return date.year - 1 == season;
+          return category == 'fish';
         }
-      } catch (_) {
-        return false;
-      }
-    }).toList();
+      }).toList();
+    }
+    
+    // Filter by season
+    if (_selectedSeason != null) {
+      filtered = filtered.where((t) {
+        final dateStr = t['harvest_date'] as String?;
+        if (dateStr == null) return false;
+        try {
+          final date = DateTime.parse(dateStr);
+          final category = t['species']?['category'] as String?;
+          final seasonType = SeasonUtils.getSeasonType(category);
+          final season = Season(
+            type: seasonType,
+            label: '',
+            yearStart: _selectedSeason!,
+            yearEnd: seasonType == SeasonType.huntingSeason ? _selectedSeason! + 1 : null,
+          );
+          return SeasonUtils.isInSeason(date, season);
+        } catch (_) {
+          return false;
+        }
+      }).toList();
+    }
+    
+    return filtered;
+  }
+  
+  void _onCategoryChanged(SpeciesCategory category) {
+    setState(() {
+      _selectedCategory = category;
+      // Reset season when category changes since season format differs
+      _selectedSeason = null;
+      _filteredTrophies = _applyFilters(_allTrophies);
+    });
   }
   
   void _onSeasonChanged(SeasonYear season) {
     setState(() {
       _selectedSeason = season;
-      _filteredTrophies = _filterBySeason(_allTrophies, season);
+      _filteredTrophies = _applyFilters(_allTrophies);
     });
+  }
+  
+  /// Get the appropriate season type for the current category filter.
+  SeasonType get _currentSeasonType {
+    switch (_selectedCategory) {
+      case SpeciesCategory.fish:
+        return SeasonType.calendarYear;
+      case SpeciesCategory.game:
+      case SpeciesCategory.all:
+        // Default to hunting seasons for "All" since most trophies are game
+        return SeasonType.huntingSeason;
+    }
   }
 
   @override
@@ -175,10 +225,13 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
           ),
         ),
 
-        // Season tabs
+        // Category and season filters
         SliverToBoxAdapter(
-          child: _SeasonTabs(
+          child: _CategoryAndSeasonFilters(
+            selectedCategory: _selectedCategory,
             selectedSeason: _selectedSeason,
+            seasonType: _currentSeasonType,
+            onCategoryChanged: _onCategoryChanged,
             onSeasonChanged: _onSeasonChanged,
           ),
         ),
@@ -202,7 +255,9 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
               title: _selectedSeason == null ? 'No trophies yet' : 'No trophies this season',
               message: _selectedSeason == null
                   ? 'Start building your trophy wall by posting your first harvest.'
-                  : 'No trophies recorded for the ${_selectedSeason}-${_selectedSeason! + 1} season.',
+                  : _currentSeasonType == SeasonType.calendarYear
+                      ? 'No trophies recorded for $_selectedSeason.'
+                      : 'No trophies recorded for the $_selectedSeason-${(_selectedSeason! + 1).toString().substring(2)} season.',
               actionLabel: 'Post Trophy',
               onAction: () => context.push('/post'),
             ),
@@ -968,75 +1023,150 @@ class _StatPillState extends State<_StatPill> {
 }
 
 /// Season filter tabs
-class _SeasonTabs extends StatelessWidget {
-  const _SeasonTabs({
+/// Combined category and season filter widget with species-aware seasons.
+class _CategoryAndSeasonFilters extends StatelessWidget {
+  const _CategoryAndSeasonFilters({
+    required this.selectedCategory,
     required this.selectedSeason,
+    required this.seasonType,
+    required this.onCategoryChanged,
     required this.onSeasonChanged,
   });
   
+  final SpeciesCategory selectedCategory;
   final SeasonYear selectedSeason;
+  final SeasonType seasonType;
+  final ValueChanged<SpeciesCategory> onCategoryChanged;
   final ValueChanged<SeasonYear> onSeasonChanged;
   
-  // Generate season options based on current year
+  // Generate season options based on season type
   List<({String label, SeasonYear value})> get _seasons {
-    final currentYear = DateTime.now().year;
-    // Show current season and 2 previous seasons
+    final seasonOptions = SeasonUtils.generateSeasonOptions(
+      type: seasonType,
+      yearsBack: 3,
+    );
+    
     return [
       (label: 'All Time', value: null),
-      (label: '${currentYear - 1}-${currentYear.toString().substring(2)}', value: currentYear - 1),
-      (label: '${currentYear - 2}-${(currentYear - 1).toString().substring(2)}', value: currentYear - 2),
-      (label: '${currentYear - 3}-${(currentYear - 2).toString().substring(2)}', value: currentYear - 3),
+      ...seasonOptions.map((s) => (label: s.label, value: s.yearStart)),
     ];
   }
+  
+  static const _categoryOptions = [
+    (label: 'All', value: SpeciesCategory.all, icon: Icons.grid_view_rounded),
+    (label: 'Game', value: SpeciesCategory.game, icon: Icons.pets_rounded),
+    (label: 'Fish', value: SpeciesCategory.fish, icon: Icons.water_rounded),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final seasons = _seasons;
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: List.generate(
-            seasons.length,
-            (index) => Padding(
-              padding: EdgeInsets.only(
-                right: index < seasons.length - 1 ? AppSpacing.sm : 0,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Category filter row
+          Row(
+            children: [
+              Text(
+                'Show:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
               ),
-              child: _SeasonTab(
-                label: seasons[index].label,
-                isSelected: selectedSeason == seasons[index].value,
-                onTap: () => onSeasonChanged(seasons[index].value),
+              const SizedBox(width: AppSpacing.sm),
+              ...List.generate(
+                _categoryOptions.length,
+                (index) {
+                  final opt = _categoryOptions[index];
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      right: index < _categoryOptions.length - 1 ? AppSpacing.xs : 0,
+                    ),
+                    child: _FilterChip(
+                      label: opt.label,
+                      icon: opt.icon,
+                      isSelected: selectedCategory == opt.value,
+                      onTap: () => onCategoryChanged(opt.value),
+                      compact: true,
+                    ),
+                  );
+                },
               ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Season filter row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Text(
+                  seasonType == SeasonType.calendarYear ? 'Year:' : 'Season:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                ...List.generate(
+                  seasons.length,
+                  (index) => Padding(
+                    padding: EdgeInsets.only(
+                      right: index < seasons.length - 1 ? AppSpacing.xs : 0,
+                    ),
+                    child: _FilterChip(
+                      label: seasons[index].label,
+                      isSelected: selectedSeason == seasons[index].value,
+                      onTap: () => onSeasonChanged(seasons[index].value),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-class _SeasonTab extends StatefulWidget {
-  const _SeasonTab({
+/// Reusable filter chip for category and season.
+class _FilterChip extends StatefulWidget {
+  const _FilterChip({
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.icon,
+    this.compact = false,
   });
 
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final IconData? icon;
+  final bool compact;
 
   @override
-  State<_SeasonTab> createState() => _SeasonTabState();
+  State<_FilterChip> createState() => _FilterChipState();
 }
 
-class _SeasonTabState extends State<_SeasonTab> {
+class _FilterChipState extends State<_FilterChip> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
+    final showHighlight = widget.isSelected || _isHovered;
+    
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -1045,32 +1175,45 @@ class _SeasonTabState extends State<_SeasonTab> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.sm,
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.compact ? AppSpacing.sm : AppSpacing.md,
+            vertical: widget.compact ? 6 : AppSpacing.sm,
           ),
           decoration: BoxDecoration(
-            gradient: widget.isSelected ? AppColors.accentGradient : null,
             color: widget.isSelected
-                ? null
-                : _isHovered
+                ? AppColors.accent.withValues(alpha: 0.15)
+                : showHighlight
                     ? AppColors.surfaceHover
                     : AppColors.surface,
             borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-            border: widget.isSelected
-                ? null
-                : Border.all(color: AppColors.borderSubtle),
-            boxShadow: widget.isSelected ? AppColors.shadowAccent : null,
-          ),
-          child: Text(
-            widget.label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+            border: Border.all(
               color: widget.isSelected
-                  ? AppColors.textInverse
-                  : AppColors.textPrimary,
+                  ? AppColors.accent.withValues(alpha: 0.4)
+                  : showHighlight
+                      ? AppColors.border
+                      : AppColors.borderSubtle,
             ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.icon != null) ...[
+                Icon(
+                  widget.icon,
+                  size: widget.compact ? 14 : 16,
+                  color: widget.isSelected ? AppColors.accent : AppColors.textSecondary,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: widget.compact ? 12 : 13,
+                  fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: widget.isSelected ? AppColors.accent : AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
         ),
       ),
