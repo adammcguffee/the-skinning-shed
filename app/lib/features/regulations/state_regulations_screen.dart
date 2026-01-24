@@ -31,6 +31,8 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   bool _isLoading = true;
   String? _error;
   Map<RegulationCategory, List<StateRegulation>> _regulations = {};
+  Map<RegulationCategory, List<RegulationRegion>> _regions = {};
+  Map<RegulationCategory, String> _selectedRegionKeys = {};
   
   static const _categories = [
     RegulationCategory.deer,
@@ -40,17 +42,30 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   
   USState? get _state => USStates.byCode(widget.stateCode);
   
+  RegulationCategory get _currentCategory => _categories[_tabController.index];
+  
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _categories.length, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadRegulations();
   }
   
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+  
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    // Reload when tab changes if we don't have data for this category
+    final category = _currentCategory;
+    if (!_regions.containsKey(category)) {
+      _loadRegionsForCategory(category);
+    }
   }
   
   Future<void> _loadRegulations() async {
@@ -62,18 +77,37 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     try {
       final service = ref.read(regulationsServiceProvider);
       
-      // Load regulations for all categories
+      // Load regions and regulations for all categories
       final results = <RegulationCategory, List<StateRegulation>>{};
+      final regionResults = <RegulationCategory, List<RegulationRegion>>{};
+      
       for (final category in _categories) {
+        // Load available regions first
+        final regions = await service.fetchRegionsForState(
+          stateCode: widget.stateCode,
+          category: category,
+        );
+        regionResults[category] = regions;
+        
+        // Default to STATEWIDE or first region
+        String regionKey = 'STATEWIDE';
+        if (regions.isNotEmpty) {
+          regionKey = regions.first.regionKey;
+        }
+        _selectedRegionKeys[category] = regionKey;
+        
+        // Load regulations for selected region
         results[category] = await service.fetchRegulations(
           stateCode: widget.stateCode,
           category: category,
+          regionKey: regionKey,
         );
       }
       
       if (mounted) {
         setState(() {
           _regulations = results;
+          _regions = regionResults;
           _isLoading = false;
         });
       }
@@ -84,6 +118,43 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           _isLoading = false;
         });
       }
+    }
+  }
+  
+  Future<void> _loadRegionsForCategory(RegulationCategory category) async {
+    final service = ref.read(regulationsServiceProvider);
+    final regions = await service.fetchRegionsForState(
+      stateCode: widget.stateCode,
+      category: category,
+    );
+    
+    if (mounted) {
+      setState(() {
+        _regions[category] = regions;
+        if (regions.isNotEmpty && !_selectedRegionKeys.containsKey(category)) {
+          _selectedRegionKeys[category] = regions.first.regionKey;
+        }
+      });
+    }
+  }
+  
+  Future<void> _onRegionChanged(RegulationCategory category, String regionKey) async {
+    setState(() {
+      _selectedRegionKeys[category] = regionKey;
+    });
+    
+    // Reload regulations for new region
+    final service = ref.read(regulationsServiceProvider);
+    final regs = await service.fetchRegulations(
+      stateCode: widget.stateCode,
+      category: category,
+      regionKey: regionKey,
+    );
+    
+    if (mounted) {
+      setState(() {
+        _regulations[category] = regs;
+      });
     }
   }
 
@@ -208,72 +279,229 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     );
   }
   
+  Widget _buildRegionSelector(RegulationCategory category) {
+    final regions = _regions[category] ?? [];
+    if (regions.length <= 1) return const SizedBox.shrink();
+    
+    final selectedKey = _selectedRegionKeys[category] ?? 'STATEWIDE';
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.sm,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.info.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              ),
+              child: const Icon(
+                Icons.map_outlined,
+                color: AppColors.info,
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            const Text(
+              'Region / Zone:',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundAlt,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: selectedKey,
+                    isExpanded: true,
+                    dropdownColor: AppColors.surfaceElevated,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
+                    items: regions.map((region) {
+                      return DropdownMenuItem<String>(
+                        value: region.regionKey,
+                        child: Text(region.regionLabel),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        _onRegionChanged(category, value);
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildZoneDisclosure(RegulationCategory category) {
+    final regions = _regions[category] ?? [];
+    final hasMultipleRegions = regions.length > 1;
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: AppColors.info.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 14,
+              color: AppColors.info,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                hasMultipleRegions
+                    ? 'This state has different seasons by zone/unit. Select your region above.'
+                    : 'Statewide overview. Some special units may differ. Always verify with official sources.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.info,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCategoryContent(RegulationCategory category) {
     final regulations = _regulations[category] ?? [];
     final stateName = _state?.name ?? widget.stateCode;
+    final regions = _regions[category] ?? [];
+    final selectedRegion = regions.isNotEmpty
+        ? regions.firstWhere(
+            (r) => r.regionKey == (_selectedRegionKeys[category] ?? 'STATEWIDE'),
+            orElse: () => regions.first,
+          )
+        : null;
     
     if (regulations.isEmpty) {
-      return _EmptyRegulationsState(
-        stateName: stateName,
-        category: category,
+      return Column(
+        children: [
+          // Region selector even if no data yet
+          _buildRegionSelector(category),
+          
+          Expanded(
+            child: _EmptyRegulationsState(
+              stateName: stateName,
+              category: category,
+            ),
+          ),
+        ],
       );
     }
     
     // Show the most recent regulation
     final regulation = regulations.first;
     
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Season header
-          _buildSeasonHeader(regulation),
-          const SizedBox(height: AppSpacing.lg),
-          
-          // Seasons section
-          if (regulation.summary.seasons.isNotEmpty) ...[
-            _buildSectionHeader('Season Dates', Icons.calendar_today_rounded),
-            const SizedBox(height: AppSpacing.sm),
-            ...regulation.summary.seasons.map((season) => _SeasonDateCard(season: season)),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          
-          // Bag limits section
-          if (regulation.summary.bagLimits.isNotEmpty) ...[
-            _buildSectionHeader('Bag Limits', Icons.inventory_2_rounded),
-            const SizedBox(height: AppSpacing.sm),
-            ...regulation.summary.bagLimits.map((limit) => _BagLimitCard(bagLimit: limit)),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          
-          // Weapons section
-          if (regulation.summary.weapons.isNotEmpty) ...[
-            _buildSectionHeader('Legal Methods', Icons.gpp_good_rounded),
-            const SizedBox(height: AppSpacing.sm),
-            _WeaponsCard(weapons: regulation.summary.weapons),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          
-          // Notes section
-          if (regulation.summary.notes.isNotEmpty) ...[
-            _buildSectionHeader('Important Notes', Icons.info_outline_rounded),
-            const SizedBox(height: AppSpacing.sm),
-            ...regulation.summary.notes.map((note) => _NoteCard(note: note)),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          
-          // Source link
-          if (regulation.sourceUrl != null) ...[
-            _SourceLink(url: regulation.sourceUrl!),
-            const SizedBox(height: AppSpacing.xl),
-          ],
-        ],
-      ),
+    return Column(
+      children: [
+        // Region selector
+        _buildRegionSelector(category),
+        
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.screenPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Season header with region info
+                _buildSeasonHeader(regulation, selectedRegion),
+                const SizedBox(height: AppSpacing.md),
+                
+                // Zone disclosure
+                _buildZoneDisclosure(category),
+                const SizedBox(height: AppSpacing.lg),
+                
+                // Seasons section
+                if (regulation.summary.seasons.isNotEmpty) ...[
+                  _buildSectionHeader('Season Dates', Icons.calendar_today_rounded),
+                  const SizedBox(height: AppSpacing.sm),
+                  ...regulation.summary.seasons.map((season) => _SeasonDateCard(season: season)),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+                
+                // Bag limits section
+                if (regulation.summary.bagLimits.isNotEmpty) ...[
+                  _buildSectionHeader('Bag Limits', Icons.inventory_2_rounded),
+                  const SizedBox(height: AppSpacing.sm),
+                  ...regulation.summary.bagLimits.map((limit) => _BagLimitCard(bagLimit: limit)),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+                
+                // Weapons section
+                if (regulation.summary.weapons.isNotEmpty) ...[
+                  _buildSectionHeader('Legal Methods', Icons.gpp_good_rounded),
+                  const SizedBox(height: AppSpacing.sm),
+                  _WeaponsCard(weapons: regulation.summary.weapons),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+                
+                // Notes section
+                if (regulation.summary.notes.isNotEmpty) ...[
+                  _buildSectionHeader('Important Notes', Icons.info_outline_rounded),
+                  const SizedBox(height: AppSpacing.sm),
+                  ...regulation.summary.notes.map((note) => _NoteCard(note: note)),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+                
+                // Source link
+                if (regulation.sourceUrl != null) ...[
+                  _SourceLink(url: regulation.sourceUrl!),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
   
-  Widget _buildSeasonHeader(StateRegulation regulation) {
+  Widget _buildSeasonHeader(StateRegulation regulation, RegulationRegion? selectedRegion) {
+    final stateName = _state?.name ?? widget.stateCode;
+    final regionLabel = selectedRegion?.regionLabel ?? 'Statewide';
+    final showRegion = selectedRegion != null && !selectedRegion.isStatewide;
+    
     return AppCard(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -297,6 +525,18 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Title with state, category, region
+                  Text(
+                    showRegion
+                        ? '$stateName • ${regulation.category.label} • $regionLabel'
+                        : '$stateName • ${regulation.category.label}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
                   Text(
                     '${regulation.seasonYearLabel} Season',
                     style: const TextStyle(
