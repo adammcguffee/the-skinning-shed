@@ -440,11 +440,11 @@ class StatePortalLinks {
       stateCode: json['state_code'] as String,
       stateName: json['state_name'] as String,
       agencyName: json['agency_name'] as String?,
-      seasonsUrl: json['seasons_url'] as String?,
-      regulationsUrl: json['regulations_url'] as String?,
+      seasonsUrl: json['hunting_seasons_url'] as String? ?? json['seasons_url'] as String?,
+      regulationsUrl: json['hunting_regs_url'] as String? ?? json['regulations_url'] as String?,
       licensingUrl: json['licensing_url'] as String?,
       buyLicenseUrl: json['buy_license_url'] as String?,
-      fishingUrl: json['fishing_url'] as String?,
+      fishingUrl: json['fishing_regs_url'] as String? ?? json['fishing_url'] as String?,
       recordsUrl: json['records_url'] as String?,
       notes: json['notes'] as String?,
     );
@@ -806,6 +806,70 @@ class RegulationsService {
         .select('id');
     
     return (res as List).length;
+  }
+  
+  /// Reset all regulations data (admin only).
+  /// Deletes pending, approved, and sources. Keeps portal links and audit log.
+  Future<Map<String, int>> resetRegulationsData() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final pendingRes = await client.from('state_regulations_pending').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    final approvedRes = await client.from('state_regulations_approved').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    final sourcesRes = await client.from('state_regulations_sources').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    
+    return {
+      'pending': (pendingRes as List?)?.length ?? 0,
+      'approved': (approvedRes as List?)?.length ?? 0,
+      'sources': (sourcesRes as List?)?.length ?? 0,
+    };
+  }
+  
+  /// Verify portal links (checks HTTP status of all URLs).
+  Future<Map<String, dynamic>> verifyPortalLinks() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final response = await client.functions.invoke('regs-links-verify', body: {});
+    
+    if (response.status != 200) {
+      throw Exception('Failed to verify links: ${response.data}');
+    }
+    
+    return response.data as Map<String, dynamic>;
+  }
+  
+  /// Discover portal links using search API (auto-find official URLs).
+  Future<Map<String, dynamic>> discoverPortalLinks({int limit = 10, int offset = 0}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final response = await client.functions.invoke('regs-links-discover', body: {
+      'limit': limit,
+      'offset': offset,
+    });
+    
+    if (response.status != 200) {
+      throw Exception('Failed to discover links: ${response.data}');
+    }
+    
+    return response.data as Map<String, dynamic>;
+  }
+  
+  /// Fetch broken portal links for admin review.
+  Future<List<Map<String, dynamic>>> fetchBrokenLinks() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final res = await client.from('state_portal_links')
+        .select('state_code, state_name, hunting_seasons_url, hunting_seasons_status, '
+                'hunting_regs_url, hunting_regs_status, fishing_regs_url, fishing_regs_status, '
+                'licensing_url, licensing_status, buy_license_url, buy_license_status, '
+                'last_verified_at')
+        .or('hunting_seasons_status.neq.200,hunting_regs_status.neq.200,fishing_regs_status.neq.200,licensing_status.neq.200,buy_license_status.neq.200')
+        .order('state_code');
+    
+    return (res as List).cast<Map<String, dynamic>>();
   }
   
   /// Fetch audit log entries (admin only).
