@@ -355,7 +355,7 @@ class _ResearchScreenState extends ConsumerState<ResearchScreen> {
   }
 }
 
-/// Sample size badge - shows confidence level
+/// Sample size badge - shows confidence level prominently
 class _SampleSizeBadge extends StatelessWidget {
   const _SampleSizeBadge({required this.totalCount});
   
@@ -364,23 +364,28 @@ class _SampleSizeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String confidence;
+    String confidenceDetail;
     Color color;
     IconData icon;
     
     if (totalCount >= 100) {
-      confidence = 'High confidence';
+      confidence = 'High Confidence';
+      confidenceDetail = 'Strong statistical basis';
       color = AppColors.success;
       icon = Icons.verified_rounded;
     } else if (totalCount >= 50) {
-      confidence = 'Good confidence';
+      confidence = 'Good Confidence';
+      confidenceDetail = 'Solid sample size';
       color = AppColors.info;
       icon = Icons.check_circle_outline_rounded;
     } else if (totalCount >= 20) {
-      confidence = 'Moderate confidence';
+      confidence = 'Moderate Confidence';
+      confidenceDetail = 'Patterns emerging';
       color = AppColors.warning;
-      icon = Icons.info_outline_rounded;
+      icon = Icons.trending_up_rounded;
     } else {
-      confidence = 'Limited data';
+      confidence = 'Limited Data';
+      confidenceDetail = 'More posts needed';
       color = AppColors.textTertiary;
       icon = Icons.hourglass_bottom_rounded;
     }
@@ -390,41 +395,99 @@ class _SampleSizeBadge extends StatelessWidget {
         horizontal: AppSpacing.screenPadding,
         vertical: AppSpacing.md,
       ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: AppSpacing.sm),
-          Text(
-            'Based on $totalCount trophies',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-            ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              color.withValues(alpha: 0.12),
+              color.withValues(alpha: 0.06),
+            ],
           ),
-          const SizedBox(width: AppSpacing.sm),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              ),
+              child: Icon(icon, size: 24, color: color),
             ),
-            child: Text(
-              confidence,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: color,
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Based on ',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      Text(
+                        '$totalCount trophies',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        ' in scope',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    confidenceDetail,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              ),
+              child: Text(
+                confidence,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Top Insights section with natural language summaries
+/// Top Insights section with natural language summaries and chips
 class _TopInsightsSection extends StatelessWidget {
   const _TopInsightsSection({
     required this.moonPhaseCounts,
@@ -446,7 +509,7 @@ class _TopInsightsSection extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    final insights = _generateInsights();
+    final insights = _generateInsightCards();
     if (insights.isEmpty) return const SizedBox.shrink();
     
     return Padding(
@@ -454,86 +517,54 @@ class _TopInsightsSection extends StatelessWidget {
         horizontal: AppSpacing.screenPadding,
         vertical: AppSpacing.sm,
       ),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.cardPadding),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.accent.withValues(alpha: 0.15),
-              AppColors.info.withValues(alpha: 0.1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: AppColors.accentGradient,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              const Text(
+                'Top 3 Insights',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
             ],
           ),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: const Icon(
-                    Icons.lightbulb_outline_rounded,
-                    size: 18,
-                    color: AppColors.accent,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                const Text(
-                  'Top Insights',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            ...insights.take(3).map((insight) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '•',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      insight,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )),
-          ],
-        ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Insight cards
+          ...insights.take(3).map((insight) => _InsightCard(insight: insight)),
+        ],
       ),
     );
   }
   
-  List<String> _generateInsights() {
-    final insights = <String>[];
-    final species = category ?? 'trophies';
+  List<_InsightData> _generateInsightCards() {
+    final insights = <_InsightData>[];
     final speciesLabel = _getSpeciesLabel(category);
     
     // Time of day insight
@@ -543,8 +574,13 @@ class _TopInsightsSection extends StatelessWidget {
       if (sorted.isNotEmpty) {
         final top = sorted.first;
         final pct = (top.value / totalCount * 100).round();
-        final timeLabel = _formatTimeLabel(top.key);
-        insights.add('Most $speciesLabel harvests occur during $timeLabel ($pct% of posts).');
+        insights.add(_InsightData(
+          icon: Icons.schedule_rounded,
+          color: AppColors.accent,
+          title: 'Peak Time',
+          description: 'Most $speciesLabel harvests occur during ${_formatTimeLabel(top.key)}',
+          chips: [_formatTimeLabelShort(top.key), '$pct%'],
+        ));
       }
     }
     
@@ -555,7 +591,13 @@ class _TopInsightsSection extends StatelessWidget {
       if (sorted.isNotEmpty) {
         final top = sorted.first;
         final pct = (top.value / totalCount * 100).round();
-        insights.add('The ${top.key.toLowerCase()} moon phase shows the highest activity ($pct%).');
+        insights.add(_InsightData(
+          icon: Icons.dark_mode_rounded,
+          color: AppColors.info,
+          title: 'Best Moon Phase',
+          description: 'The ${top.key.toLowerCase()} moon shows highest activity',
+          chips: [top.key, '$pct%'],
+        ));
       }
     }
     
@@ -566,29 +608,47 @@ class _TopInsightsSection extends StatelessWidget {
       if (sorted.isNotEmpty) {
         final top = sorted.first;
         final pct = (top.value / totalCount * 100).round();
-        insights.add('Temperature around ${top.key}°F correlates with the most harvests ($pct%).');
+        insights.add(_InsightData(
+          icon: Icons.thermostat_rounded,
+          color: AppColors.warning,
+          title: 'Optimal Temperature',
+          description: 'Temperature around ${top.key}°F correlates with most harvests',
+          chips: ['${top.key}°F', '$pct%'],
+        ));
       }
     }
     
-    // Pressure insight
+    // Pressure insight (if we don't have 3 yet)
     if (pressureCounts.isNotEmpty && insights.length < 3) {
       final sorted = pressureCounts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       if (sorted.isNotEmpty) {
         final top = sorted.first;
         final pct = (top.value / totalCount * 100).round();
-        insights.add('Barometric pressure around ${top.key} inHg shows peak activity ($pct%).');
+        insights.add(_InsightData(
+          icon: Icons.speed_rounded,
+          color: AppColors.success,
+          title: 'Peak Pressure',
+          description: 'Barometric pressure around ${top.key} inHg shows peak activity',
+          chips: ['${top.key} inHg', '$pct%'],
+        ));
       }
     }
     
-    // Wind direction insight
+    // Wind direction insight (if we don't have 3 yet)
     if (windDirCounts.isNotEmpty && insights.length < 3) {
       final sorted = windDirCounts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       if (sorted.isNotEmpty) {
         final top = sorted.first;
         final pct = (top.value / totalCount * 100).round();
-        insights.add('Wind from the ${top.key} is most common during harvests ($pct%).');
+        insights.add(_InsightData(
+          icon: Icons.air_rounded,
+          color: AppColors.primary,
+          title: 'Favorable Wind',
+          description: 'Wind from the ${top.key} is most common during harvests',
+          chips: [top.key, '$pct%'],
+        ));
       }
     }
     
@@ -614,6 +674,131 @@ class _TopInsightsSection extends StatelessWidget {
       case 'night': return 'night hours';
       default: return key;
     }
+  }
+  
+  String _formatTimeLabelShort(String key) {
+    switch (key) {
+      case 'morning': return 'Morning';
+      case 'midday': return 'Midday';
+      case 'evening': return 'Evening';
+      case 'night': return 'Night';
+      default: return key;
+    }
+  }
+}
+
+class _InsightData {
+  const _InsightData({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.description,
+    required this.chips,
+  });
+  
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String description;
+  final List<String> chips;
+}
+
+class _InsightCard extends StatelessWidget {
+  const _InsightCard({required this.insight});
+  
+  final _InsightData insight;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: AppColors.borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: insight.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              ),
+              child: Icon(
+                insight.icon,
+                size: 20,
+                color: insight.color,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    insight.title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: insight.color,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    insight.description,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textPrimary,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  // Chips row
+                  Wrap(
+                    spacing: AppSpacing.xs,
+                    runSpacing: AppSpacing.xs,
+                    children: insight.chips.map((chip) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: insight.color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                        border: Border.all(
+                          color: insight.color.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Text(
+                        chip,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: insight.color,
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1548,60 +1733,202 @@ class _CategoryChips extends StatelessWidget {
   }
 }
 
-/// Privacy notice when not enough data.
+/// Premium privacy notice when not enough data.
 class _PrivacyNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border.all(color: AppColors.borderSubtle),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.info.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              ),
-              child: const Icon(
-                Icons.lock_outlined,
-                size: 32,
-                color: AppColors.info,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            const Text(
-              'Not Enough Data',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            const Text(
-              'Patterns require at least 10 trophies in this filter to protect individual hunter privacy. Try broadening your filters or check back as more trophies are posted.',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.surface,
+              AppColors.info.withValues(alpha: 0.05),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+          border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.info.withValues(alpha: 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
             ),
           ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            children: [
+              // Shield icon with premium styling
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.info.withValues(alpha: 0.2),
+                          AppColors.info.withValues(alpha: 0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: AppColors.info.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.shield_outlined,
+                      size: 32,
+                      color: AppColors.info,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              
+              // Title
+              const Text(
+                'Privacy Protected',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              
+              // Privacy threshold badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                  border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.lock_rounded,
+                      size: 14,
+                      color: AppColors.info,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Minimum 10 trophies required',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.info,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              
+              // Description
+              Text(
+                'Patterns are only shown when enough data exists to protect individual hunter privacy. This prevents anyone from identifying specific hunts.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              
+              // Suggestions
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundAlt,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.tips_and_updates_outlined,
+                          size: 16,
+                          color: AppColors.accent,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Try these options:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SuggestionItem(text: 'Broaden your location filters'),
+                    _SuggestionItem(text: 'Select "All" for species category'),
+                    _SuggestionItem(text: 'Check back as more posts are added'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Pattern card with horizontal bar chart.
+class _SuggestionItem extends StatelessWidget {
+  const _SuggestionItem({required this.text});
+  
+  final String text;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline_rounded,
+            size: 14,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pattern card with horizontal bar chart and tooltips.
 class _PatternCard extends StatelessWidget {
   const _PatternCard({
     required this.title,
@@ -1635,6 +1962,11 @@ class _PatternCard extends StatelessWidget {
 
     // Find max for bar scaling
     final maxCount = entries.fold<int>(0, (max, e) => e.value > max ? e.value : max);
+    
+    // Find the top entry for highlighting
+    final topEntry = entries.isNotEmpty 
+        ? entries.reduce((a, b) => a.value > b.value ? a : b)
+        : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -1651,93 +1983,61 @@ class _PatternCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // Header with top value highlight
             Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
+                    color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                   ),
-                  child: Icon(icon, size: 18, color: color),
+                  child: Icon(icon, size: 20, color: color),
                 ),
                 const SizedBox(width: AppSpacing.md),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (topEntry != null)
+                        Text(
+                          'Top: ${_formatLabelFull(topEntry.key)} (${(topEntry.value / totalCount * 100).round()}%)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: color,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            // Bar chart
+            // Bar chart with hover tooltips
             ...entries.take(8).map((entry) {
               final percentage = (entry.value / totalCount * 100);
               final barWidth = maxCount > 0 ? entry.value / maxCount : 0.0;
+              final isTop = topEntry?.key == entry.key;
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        _formatLabel(entry.key),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          Container(
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundAlt,
-                              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                            ),
-                          ),
-                          FractionallySizedBox(
-                            widthFactor: barWidth,
-                            child: Container(
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                              ),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Text(
-                                  '${entry.value} (${percentage.toStringAsFixed(0)}%)',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              return _PatternBar(
+                label: _formatLabel(entry.key),
+                fullLabel: _formatLabelFull(entry.key),
+                count: entry.value,
+                percentage: percentage,
+                barWidth: barWidth,
+                color: color,
+                isTop: isTop,
               );
             }),
           ],
@@ -1747,18 +2047,166 @@ class _PatternCard extends StatelessWidget {
   }
 
   String _formatLabel(String key) {
-    // Pretty-print time buckets
     switch (key) {
-      case 'morning':
-        return 'Morning';
-      case 'midday':
-        return 'Midday';
-      case 'evening':
-        return 'Evening';
-      case 'night':
-        return 'Night';
-      default:
-        return key;
+      case 'morning': return 'Morning';
+      case 'midday': return 'Midday';
+      case 'evening': return 'Evening';
+      case 'night': return 'Night';
+      default: return key;
     }
+  }
+  
+  String _formatLabelFull(String key) {
+    switch (key) {
+      case 'morning': return 'Morning (6-10 AM)';
+      case 'midday': return 'Midday (10 AM-2 PM)';
+      case 'evening': return 'Evening (2-6 PM)';
+      case 'night': return 'Night';
+      default: return key;
+    }
+  }
+}
+
+/// Individual bar with hover tooltip
+class _PatternBar extends StatefulWidget {
+  const _PatternBar({
+    required this.label,
+    required this.fullLabel,
+    required this.count,
+    required this.percentage,
+    required this.barWidth,
+    required this.color,
+    required this.isTop,
+  });
+  
+  final String label;
+  final String fullLabel;
+  final int count;
+  final double percentage;
+  final double barWidth;
+  final Color color;
+  final bool isTop;
+  
+  @override
+  State<_PatternBar> createState() => _PatternBarState();
+}
+
+class _PatternBarState extends State<_PatternBar> {
+  bool _isHovered = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: Tooltip(
+          message: '${widget.fullLabel}\n${widget.count} trophies (${widget.percentage.toStringAsFixed(1)}%)',
+          preferBelow: false,
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            boxShadow: AppColors.shadowElevated,
+          ),
+          textStyle: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textPrimary,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 80,
+                child: Row(
+                  children: [
+                    if (widget.isTop)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(
+                          Icons.star_rounded,
+                          size: 12,
+                          color: widget.color,
+                        ),
+                      ),
+                    Expanded(
+                      child: Text(
+                        widget.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: widget.isTop ? widget.color : AppColors.textSecondary,
+                          fontWeight: widget.isTop ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Stack(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: _isHovered 
+                            ? AppColors.backgroundAlt.withValues(alpha: 0.8)
+                            : AppColors.backgroundAlt,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                        border: _isHovered 
+                            ? Border.all(color: widget.color.withValues(alpha: 0.3))
+                            : null,
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                      height: 28,
+                      width: MediaQuery.of(context).size.width * 0.5 * widget.barWidth,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            widget.color.withValues(alpha: widget.isTop ? 0.5 : 0.3),
+                            widget.color.withValues(alpha: widget.isTop ? 0.35 : 0.2),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${widget.count}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: widget.isTop ? widget.color : AppColors.textSecondary,
+                              ),
+                            ),
+                            Text(
+                              '${widget.percentage.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: widget.isTop ? widget.color : AppColors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
