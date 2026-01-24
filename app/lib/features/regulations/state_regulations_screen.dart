@@ -5,6 +5,7 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/data/us_states.dart';
 import 'package:shed/services/regulations_service.dart';
+import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -209,12 +210,12 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   
   Widget _buildCategoryContent(RegulationCategory category) {
     final regulations = _regulations[category] ?? [];
+    final stateName = _state?.name ?? widget.stateCode;
     
     if (regulations.isEmpty) {
-      return AppEmptyState(
-        icon: Icons.description_outlined,
-        title: 'No regulations available',
-        message: 'We don\'t have ${category.label.toLowerCase()} regulations for this state yet.',
+      return _EmptyRegulationsState(
+        stateName: stateName,
+        category: category,
       );
     }
     
@@ -626,6 +627,96 @@ class _NoteCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Premium empty state for missing regulations
+class _EmptyRegulationsState extends ConsumerWidget {
+  const _EmptyRegulationsState({
+    required this.stateName,
+    required this.category,
+  });
+  
+  final String stateName;
+  final RegulationCategory category;
+  
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Check if user is admin (AsyncValue from FutureProvider)
+    final isAdminAsync = ref.watch(isAdminProvider);
+    final isAdmin = isAdminAsync.valueOrNull ?? false;
+    
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.info.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+              ),
+              child: const Icon(
+                Icons.description_outlined,
+                size: 40,
+                color: AppColors.info,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            
+            // Title
+            Text(
+              'No Approved Regulations Yet',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            
+            // Description
+            Text(
+              'We don\'t have ${category.label.toLowerCase()} regulations for $stateName yet. '
+              'Regulations are reviewed and approved by our team to ensure accuracy.',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            
+            // Admin action
+            if (isAdmin) ...[
+              AppButtonPrimary(
+                label: 'Add Regulations',
+                icon: Icons.add_rounded,
+                onPressed: () => context.push('/admin/regulations'),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            
+            // Always show "Request regs" hint
+            Text(
+              'Know the official source? Let us know in Settings → Feedback.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textTertiary,
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );

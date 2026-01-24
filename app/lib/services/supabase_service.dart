@@ -144,3 +144,24 @@ final isAuthenticatedProvider = Provider<bool>((ref) {
   final user = ref.watch(currentUserProvider);
   return user != null;
 });
+
+/// Provider for checking if user is admin.
+/// Fetches the is_admin flag from the profiles table.
+final isAdminProvider = FutureProvider<bool>((ref) async {
+  final client = ref.watch(supabaseClientProvider);
+  final user = ref.watch(currentUserProvider);
+  
+  if (client == null || user == null) return false;
+  
+  try {
+    final response = await client
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .maybeSingle();
+    
+    return response?['is_admin'] == true;
+  } catch (e) {
+    return false;
+  }
+});

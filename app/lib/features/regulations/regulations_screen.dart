@@ -22,6 +22,7 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
   String? _selectedStateCode;
   bool _isLoadingStates = true;
   Set<String> _statesWithData = {};
+  String _searchQuery = '';
   
   @override
   void initState() {
@@ -89,6 +90,10 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
                   const SizedBox(height: AppSpacing.lg),
                 ],
                 
+                // Search field
+                _buildSearchField(),
+                const SizedBox(height: AppSpacing.lg),
+                
                 // State selection grid
                 _buildStateGrid(isWide),
                 
@@ -149,9 +154,47 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
     );
   }
   
+  Widget _buildSearchField() {
+    return TextField(
+      decoration: InputDecoration(
+        hintText: 'Search states...',
+        hintStyle: TextStyle(color: AppColors.textTertiary),
+        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textTertiary),
+        filled: true,
+        fillColor: AppColors.surface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.borderSubtle),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.borderSubtle),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.accent),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+      ),
+      style: const TextStyle(color: AppColors.textPrimary),
+      onChanged: (value) {
+        setState(() => _searchQuery = value.toLowerCase());
+      },
+    );
+  }
+  
   Widget _buildStateGrid(bool isWide) {
     final crossAxisCount = isWide ? 6 : 3;
-    final states = USStates.all;
+    
+    // Filter states by search query
+    final states = USStates.all.where((state) {
+      if (_searchQuery.isEmpty) return true;
+      return state.name.toLowerCase().contains(_searchQuery) ||
+             state.code.toLowerCase().contains(_searchQuery);
+    }).toList();
     
     if (_isLoadingStates) {
       return GridView.builder(
