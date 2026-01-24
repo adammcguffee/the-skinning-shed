@@ -966,9 +966,35 @@ class _EmptyRegulationsState extends ConsumerWidget {
             
             // Admin action
             if (isAdmin) ...[
+              // Automation hint for admins
+              Container(
+                margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.info),
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Text(
+                        'Automation checks sources weekly. High-confidence updates auto-approve.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.info,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               AppButtonPrimary(
-                label: 'Add Regulations',
-                icon: Icons.add_rounded,
+                label: 'Open Admin',
+                icon: Icons.admin_panel_settings_outlined,
                 onPressed: () => context.push('/admin/regulations'),
               ),
               const SizedBox(height: AppSpacing.md),

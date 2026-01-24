@@ -48,6 +48,35 @@ class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
     });
   }
 
+  void _openNewMessage() {
+    showShedCenterModal(
+      context: context,
+      title: 'New Message',
+      maxWidth: 400,
+      maxHeight: 500,
+      child: _UserSearchContent(
+        onUserSelected: (userId, userName) async {
+          Navigator.of(context, rootNavigator: true).pop();
+          try {
+            final service = ref.read(messagingServiceProvider);
+            final conversationId = await service.getOrCreateDM(
+              otherUserId: userId,
+            );
+            if (mounted) {
+              context.push('/messages/$conversationId');
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error: $e')),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
   Future<void> _loadInbox({bool silent = false}) async {
     if (!silent) {
       setState(() {
@@ -142,6 +171,9 @@ class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
                             ],
                           ),
                         ),
+                        // New message button
+                        _NewMessageButton(onNewMessage: _openNewMessage),
+                        const SizedBox(width: AppSpacing.xs),
                         IconButton(
                           icon: const Icon(Icons.refresh_rounded),
                           onPressed: _loadInbox,
@@ -567,6 +599,313 @@ class _AvatarInitial extends StatelessWidget {
           fontSize: 20,
           fontWeight: FontWeight.w700,
           color: hasUnread ? AppColors.accent : AppColors.primary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Button to start a new message
+class _NewMessageButton extends StatefulWidget {
+  const _NewMessageButton({required this.onNewMessage});
+  
+  final VoidCallback onNewMessage;
+  
+  @override
+  State<_NewMessageButton> createState() => _NewMessageButtonState();
+}
+
+class _NewMessageButtonState extends State<_NewMessageButton> {
+  bool _isHovered = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onNewMessage,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            gradient: _isHovered ? AppColors.accentGradient : null,
+            color: _isHovered ? null : AppColors.accent,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            boxShadow: _isHovered ? AppColors.shadowAccent : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.edit_outlined,
+                size: 16,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'New',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// User search content for new message modal
+class _UserSearchContent extends ConsumerStatefulWidget {
+  const _UserSearchContent({required this.onUserSelected});
+  
+  final void Function(String userId, String userName) onUserSelected;
+  
+  @override
+  ConsumerState<_UserSearchContent> createState() => _UserSearchContentState();
+}
+
+class _UserSearchContentState extends ConsumerState<_UserSearchContent> {
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _results = [];
+  bool _isSearching = false;
+  String? _error;
+  
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _search(String query) async {
+    if (query.length < 2) {
+      setState(() {
+        _results = [];
+        _isSearching = false;
+      });
+      return;
+    }
+    
+    setState(() => _isSearching = true);
+    
+    try {
+      final client = ref.read(supabaseClientProvider);
+      if (client == null) throw Exception('Not connected');
+      
+      final currentUserId = client.auth.currentUser?.id;
+      
+      final response = await client
+          .from('profiles')
+          .select('id, username, display_name, avatar_path')
+          .or('username.ilike.%$query%,display_name.ilike.%$query%')
+          .neq('id', currentUserId ?? '')
+          .limit(10);
+      
+      if (mounted) {
+        setState(() {
+          _results = List<Map<String, dynamic>>.from(response);
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isSearching = false;
+        });
+      }
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Search input
+        TextField(
+          controller: _searchController,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Search by username or name...',
+            prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textTertiary),
+            suffixIcon: _isSearching 
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
+            filled: true,
+            fillColor: AppColors.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              borderSide: BorderSide(color: AppColors.borderSubtle),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              borderSide: BorderSide(color: AppColors.borderSubtle),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              borderSide: BorderSide(color: AppColors.accent),
+            ),
+          ),
+          onChanged: (value) => _search(value.trim()),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        
+        // Results
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Text(
+              'Error searching: $_error',
+              style: TextStyle(color: AppColors.error),
+            ),
+          )
+        else if (_results.isEmpty && _searchController.text.length >= 2)
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.person_search_rounded,
+                  size: 40,
+                  color: AppColors.textTertiary,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'No users found',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          )
+        else if (_results.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Text(
+              'Type to search for users',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          )
+        else
+          ...List.generate(_results.length, (index) {
+            final user = _results[index];
+            final name = user['display_name'] ?? user['username'] ?? 'User';
+            final username = user['username'];
+            
+            return _UserResultTile(
+              name: name,
+              username: username,
+              onTap: () => widget.onUserSelected(user['id'], name),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _UserResultTile extends StatefulWidget {
+  const _UserResultTile({
+    required this.name,
+    required this.username,
+    required this.onTap,
+  });
+  
+  final String name;
+  final String? username;
+  final VoidCallback onTap;
+  
+  @override
+  State<_UserResultTile> createState() => _UserResultTileState();
+}
+
+class _UserResultTileState extends State<_UserResultTile> {
+  bool _isHovered = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          margin: const EdgeInsets.only(bottom: AppSpacing.xs),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppColors.surfaceHover : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: Center(
+                  child: Text(
+                    widget.name.isNotEmpty ? widget.name[0].toUpperCase() : 'U',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (widget.username != null)
+                      Text(
+                        '@${widget.username}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 18,
+                color: _isHovered ? AppColors.accent : AppColors.textTertiary,
+              ),
+            ],
+          ),
         ),
       ),
     );
