@@ -4,6 +4,14 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
+// Category map for feed filtering
+const _categoryMap = {
+  'Whitetail Deer': 'deer',
+  'Turkey': 'turkey',
+  'Largemouth Bass': 'bass',
+  'Other Game': 'other',
+};
+
 /// 🧭 EXPLORE SCREEN - 2025 CINEMATIC DARK THEME
 ///
 /// Visual discovery gallery with:
@@ -30,7 +38,12 @@ class ExploreScreen extends StatelessWidget {
         SliverToBoxAdapter(
           child: _SectionHeader(
             title: 'Browse by Species',
-            onSeeAll: () {},
+            onSeeAll: () => showComingSoonModal(
+              context: context,
+              feature: 'Species Browser',
+              description: 'Browse all species categories with detailed statistics and filters.',
+              icon: Icons.nature_rounded,
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -53,7 +66,12 @@ class ExploreScreen extends StatelessWidget {
           child: _SectionHeader(
             title: 'Trending This Week',
             trailing: _TrendingBadge(),
-            onSeeAll: () {},
+            onSeeAll: () => showComingSoonModal(
+              context: context,
+              feature: 'Trending Feed',
+              description: 'See all trending trophies ranked by likes and engagement this week.',
+              icon: Icons.local_fire_department_rounded,
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -267,14 +285,13 @@ class _SpeciesCardState extends State<_SpeciesCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          // Navigate to feed (species filtering coming soon)
+          // Navigate to feed with species filter hint
+          // TODO: Pass category filter via route param when deep linking is implemented
+          final category = _categoryMap[widget.data.name];
+          if (category != null) {
+            showComingSoonSnackbar(context, 'Species filtering');
+          }
           context.go('/');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Browsing ${widget.data.name}'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),

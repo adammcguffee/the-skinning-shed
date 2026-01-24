@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/county_centroids.dart';
 import 'location_service.dart';
+import 'location_prefetch_service.dart';
 import 'supabase_service.dart';
 import 'weather_favorites_service.dart';
 import 'weather_service.dart';
@@ -78,12 +79,13 @@ class SelectedLocationNotifier extends StateNotifier<SelectedLocationState> {
   
   /// Initialize location on first load.
   /// 
-  /// NON-BLOCKING flow for instant page load:
+  /// INSTANT-OPEN flow for Weather page:
   /// 1. If already set, do nothing
-  /// 2. Try last viewed from SharedPreferences (fast) -> show weather immediately
-  /// 3. In PARALLEL, try geolocation with 6s timeout
-  /// 4. If geolocation resolves to different county, swap selection
-  /// 5. If no lastViewed and geolocation fails, show manual selection UI
+  /// 2. Try prefetched local county (from startup) -> instant!
+  /// 3. Try last viewed from SharedPreferences (fast)
+  /// 4. In PARALLEL, try geolocation with 6s timeout
+  /// 5. If geolocation resolves to different county, swap selection
+  /// 6. If no cache and geolocation fails, show manual selection UI
   Future<void> initializeLocation() async {
     if (_didInit) return;
     _didInit = true;
@@ -91,7 +93,20 @@ class SelectedLocationNotifier extends StateNotifier<SelectedLocationState> {
     // Already has selection
     if (state.selection != null) return;
     
-    // Try last viewed first (fast, no permission needed)
+    // Priority 1: Try prefetched local county (instant - from app startup)
+    final prefetched = await LocationPrefetchService.instance.getLocalCountySelection();
+    if (prefetched != null) {
+      if (kDebugMode) {
+        debugPrint('SelectedLocationNotifier: Using prefetched local county: ${prefetched.label}');
+      }
+      state = SelectedLocationState(
+        selection: prefetched,
+        source: SelectionSource.local,
+      );
+      return;
+    }
+    
+    // Priority 2: Try last viewed (fast, no permission needed)
     final lastViewed = await _locationService.getLastViewedSelection();
     if (lastViewed != null) {
       state = SelectedLocationState(
@@ -104,7 +119,7 @@ class SelectedLocationNotifier extends StateNotifier<SelectedLocationState> {
       return;
     }
     
-    // No last viewed - must wait for geolocation
+    // Priority 3: No cache - must wait for geolocation
     state = state.copyWith(isLoading: true, clearError: true);
     
     final local = await _locationService.tryGetLocalCountySelection();

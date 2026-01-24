@@ -41,8 +41,18 @@ class _LandScreenState extends State<LandScreen> with SingleTickerProviderStateM
           AppTopBar(
             title: 'Land Listings',
             subtitle: 'Find hunting land',
-            onSearch: () {},
-            onFilter: () {},
+            onSearch: () => showComingSoonModal(
+              context: context,
+              feature: 'Land Search',
+              description: 'Search land listings by location, acreage, price, and game species.',
+              icon: Icons.search_rounded,
+            ),
+            onFilter: () => showComingSoonModal(
+              context: context,
+              feature: 'Advanced Filters',
+              description: 'Filter listings by price range, acreage, amenities, and lease terms.',
+              icon: Icons.tune_rounded,
+            ),
           ),
 
         // Content

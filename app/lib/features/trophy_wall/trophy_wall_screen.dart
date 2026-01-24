@@ -7,6 +7,9 @@ import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
+// Season filter value - null means "All Time"
+typedef SeasonYear = int?;
+
 /// 🏆 TROPHY WALL SCREEN - 2025 CINEMATIC DARK THEME
 ///
 /// Premium profile with:
@@ -24,9 +27,11 @@ class TrophyWallScreen extends ConsumerStatefulWidget {
 }
 
 class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
-  List<Map<String, dynamic>> _trophies = [];
+  List<Map<String, dynamic>> _allTrophies = [];
+  List<Map<String, dynamic>> _filteredTrophies = [];
   bool _isLoading = true;
   String? _error;
+  SeasonYear _selectedSeason; // null = All Time
 
   @override
   void initState() {
@@ -45,7 +50,8 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
       final userId = widget.userId ?? ref.read(supabaseClientProvider)?.auth.currentUser?.id ?? '';
       final trophies = await trophyService.fetchUserTrophies(userId);
       setState(() {
-        _trophies = trophies;
+        _allTrophies = trophies;
+        _filteredTrophies = _filterBySeason(trophies, _selectedSeason);
         _isLoading = false;
       });
     } catch (e) {
@@ -54,6 +60,34 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
         _isLoading = false;
       });
     }
+  }
+  
+  List<Map<String, dynamic>> _filterBySeason(List<Map<String, dynamic>> trophies, SeasonYear season) {
+    if (season == null) return trophies;
+    
+    return trophies.where((t) {
+      final dateStr = t['harvest_date'] as String?;
+      if (dateStr == null) return false;
+      try {
+        final date = DateTime.parse(dateStr);
+        // Hunting season typically runs from fall of one year to spring of next
+        // For simplicity, we'll match by the fall year (e.g., 2024-25 = Aug 2024 - Jul 2025)
+        if (date.month >= 8) {
+          return date.year == season;
+        } else {
+          return date.year - 1 == season;
+        }
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+  }
+  
+  void _onSeasonChanged(SeasonYear season) {
+    setState(() {
+      _selectedSeason = season;
+      _filteredTrophies = _filterBySeason(_allTrophies, season);
+    });
   }
 
   @override
@@ -67,13 +101,16 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
         SliverToBoxAdapter(
           child: _ProfileHeader(
             isWide: isWide,
-            trophyCount: _trophies.length,
+            trophyCount: _allTrophies.length,
           ),
         ),
 
         // Season tabs
         SliverToBoxAdapter(
-          child: _SeasonTabs(),
+          child: _SeasonTabs(
+            selectedSeason: _selectedSeason,
+            onSeasonChanged: _onSeasonChanged,
+          ),
         ),
 
         // Content
@@ -88,12 +125,14 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
               onRetry: _loadTrophies,
             ),
           )
-        else if (_trophies.isEmpty)
+        else if (_filteredTrophies.isEmpty)
           SliverToBoxAdapter(
             child: AppEmptyState(
               icon: Icons.emoji_events_outlined,
-              title: 'No trophies yet',
-              message: 'Start building your trophy wall by posting your first harvest.',
+              title: _selectedSeason == null ? 'No trophies yet' : 'No trophies this season',
+              message: _selectedSeason == null
+                  ? 'Start building your trophy wall by posting your first harvest.'
+                  : 'No trophies recorded for the ${_selectedSeason}-${_selectedSeason! + 1} season.',
               actionLabel: 'Post Trophy',
               onAction: () => context.push('/post'),
             ),
@@ -144,10 +183,10 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) => _TrophyGridItem(
-            trophy: _trophies[index],
-            onTap: () => context.push('/trophy/${_trophies[index]['id']}'),
+            trophy: _filteredTrophies[index],
+            onTap: () => context.push('/trophy/${_filteredTrophies[index]['id']}'),
           ),
-          childCount: _trophies.length,
+          childCount: _filteredTrophies.length,
         ),
       ),
     );
@@ -320,11 +359,11 @@ class _EditProfileButtonState extends State<_EditProfileButton> {
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Edit Profile coming soon!'),
-              duration: Duration(seconds: 1),
-            ),
+          showComingSoonModal(
+            context: context,
+            feature: 'Edit Profile',
+            description: 'Customize your profile with avatar, bio, home location, and hunting preferences.',
+            icon: Icons.edit_rounded,
           );
         },
         child: AnimatedContainer(
@@ -425,17 +464,30 @@ class _StatPill extends StatelessWidget {
 }
 
 /// Season filter tabs
-class _SeasonTabs extends StatefulWidget {
-  @override
-  State<_SeasonTabs> createState() => _SeasonTabsState();
-}
-
-class _SeasonTabsState extends State<_SeasonTabs> {
-  int _selectedIndex = 0;
+class _SeasonTabs extends StatelessWidget {
+  const _SeasonTabs({
+    required this.selectedSeason,
+    required this.onSeasonChanged,
+  });
+  
+  final SeasonYear selectedSeason;
+  final ValueChanged<SeasonYear> onSeasonChanged;
+  
+  // Generate season options based on current year
+  List<({String label, SeasonYear value})> get _seasons {
+    final currentYear = DateTime.now().year;
+    // Show current season and 2 previous seasons
+    return [
+      (label: 'All Time', value: null),
+      (label: '${currentYear - 1}-${currentYear.toString().substring(2)}', value: currentYear - 1),
+      (label: '${currentYear - 2}-${(currentYear - 1).toString().substring(2)}', value: currentYear - 2),
+      (label: '${currentYear - 3}-${(currentYear - 2).toString().substring(2)}', value: currentYear - 3),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    final seasons = ['All Time', '2024-25', '2023-24', '2022-23'];
+    final seasons = _seasons;
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
@@ -449,9 +501,9 @@ class _SeasonTabsState extends State<_SeasonTabs> {
                 right: index < seasons.length - 1 ? AppSpacing.sm : 0,
               ),
               child: _SeasonTab(
-                label: seasons[index],
-                isSelected: _selectedIndex == index,
-                onTap: () => setState(() => _selectedIndex = index),
+                label: seasons[index].label,
+                isSelected: selectedSeason == seasons[index].value,
+                onTap: () => onSeasonChanged(seasons[index].value),
               ),
             ),
           ),

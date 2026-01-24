@@ -21,3 +21,4 @@ export 'layout/sized_bottom_sheet.dart';
 
 // Modal system (global dismiss behavior)
 export 'modals/shed_modal.dart';
+export 'modals/coming_soon_modal.dart';

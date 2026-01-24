@@ -48,7 +48,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     try {
       final trophyService = ref.read(trophyServiceProvider);
-      final trophies = await trophyService.fetchFeed();
+      // Use selected category for filtering (null for 'all')
+      final categoryFilter = _selectedCategory == 'all' ? null : _selectedCategory;
+      final trophies = await trophyService.fetchFeed(category: categoryFilter);
       setState(() {
         _trophies = trophies;
         _isLoading = false;
@@ -59,6 +61,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         _isLoading = false;
       });
     }
+  }
+  
+  void _onCategoryChanged(String category) {
+    setState(() => _selectedCategory = category);
+    _loadTrophies(); // Reload with new filter
   }
 
   @override
@@ -137,7 +144,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 child: _CategoryChip(
                   category: category,
                   isSelected: _selectedCategory == category.id,
-                  onTap: () => setState(() => _selectedCategory = category.id),
+                  onTap: () => _onCategoryChanged(category.id),
                 ),
               ),
           ],
@@ -317,12 +324,22 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
   bool _isHovered = false;
   bool _isLiked = false;
 
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature coming soon!'),
-        duration: const Duration(seconds: 1),
-      ),
+  void _showShareModal(BuildContext context, Map<String, dynamic> trophy) {
+    final title = trophy['title'] ?? 'Trophy';
+    showComingSoonModal(
+      context: context,
+      feature: 'Share Trophy',
+      description: 'Share "$title" directly to social media, messaging apps, or copy a link.',
+      icon: Icons.share_rounded,
+    );
+  }
+  
+  void _showSaveModal(BuildContext context) {
+    showComingSoonModal(
+      context: context,
+      feature: 'Save Trophy',
+      description: 'Save trophies to your personal collection for easy access later.',
+      icon: Icons.bookmark_rounded,
     );
   }
 
@@ -490,12 +507,12 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
                         const Spacer(),
                         _ActionButton(
                           icon: Icons.share_outlined,
-                          onTap: () => _showComingSoon(context, 'Share'),
+                          onTap: () => _showShareModal(context, widget.trophy),
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         _ActionButton(
                           icon: Icons.bookmark_outline_rounded,
-                          onTap: () => _showComingSoon(context, 'Save'),
+                          onTap: () => _showSaveModal(context),
                         ),
                       ],
                     ),

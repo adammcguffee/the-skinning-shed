@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/auth_screen.dart';
+import '../services/location_prefetch_service.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/feed/feed_screen.dart';
 import '../features/land/land_detail_screen.dart';
@@ -22,22 +24,58 @@ import '../shared/widgets/app_scaffold.dart';
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Auth state notifier that listens to Supabase auth changes
+/// Auth state notifier that listens to Supabase auth changes.
+/// Also triggers location prefetch in background after auth succeeds.
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier(this._service) {
     _subscription = _service.authStateChanges?.listen((state) {
+      final wasAuthenticated = _session != null;
       _session = state.session;
       notifyListeners();
+      
+      // Trigger location prefetch when user becomes authenticated
+      if (!wasAuthenticated && _session != null) {
+        _triggerLocationPrefetch();
+      }
     });
     _session = _service.currentSession;
+    
+    // If already authenticated on startup, trigger prefetch
+    if (_session != null) {
+      _triggerLocationPrefetch();
+    }
   }
 
   final SupabaseService _service;
   Session? _session;
   dynamic _subscription;
+  bool _didPrefetch = false;
 
   bool get isAuthenticated => _session != null;
   Session? get session => _session;
+  
+  /// Trigger location prefetch in background (non-blocking).
+  void _triggerLocationPrefetch() {
+    if (_didPrefetch) return;
+    _didPrefetch = true;
+    
+    // Run in background - don't await, don't block
+    Future.microtask(() async {
+      try {
+        if (kDebugMode) {
+          debugPrint('[AuthNotifier] Triggering location prefetch...');
+        }
+        final result = await LocationPrefetchService.instance.prefetchLocalCountyIfNeeded();
+        if (kDebugMode && result != null) {
+          debugPrint('[AuthNotifier] Prefetched local county: ${result.label}');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AuthNotifier] Location prefetch error: $e');
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {

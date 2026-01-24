@@ -9,6 +9,59 @@ class TrophyDetailScreen extends StatelessWidget {
   const TrophyDetailScreen({super.key, required this.trophyId});
 
   final String trophyId;
+  
+  void _showOptionsMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: AppColors.textSecondary),
+              title: const Text('Report'),
+              onTap: () {
+                Navigator.pop(context);
+                showComingSoonModal(
+                  context: context,
+                  feature: 'Report Content',
+                  description: 'Report inappropriate content or rule violations to our moderation team.',
+                  icon: Icons.flag_rounded,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.block_outlined, color: AppColors.textSecondary),
+              title: const Text('Block User'),
+              onTap: () {
+                Navigator.pop(context);
+                showComingSoonModal(
+                  context: context,
+                  feature: 'Block User',
+                  description: 'Block this user to hide their content from your feed.',
+                  icon: Icons.block_rounded,
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +95,12 @@ class TrophyDetailScreen extends StatelessWidget {
                   ),
                   child: const Icon(Icons.share_outlined, color: Colors.white),
                 ),
-                onPressed: () {},
+                onPressed: () => showComingSoonModal(
+                  context: context,
+                  feature: 'Share Trophy',
+                  description: 'Share this trophy directly to social media, messaging apps, or copy a link.',
+                  icon: Icons.share_rounded,
+                ),
               ),
               IconButton(
                 icon: Container(
@@ -53,7 +111,7 @@ class TrophyDetailScreen extends StatelessWidget {
                   ),
                   child: const Icon(Icons.more_vert_rounded, color: Colors.white),
                 ),
-                onPressed: () {},
+                onPressed: () => _showOptionsMenu(context),
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
@@ -137,39 +195,33 @@ class TrophyDetailScreen extends StatelessWidget {
                         _ActionButton(
                           icon: Icons.favorite_outline_rounded,
                           label: '234',
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Reactions coming soon!'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          },
+                          onTap: () => showComingSoonModal(
+                            context: context,
+                            feature: 'Reactions',
+                            description: 'React to trophies to show appreciation and support fellow hunters.',
+                            icon: Icons.favorite_rounded,
+                          ),
                         ),
                         const SizedBox(width: AppSpacing.lg),
                         _ActionButton(
                           icon: Icons.chat_bubble_outline_rounded,
                           label: '18',
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Comments coming soon!'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          },
+                          onTap: () => showComingSoonModal(
+                            context: context,
+                            feature: 'Comments',
+                            description: 'Leave comments and engage with the hunting community.',
+                            icon: Icons.chat_bubble_rounded,
+                          ),
                         ),
                         const Spacer(),
                         _ActionButton(
                           icon: Icons.bookmark_outline_rounded,
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Save coming soon!'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          },
+                          onTap: () => showComingSoonModal(
+                            context: context,
+                            feature: 'Save Trophy',
+                            description: 'Save trophies to your personal collection for easy access later.',
+                            icon: Icons.bookmark_rounded,
+                          ),
                         ),
                       ],
                     ),
@@ -212,7 +264,12 @@ class TrophyDetailScreen extends StatelessWidget {
                         ),
                         AppButtonSecondary(
                           label: 'Follow',
-                          onPressed: () {},
+                          onPressed: () => showComingSoonModal(
+                            context: context,
+                            feature: 'Follow Users',
+                            description: 'Follow hunters to see their trophies in your feed and get notified of new posts.',
+                            icon: Icons.person_add_rounded,
+                          ),
                           size: AppButtonSize.small,
                         ),
                       ],
@@ -271,7 +328,7 @@ class TrophyDetailScreen extends StatelessWidget {
                         const SizedBox(width: AppSpacing.sm),
                         AppIconButton(
                           icon: Icons.send_rounded,
-                          onPressed: () {},
+                          onPressed: () => showComingSoonSnackbar(context, 'Comments'),
                           backgroundColor: AppColors.primary,
                           color: AppColors.textInverse,
                         ),

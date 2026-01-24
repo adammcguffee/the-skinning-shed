@@ -126,19 +126,11 @@ class _ListingCardState extends State<_ListingCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Viewing ${listing.$1}'),
-              duration: const Duration(seconds: 1),
-              action: SnackBarAction(
-                label: 'Contact',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Contact seller coming soon!')),
-                  );
-                },
-              ),
-            ),
+          showComingSoonModal(
+            context: context,
+            feature: 'Listing Details',
+            description: 'View full listing details, photos, and contact the seller for "${listing.$1}".',
+            icon: Icons.shopping_bag_rounded,
           );
         },
         child: AnimatedContainer(
