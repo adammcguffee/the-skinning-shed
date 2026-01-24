@@ -1204,26 +1204,25 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       linksMap[link.stateCode] = link;
     }
     
-    // Count stats
-    int verifiedCount = 0;
-    int brokenCount = 0;
-    int missingCount = 0;
+    // Count stats - ALL counts are per STATE (not per URL field)
+    int verifiedCount = 0;  // States with at least one verified link
+    int brokenCount = 0;    // States with URLs but none verified
+    int missingCount = 0;   // States with no URLs at all
     
     for (final state in allStates) {
       final link = linksMap[state.code];
       if (link == null) {
+        // No portal links record for this state
         missingCount++;
       } else if (link.hasAnyVerifiedLinks) {
+        // At least one verified link - counts as verified state
         verifiedCount++;
-        // Count broken links within verified states
-        if (link.hasSeasons && !link.canShowSeasons) brokenCount++;
-        if (link.hasRegulations && !link.canShowRegulations) brokenCount++;
-        if (link.hasFishing && !link.canShowFishing) brokenCount++;
-        if (link.hasLicensing && !link.canShowLicensing) brokenCount++;
-        if (link.hasBuyLicense && !link.canShowBuyLicense) brokenCount++;
-      } else if (link.hasSeasons || link.hasRegulations || link.hasFishing) {
+      } else if (link.hasSeasons || link.hasRegulations || link.hasFishing || 
+                 link.hasLicensing || link.hasBuyLicense || link.hasRecords) {
+        // Has URLs but none are verified - broken state
         brokenCount++;
       } else {
+        // Has portal links record but no URLs populated
         missingCount++;
       }
     }
