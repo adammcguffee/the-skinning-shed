@@ -34,6 +34,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   bool _showMissingOnly = false;
   Map<String, dynamic>? _lastRunResult;
   SourceCounts _sourceCounts = const SourceCounts();
+  Map<String, dynamic> _coverageStats = {};
   
   @override
   void initState() {
@@ -60,6 +61,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final coverage = await service.fetchCoverageData();
       final stats = await service.getCheckerStats(days: 7);
       final sourceCounts = await service.fetchSourceCounts();
+      final coverageStats = await service.fetchCoverageStats();
       
       if (mounted) {
         setState(() {
@@ -67,6 +69,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           _coverage = coverage;
           _checkerStats = stats;
           _sourceCounts = sourceCounts;
+          _coverageStats = coverageStats;
           _isLoading = false;
         });
       }
@@ -216,6 +219,40 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     } finally {
       if (mounted) {
         setState(() => _isRunningChecker = false);
+      }
+    }
+  }
+  
+  Future<void> _loadCoverageStats() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final stats = await service.fetchCoverageStats();
+      if (mounted) {
+        setState(() => _coverageStats = stats);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  
+  Future<void> _deleteJunkPending() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final deleted = await service.deleteJunkPending();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deleted $deleted junk pending items'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     }
   }
@@ -775,6 +812,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Coverage Dashboard (portal-first)
+          _CoverageDashboardCard(
+            stats: _coverageStats,
+            onRefresh: _loadCoverageStats,
+            onDeleteJunk: _deleteJunkPending,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
           // How it works explanation
           _HowItWorksCard(),
           const SizedBox(height: AppSpacing.md),
@@ -1629,6 +1674,222 @@ const _allStatesPortalLinks = <Map<String, dynamic>>[
   {'state_code': 'WI', 'state_name': 'Wisconsin', 'agency_name': 'Wisconsin DNR', 'seasons_url': 'https://dnr.wisconsin.gov/topic/Hunt/seasons', 'regulations_url': 'https://dnr.wisconsin.gov/topic/Hunt', 'licensing_url': 'https://dnr.wisconsin.gov/permits/licenses', 'buy_license_url': 'https://gowild.wi.gov/', 'fishing_url': 'https://dnr.wisconsin.gov/topic/Fishing'},
   {'state_code': 'WY', 'state_name': 'Wyoming', 'agency_name': 'Wyoming Game & Fish', 'seasons_url': 'https://wgfd.wyo.gov/Hunting/Season-Dates', 'regulations_url': 'https://wgfd.wyo.gov/Hunting', 'licensing_url': 'https://wgfd.wyo.gov/Apply-or-Buy', 'buy_license_url': 'https://wgfd.wyo.gov/Apply-or-Buy', 'fishing_url': 'https://wgfd.wyo.gov/Fishing'},
 ];
+
+/// Coverage Dashboard - portal-first metrics
+class _CoverageDashboardCard extends StatelessWidget {
+  const _CoverageDashboardCard({
+    required this.stats,
+    required this.onRefresh,
+    required this.onDeleteJunk,
+  });
+  
+  final Map<String, dynamic> stats;
+  final VoidCallback onRefresh;
+  final VoidCallback onDeleteJunk;
+  
+  @override
+  Widget build(BuildContext context) {
+    final portalCoverage = stats['portal_coverage'] ?? 0;
+    final portalTotal = stats['portal_total'] ?? 50;
+    final factsStates = stats['facts_states'] ?? 0;
+    final factsRows = stats['facts_total_rows'] ?? 0;
+    final pendingCount = stats['pending_count'] ?? 0;
+    final sourcesExtractable = stats['sources_extractable'] ?? 0;
+    final sourcesPortalOnly = stats['sources_portal_only'] ?? 0;
+    
+    final portalComplete = portalCoverage >= portalTotal;
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.accent.withValues(alpha: 0.08),
+            AppColors.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(Icons.dashboard_rounded, size: 20, color: AppColors.accent),
+              const SizedBox(width: AppSpacing.sm),
+              const Text(
+                'Coverage Dashboard',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                onPressed: onRefresh,
+                tooltip: 'Refresh stats',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Two-layer metrics
+          Row(
+            children: [
+              // Portal Links (always complete)
+              Expanded(
+                child: _MetricBox(
+                  icon: Icons.link_rounded,
+                  label: 'Portal Links',
+                  value: '$portalCoverage/$portalTotal',
+                  subtitle: 'Official links',
+                  color: portalComplete ? AppColors.success : AppColors.warning,
+                  isComplete: portalComplete,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              // Extracted Facts (optional)
+              Expanded(
+                child: _MetricBox(
+                  icon: Icons.fact_check_rounded,
+                  label: 'Extracted Facts',
+                  value: '$factsStates states',
+                  subtitle: '$factsRows rows',
+                  color: AppColors.info,
+                  isComplete: false,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Sources breakdown
+          Row(
+            children: [
+              Expanded(
+                child: _MetricBox(
+                  icon: Icons.source_rounded,
+                  label: 'Extractable',
+                  value: '$sourcesExtractable',
+                  subtitle: 'sources',
+                  color: AppColors.accent,
+                  isComplete: false,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _MetricBox(
+                  icon: Icons.warning_amber_rounded,
+                  label: 'Pending',
+                  value: '$pendingCount',
+                  subtitle: 'to review',
+                  color: pendingCount > 0 ? AppColors.warning : AppColors.success,
+                  isComplete: pendingCount == 0,
+                ),
+              ),
+            ],
+          ),
+          
+          // Delete junk button if pending > 0
+          if (pendingCount > 0) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onDeleteJunk,
+                icon: const Icon(Icons.delete_sweep_rounded, size: 16),
+                label: const Text('Clear Junk Pending'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricBox extends StatelessWidget {
+  const _MetricBox({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.subtitle,
+    required this.color,
+    required this.isComplete,
+  });
+  
+  final IconData icon;
+  final String label;
+  final String value;
+  final String subtitle;
+  final Color color;
+  final bool isComplete;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              if (isComplete) ...[
+                const Spacer(),
+                Icon(Icons.check_circle_rounded, size: 12, color: AppColors.success),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 10,
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Explanation card for how the system works.
 class _HowItWorksCard extends StatelessWidget {

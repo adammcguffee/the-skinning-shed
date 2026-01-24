@@ -724,14 +724,14 @@ class RegulationsService {
   }
   
   /// Run the regulations checker edge function (admin only).
-  /// Uses v4 with LLM extraction, source type classification, and strict validation.
-  /// Returns a map with check results: checked, auto_approved, pending, results array.
+  /// Uses v5 (portal-first): only extractable sources, no junk pending.
+  /// Returns a map with check results: checked, auto_approved, pending, skipped.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
     final response = await client.functions.invoke(
-      'regulations-check-v4',
+      'regulations-check-v5',
       body: {},
     );
     
@@ -740,6 +740,72 @@ class RegulationsService {
     }
     
     return response.data as Map<String, dynamic>;
+  }
+  
+  /// Fetch coverage statistics for admin dashboard.
+  Future<Map<String, dynamic>> fetchCoverageStats() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    // Portal links coverage
+    final portalRes = await client.from('state_portal_links').select('state_code');
+    final portalStates = (portalRes as List).map((e) => e['state_code'] as String).toSet();
+    
+    // Approved facts coverage
+    final approvedRes = await client.from('state_regulations_approved')
+        .select('state_code, category')
+        .order('state_code');
+    final approvedMap = <String, Set<String>>{};
+    for (final row in approvedRes as List) {
+      final state = row['state_code'] as String;
+      final cat = row['category'] as String;
+      approvedMap.putIfAbsent(state, () => {}).add(cat);
+    }
+    
+    // Pending count
+    final pendingRes = await client.from('state_regulations_pending')
+        .select('id')
+        .eq('status', 'pending');
+    final pendingCount = (pendingRes as List).length;
+    
+    // Sources by type
+    final sourcesRes = await client.from('state_regulations_sources')
+        .select('source_type');
+    int extractable = 0;
+    int portalOnly = 0;
+    for (final row in sourcesRes as List) {
+      final t = row['source_type'] as String?;
+      if (t == 'extractable' || t == 'season_schedule' || t == 'reg_summary') {
+        extractable++;
+      } else if (t == 'portal_only' || t == 'landing') {
+        portalOnly++;
+      } else {
+        extractable++; // default
+      }
+    }
+    
+    return {
+      'portal_coverage': portalStates.length,
+      'portal_total': 50,
+      'facts_states': approvedMap.length,
+      'facts_total_rows': approvedRes.length,
+      'pending_count': pendingCount,
+      'sources_extractable': extractable,
+      'sources_portal_only': portalOnly,
+    };
+  }
+  
+  /// Delete junk pending items (zero confidence or landing pages).
+  Future<int> deleteJunkPending() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final res = await client.from('state_regulations_pending')
+        .delete()
+        .or('confidence_score.eq.0,pending_reason.ilike.%landing%,proposed_summary.is.null')
+        .select('id');
+    
+    return (res as List).length;
   }
   
   /// Fetch audit log entries (admin only).
