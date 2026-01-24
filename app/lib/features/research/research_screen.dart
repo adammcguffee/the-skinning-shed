@@ -267,40 +267,342 @@ class _ResearchScreenState extends ConsumerState<ResearchScreen> {
         left: AppSpacing.screenPadding,
         right: AppSpacing.screenPadding,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: AppColors.accentGradient,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              boxShadow: AppColors.shadowAccent,
-            ),
-            child: const Icon(
-              Icons.insights_rounded,
-              color: AppColors.textInverse,
-              size: 24,
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: AppColors.accentGradient,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  boxShadow: AppColors.shadowAccent,
+                ),
+                child: const Icon(
+                  Icons.insights_rounded,
+                  color: AppColors.textInverse,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Research & Patterns',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Discover what conditions produce harvests',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _HowItWorksButton(
+                onTap: () => _showHowItWorksModal(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // Data source disclaimer
+          _DataSourceDisclaimer(),
+        ],
+      ),
+    );
+  }
+  
+  void _showHowItWorksModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const _HowItWorksSheet(),
+    );
+  }
+}
+
+/// "How it works" button
+class _HowItWorksButton extends StatefulWidget {
+  const _HowItWorksButton({required this.onTap});
+  
+  final VoidCallback onTap;
+  
+  @override
+  State<_HowItWorksButton> createState() => _HowItWorksButtonState();
+}
+
+class _HowItWorksButtonState extends State<_HowItWorksButton> {
+  bool _isHovered = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? AppColors.info.withValues(alpha: 0.15)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            border: Border.all(
+              color: _isHovered
+                  ? AppColors.info.withValues(alpha: 0.3)
+                  : AppColors.borderSubtle,
             ),
           ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.help_outline_rounded,
+                size: 14,
+                color: _isHovered ? AppColors.info : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'How it works',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: _isHovered ? AppColors.info : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Data source disclaimer badge
+class _DataSourceDisclaimer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.info.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.analytics_outlined,
+            size: 16,
+            color: AppColors.info,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Insights are based on trophies posted to The Skinning Shed (user uploads). Not statewide harvest records.',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.info,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// How it works bottom sheet
+class _HowItWorksSheet extends StatelessWidget {
+  const _HowItWorksSheet();
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppSpacing.radiusXl),
+        ),
+        boxShadow: AppColors.shadowElevated,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.screenPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.info.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    ),
+                    child: const Icon(
+                      Icons.help_outline_rounded,
+                      color: AppColors.info,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  const Expanded(
+                    child: Text(
+                      'How Research & Patterns Works',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              
+              // Data source section
+              _HowItWorksSection(
+                icon: Icons.cloud_upload_outlined,
+                title: 'Data from User Uploads',
+                content: 'All insights are derived from trophy posts shared by hunters and anglers on The Skinning Shed. When you post a harvest, we capture weather conditions at that moment.',
+              ),
+              
+              // Weather snapshot section
+              _HowItWorksSection(
+                icon: Icons.wb_sunny_outlined,
+                title: 'Weather Snapshots',
+                content: 'Each trophy post stores a snapshot of conditions at the time of harvest: temperature, barometric pressure, wind direction/speed, humidity, cloud cover, and moon phase.',
+              ),
+              
+              // Privacy section
+              _HowItWorksSection(
+                icon: Icons.lock_outline_rounded,
+                title: 'Privacy Threshold',
+                content: 'To protect individual hunter privacy, patterns are only shown when at least 10 trophies match the filter criteria. This prevents identifying specific hunts.',
+              ),
+              
+              // Patterns section
+              _HowItWorksSection(
+                icon: Icons.insights_outlined,
+                title: 'Finding Patterns',
+                content: 'We group harvests by condition buckets (temperature ranges, pressure bands, moon phases, etc.) to reveal which conditions correlate with more successful harvests.',
+              ),
+              
+              // Disclaimer section
+              _HowItWorksSection(
+                icon: Icons.warning_amber_rounded,
+                title: 'Not a Guarantee',
+                content: 'Patterns show correlation, not causation. Favorable conditions don\'t guarantee success, and many factors beyond weather affect hunting and fishing.',
+              ),
+              
+              const SizedBox(height: AppSpacing.lg),
+              
+              // Close button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: AppColors.textInverse,
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    ),
+                  ),
+                  child: const Text('Got it'),
+                ),
+              ),
+              
+              const SizedBox(height: AppSpacing.lg),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HowItWorksSection extends StatelessWidget {
+  const _HowItWorksSection({
+    required this.icon,
+    required this.title,
+    required this.content,
+  });
+  
+  final IconData icon;
+  final String title;
+  final String content;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceHover,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: Icon(icon, size: 18, color: AppColors.textSecondary),
+          ),
           const SizedBox(width: AppSpacing.md),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Research & Patterns',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  'Discover what conditions produce harvests',
+                  content,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: AppColors.textSecondary,
+                    height: 1.4,
                   ),
                 ),
               ],
