@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
@@ -345,18 +346,33 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
 
   @override
   Widget build(BuildContext context) {
-    final species = widget.trophy['species']?['name'] ?? 'Unknown';
-    final title = widget.trophy['title'] ?? 'Untitled';
+    final species = widget.trophy['species']?['common_name'] ?? 
+                    widget.trophy['custom_species_name'] ?? 'Trophy';
     final state = widget.trophy['state'] ?? '';
     final county = widget.trophy['county'] ?? '';
     final location = [county, state].where((s) => s.isNotEmpty).join(', ');
     final date = widget.trophy['harvest_date'] ?? '';
-    final imageUrl = widget.trophy['trophy_media']?.isNotEmpty == true
-        ? widget.trophy['trophy_media'][0]['url']
-        : null;
+    
+    // Use story if available, otherwise fall back to species + location
+    final story = widget.trophy['story'] as String?;
+    final title = story?.isNotEmpty == true 
+        ? (story!.length > 60 ? '${story.substring(0, 60)}...' : story)
+        : species;
+    
+    // Resolve cover photo to public URL
+    final coverPhotoPath = widget.trophy['cover_photo_path'] as String?;
+    String? imageUrl;
+    if (coverPhotoPath != null) {
+      final client = SupabaseService.instance.client;
+      if (client != null) {
+        imageUrl = client.storage.from('trophy_photos').getPublicUrl(coverPhotoPath);
+      }
+    }
+    
     final likes = widget.trophy['likes_count'] ?? 0;
     final comments = widget.trophy['comments_count'] ?? 0;
-    final username = widget.trophy['profiles']?['username'] ?? 'Hunter';
+    final username = widget.trophy['profiles']?['display_name'] ?? 
+                     widget.trophy['profiles']?['username'] ?? 'Hunter';
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),

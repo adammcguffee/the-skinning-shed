@@ -10,6 +10,7 @@ import 'package:shed/services/social_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// 🏆 TROPHY DETAIL SCREEN - 2025 PREMIUM
 /// 
@@ -170,7 +171,8 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
 
   void _sharePost() {
     final url = 'https://theskinningshed.com/trophy/${widget.trophyId}';
-    final title = _trophy?['title'] ?? 'Trophy';
+    final species = _trophy?['species']?['common_name'] ?? 
+                    _trophy?['custom_species_name'] ?? 'Trophy';
     
     if (kIsWeb) {
       // Web: copy to clipboard
@@ -183,7 +185,7 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
       );
     } else {
       // Mobile: use share sheet
-      Share.share('Check out this trophy: $title\n$url');
+      Share.share('Check out this $species trophy!\n$url');
     }
   }
 
@@ -298,7 +300,16 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
 
   Widget _buildImageHeader(BuildContext context) {
     final photos = _trophy!['trophy_photos'] as List? ?? [];
-    final imageUrl = photos.isNotEmpty ? photos.first['storage_path'] : null;
+    final storagePath = photos.isNotEmpty ? photos.first['storage_path'] as String? : null;
+    
+    // Resolve storage path to public URL
+    String? imageUrl;
+    if (storagePath != null) {
+      final client = SupabaseService.instance.client;
+      if (client != null) {
+        imageUrl = client.storage.from('trophy_photos').getPublicUrl(storagePath);
+      }
+    }
 
     return SliverAppBar(
       expandedHeight: 400,
@@ -344,8 +355,9 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
   }
 
   Widget _buildHeaderInfo(BuildContext context) {
-    final species = _trophy!['species']?['common_name'] ?? 'Unknown';
-    final title = _trophy!['title'] ?? 'Untitled';
+    final species = _trophy!['species']?['common_name'] ?? 
+                    _trophy!['custom_species_name'] ?? 'Trophy';
+    final category = _trophy!['category'] as String? ?? '';
     final state = _trophy!['state'] ?? '';
     final county = _trophy!['county'] ?? '';
     final location = [county, state].where((s) => s.isNotEmpty).join(', ');
@@ -356,16 +368,17 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Species chip
-          AppCategoryChip(
-            category: species,
-            size: AppChipSize.medium,
-          ),
+          // Category chip
+          if (category.isNotEmpty)
+            AppCategoryChip(
+              category: _formatCategory(category),
+              size: AppChipSize.medium,
+            ),
           const SizedBox(height: AppSpacing.md),
 
-          // Title
+          // Species as title
           Text(
-            title,
+            species,
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -412,6 +425,17 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
         ],
       ),
     );
+  }
+
+  String _formatCategory(String category) {
+    switch (category) {
+      case 'deer': return 'Deer';
+      case 'turkey': return 'Turkey';
+      case 'bass': return 'Bass';
+      case 'other_game': return 'Other Game';
+      case 'other_fishing': return 'Other Fishing';
+      default: return category;
+    }
   }
 
   Widget _buildActionsRow(BuildContext context) {

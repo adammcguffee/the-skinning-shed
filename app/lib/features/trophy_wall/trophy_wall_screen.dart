@@ -1345,10 +1345,17 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
 
   @override
   Widget build(BuildContext context) {
-    final species = widget.trophy['species']?['name'] ?? 'Unknown';
-    final imageUrl = widget.trophy['trophy_media']?.isNotEmpty == true
-        ? widget.trophy['trophy_media'][0]['url']
-        : null;
+    final species = widget.trophy['species']?['common_name'] ?? 'Unknown';
+    
+    // Resolve cover photo to public URL
+    final coverPhotoPath = widget.trophy['cover_photo_path'] as String?;
+    String? imageUrl;
+    if (coverPhotoPath != null) {
+      final client = SupabaseService.instance.client;
+      if (client != null) {
+        imageUrl = client.storage.from('trophy_photos').getPublicUrl(coverPhotoPath);
+      }
+    }
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
