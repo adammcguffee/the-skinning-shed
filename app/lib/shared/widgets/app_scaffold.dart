@@ -31,14 +31,19 @@ class AppScaffold extends ConsumerWidget {
   final int currentIndex;
 
   /// Map navigation index to page identifier for ad targeting.
+  /// Indices: 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
+  ///          5=Weather, 6=Research, 7=Regulations, 8=Settings
   String get _currentPageId {
     switch (currentIndex) {
       case 0: return AdPages.feed;
       case 1: return AdPages.explore;
       case 2: return AdPages.trophyWall;
       case 3: return AdPages.land;
-      case 4: return AdPages.weather;
-      case 5: return AdPages.settings;
+      case 4: return AdPages.messages;
+      case 5: return AdPages.weather;
+      case 6: return AdPages.research;
+      case 7: return AdPages.regulations;
+      case 8: return AdPages.settings;
       default: return AdPages.feed;
     }
   }
