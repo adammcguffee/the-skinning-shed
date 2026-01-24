@@ -733,9 +733,8 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         final result = await service.resetRegulationsData(includeAuditLog: includeAuditLog);
         
         if (mounted) {
-          final auditMsg = result['audit'] != null && result['audit'] > 0 
-              ? ', ${result['audit']} audit' 
-              : '';
+          final auditCount = result['audit'] as int? ?? 0;
+          final auditMsg = auditCount > 0 ? ', $auditCount audit' : '';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Reset: ${result['pending']} pending, ${result['approved']} approved, ${result['sources']} sources$auditMsg deleted'),
