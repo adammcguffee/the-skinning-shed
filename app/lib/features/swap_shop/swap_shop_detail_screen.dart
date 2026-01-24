@@ -441,53 +441,85 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
 
                   const SizedBox(height: AppSpacing.xxl),
 
-                  // Seller info
+                  // Seller info with profile link
                   Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.screenPadding),
                     child: AppSurface(
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.1),
-                              borderRadius:
-                                  BorderRadius.circular(AppSpacing.radiusMd),
+                          Text(
+                            'Seller',
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: AppColors.textSecondary,
                             ),
-                            child: listing.sellerAvatarPath != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(
-                                        AppSpacing.radiusMd),
-                                    child: Image.network(
-                                      service
-                                          .getPhotoUrl(listing.sellerAvatarPath!),
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.person_rounded,
-                                        color: AppColors.primary,
-                                      ),
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person_rounded,
-                                    color: AppColors.primary,
-                                  ),
                           ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: AppSpacing.md),
+                          GestureDetector(
+                            onTap: () => context.push('/user/${listing.userId}'),
+                            child: Row(
                               children: [
-                                Text(
-                                  listing.sellerName ?? 'Seller',
-                                  style:
-                                      Theme.of(context).textTheme.titleSmall,
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.1),
+                                    borderRadius:
+                                        BorderRadius.circular(AppSpacing.radiusMd),
+                                  ),
+                                  child: listing.sellerAvatarPath != null
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                              AppSpacing.radiusMd),
+                                          child: Image.network(
+                                            service
+                                                .getPhotoUrl(listing.sellerAvatarPath!),
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Center(
+                                              child: Text(
+                                                (listing.sellerName ?? 'S')[0].toUpperCase(),
+                                                style: const TextStyle(
+                                                  fontSize: 24,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.primary,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Text(
+                                            (listing.sellerName ?? 'S')[0].toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 24,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
                                 ),
-                                Text(
-                                  'Listed ${_formatDate(listing.createdAt)}',
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        listing.sellerName ?? 'Seller',
+                                        style:
+                                            Theme.of(context).textTheme.titleSmall,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Listed ${_formatDate(listing.createdAt)}',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: AppColors.textTertiary,
                                 ),
                               ],
                             ),

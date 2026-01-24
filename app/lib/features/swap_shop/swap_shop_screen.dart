@@ -24,6 +24,10 @@ class _SwapShopScreenState extends ConsumerState<SwapShopScreen> {
   Timer? _debounceTimer;
   
   String? _selectedCategory;
+  String? _selectedCondition;
+  String? _selectedState;
+  double? _minPrice;
+  double? _maxPrice;
   SwapShopSortBy _sortBy = SwapShopSortBy.newest;
   bool _showFilters = false;
   
@@ -39,6 +43,14 @@ class _SwapShopScreenState extends ConsumerState<SwapShopScreen> {
     'ATVs & Vehicles',
     'Decoys & Calls',
     'Other',
+  ];
+
+  static const _conditions = [
+    'New',
+    'Like New',
+    'Very Good',
+    'Good',
+    'Fair',
   ];
 
   @override
@@ -59,10 +71,57 @@ class _SwapShopScreenState extends ConsumerState<SwapShopScreen> {
     final params = SwapShopSearchParams(
       query: _searchController.text.isNotEmpty ? _searchController.text : null,
       category: _selectedCategory,
+      condition: _selectedCondition,
+      state: _selectedState,
+      minPrice: _minPrice,
+      maxPrice: _maxPrice,
       sortBy: _sortBy,
     );
     
     ref.read(swapShopListingsNotifierProvider.notifier).fetchListings(params: params);
+  }
+
+  void _onConditionSelected(String? condition) {
+    setState(() {
+      _selectedCondition = condition;
+    });
+    _loadListings();
+  }
+
+  void _onStateSelected(String? state) {
+    setState(() {
+      _selectedState = state;
+    });
+    _loadListings();
+  }
+
+  void _onPriceRangeChanged(double? min, double? max) {
+    setState(() {
+      _minPrice = min;
+      _maxPrice = max;
+    });
+    _loadListings();
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _selectedCategory = null;
+      _selectedCondition = null;
+      _selectedState = null;
+      _minPrice = null;
+      _maxPrice = null;
+      _searchController.clear();
+    });
+    _loadListings();
+  }
+
+  bool get _hasActiveFilters {
+    return _selectedCategory != null ||
+        _selectedCondition != null ||
+        _selectedState != null ||
+        _minPrice != null ||
+        _maxPrice != null ||
+        _searchController.text.isNotEmpty;
   }
 
   void _onSearchChanged(String query) {
@@ -164,10 +223,18 @@ class _SwapShopScreenState extends ConsumerState<SwapShopScreen> {
                     if (_showFilters) ...[
                       const SizedBox(height: AppSpacing.lg),
                       _FiltersPanel(
-                        selectedCategory: _selectedCategory,
+                        selectedCondition: _selectedCondition,
+                        selectedState: _selectedState,
+                        minPrice: _minPrice,
+                        maxPrice: _maxPrice,
                         sortBy: _sortBy,
-                        onCategoryChanged: _onCategorySelected,
+                        hasActiveFilters: _hasActiveFilters,
+                        onConditionChanged: _onConditionSelected,
+                        onStateChanged: _onStateSelected,
+                        onPriceRangeChanged: _onPriceRangeChanged,
                         onSortChanged: _onSortChanged,
+                        onClearAll: _clearAllFilters,
+                        conditions: _conditions,
                       ),
                     ],
                   ],
@@ -346,18 +413,66 @@ class _FilterToggleState extends State<_FilterToggle> {
 }
 
 /// Expanded filters panel
-class _FiltersPanel extends StatelessWidget {
+class _FiltersPanel extends StatefulWidget {
   const _FiltersPanel({
-    required this.selectedCategory,
+    required this.selectedCondition,
+    required this.selectedState,
+    required this.minPrice,
+    required this.maxPrice,
     required this.sortBy,
-    required this.onCategoryChanged,
+    required this.hasActiveFilters,
+    required this.onConditionChanged,
+    required this.onStateChanged,
+    required this.onPriceRangeChanged,
     required this.onSortChanged,
+    required this.onClearAll,
+    required this.conditions,
   });
 
-  final String? selectedCategory;
+  final String? selectedCondition;
+  final String? selectedState;
+  final double? minPrice;
+  final double? maxPrice;
   final SwapShopSortBy sortBy;
-  final void Function(String?) onCategoryChanged;
+  final bool hasActiveFilters;
+  final void Function(String?) onConditionChanged;
+  final void Function(String?) onStateChanged;
+  final void Function(double?, double?) onPriceRangeChanged;
   final void Function(SwapShopSortBy) onSortChanged;
+  final VoidCallback onClearAll;
+  final List<String> conditions;
+
+  @override
+  State<_FiltersPanel> createState() => _FiltersPanelState();
+}
+
+class _FiltersPanelState extends State<_FiltersPanel> {
+  final _minPriceController = TextEditingController();
+  final _maxPriceController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.minPrice != null) {
+      _minPriceController.text = widget.minPrice!.toStringAsFixed(0);
+    }
+    if (widget.maxPrice != null) {
+      _maxPriceController.text = widget.maxPrice!.toStringAsFixed(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _minPriceController.dispose();
+    _maxPriceController.dispose();
+    super.dispose();
+  }
+
+  void _applyPriceFilter() {
+    final min = double.tryParse(_minPriceController.text);
+    final max = double.tryParse(_maxPriceController.text);
+    widget.onPriceRangeChanged(min, max);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -365,6 +480,29 @@ class _FiltersPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header with clear button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Filters',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              if (widget.hasActiveFilters)
+                GestureDetector(
+                  onTap: widget.onClearAll,
+                  child: Text(
+                    'Clear all',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+
           // Sort options
           Text(
             'Sort by',
@@ -375,21 +513,134 @@ class _FiltersPanel extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Wrap(
             spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
               _SortChip(
                 label: 'Newest',
-                isSelected: sortBy == SwapShopSortBy.newest,
-                onTap: () => onSortChanged(SwapShopSortBy.newest),
+                isSelected: widget.sortBy == SwapShopSortBy.newest,
+                onTap: () => widget.onSortChanged(SwapShopSortBy.newest),
               ),
               _SortChip(
-                label: 'Price: Low to High',
-                isSelected: sortBy == SwapShopSortBy.priceLowToHigh,
-                onTap: () => onSortChanged(SwapShopSortBy.priceLowToHigh),
+                label: 'Price: Low',
+                isSelected: widget.sortBy == SwapShopSortBy.priceLowToHigh,
+                onTap: () => widget.onSortChanged(SwapShopSortBy.priceLowToHigh),
               ),
               _SortChip(
-                label: 'Price: High to Low',
-                isSelected: sortBy == SwapShopSortBy.priceHighToLow,
-                onTap: () => onSortChanged(SwapShopSortBy.priceHighToLow),
+                label: 'Price: High',
+                isSelected: widget.sortBy == SwapShopSortBy.priceHighToLow,
+                onTap: () => widget.onSortChanged(SwapShopSortBy.priceHighToLow),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Condition filter
+          Text(
+            'Condition',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              _SortChip(
+                label: 'Any',
+                isSelected: widget.selectedCondition == null,
+                onTap: () => widget.onConditionChanged(null),
+              ),
+              ...widget.conditions.map((condition) => _SortChip(
+                label: condition,
+                isSelected: widget.selectedCondition == condition,
+                onTap: () => widget.onConditionChanged(condition),
+              )),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Price range
+          Text(
+            'Price Range',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _minPriceController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Min',
+                    prefixText: '\$ ',
+                    filled: true,
+                    fillColor: AppColors.background,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderSide: BorderSide(color: AppColors.borderSubtle),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderSide: BorderSide(color: AppColors.borderSubtle),
+                    ),
+                  ),
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  onSubmitted: (_) => _applyPriceFilter(),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Text('–', style: TextStyle(color: AppColors.textTertiary)),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _maxPriceController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Max',
+                    prefixText: '\$ ',
+                    filled: true,
+                    fillColor: AppColors.background,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderSide: BorderSide(color: AppColors.borderSubtle),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      borderSide: BorderSide(color: AppColors.borderSubtle),
+                    ),
+                  ),
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  onSubmitted: (_) => _applyPriceFilter(),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              GestureDetector(
+                onTap: _applyPriceFilter,
+                child: Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ],
           ),
@@ -484,55 +735,102 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Image
+              // Image with badges
               Expanded(
                 flex: 3,
-                child: Container(
-                  color: AppColors.backgroundAlt,
-                  child: hasPhoto
-                      ? Image.network(
-                          photoUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _buildPlaceholder(),
-                        )
-                      : _buildPlaceholder(),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Image
+                    Container(
+                      color: AppColors.backgroundAlt,
+                      child: hasPhoto
+                          ? Image.network(
+                              photoUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                            )
+                          : _buildPlaceholder(),
+                    ),
+                    // Condition badge (top-left)
+                    if (listing.condition != null)
+                      Positioned(
+                        top: AppSpacing.sm,
+                        left: AppSpacing.sm,
+                        child: _ConditionBadge(condition: listing.condition!),
+                      ),
+                    // Price badge (bottom-right)
+                    if (listing.price != null)
+                      Positioned(
+                        bottom: AppSpacing.sm,
+                        right: AppSpacing.sm,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '\$${listing.price!.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
 
               // Content
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        listing.title,
-                        style: Theme.of(context).textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        listing.locationDisplay,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Text(
+                      listing.title,
+                      style: Theme.of(context).textTheme.titleSmall,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // Location
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 12,
+                          color: AppColors.textTertiary,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Spacer(),
-                      if (listing.price != null)
-                        Text(
-                          '\$${listing.price!.toStringAsFixed(0)}',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            listing.locationDisplay,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -548,6 +846,59 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
         Icons.image_outlined,
         size: 40,
         color: AppColors.textTertiary,
+      ),
+    );
+  }
+}
+
+/// Condition badge with color coding
+class _ConditionBadge extends StatelessWidget {
+  const _ConditionBadge({required this.condition});
+
+  final String condition;
+
+  Color get _backgroundColor {
+    switch (condition.toLowerCase()) {
+      case 'new':
+        return AppColors.success;
+      case 'like new':
+        return const Color(0xFF4CAF50);
+      case 'very good':
+        return const Color(0xFF8BC34A);
+      case 'good':
+        return AppColors.accent;
+      case 'fair':
+        return AppColors.warning;
+      default:
+        return AppColors.textTertiary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: _backgroundColor,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        condition,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
       ),
     );
   }
