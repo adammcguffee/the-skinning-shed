@@ -33,6 +33,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   Map<RegulationCategory, List<StateRegulation>> _regulations = {};
   Map<RegulationCategory, List<RegulationRegion>> _regions = {};
   Map<RegulationCategory, String> _selectedRegionKeys = {};
+  StatePortalLinks? _portalLinks;
   
   static const _categories = [
     RegulationCategory.deer,
@@ -77,6 +78,9 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     try {
       final service = ref.read(regulationsServiceProvider);
       
+      // Load portal links first (they always work)
+      final portalLinks = await service.fetchPortalLinks(widget.stateCode);
+      
       // Load regions and regulations for all categories
       final results = <RegulationCategory, List<StateRegulation>>{};
       final regionResults = <RegulationCategory, List<RegulationRegion>>{};
@@ -106,6 +110,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
       
       if (mounted) {
         setState(() {
+          _portalLinks = portalLinks;
           _regulations = results;
           _regions = regionResults;
           _isLoading = false;
@@ -174,7 +179,10 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               // Header
               _buildHeader(context, stateName),
               
-              // Category tabs
+              // Portal links section (always available)
+              if (_portalLinks != null) _buildPortalLinksSection(),
+              
+              // Category tabs for extracted facts
               _buildCategoryTabs(),
               
               // Content
@@ -233,6 +241,93 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+  
+  Widget _buildPortalLinksSection() {
+    final links = _portalLinks!;
+    
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenPadding,
+        0,
+        AppSpacing.screenPadding,
+        AppSpacing.md,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Icon(Icons.public_rounded, size: 16, color: AppColors.accent),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  links.agencyName ?? 'Official Portal',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            
+            // Portal buttons grid
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                if (links.hasSeasons)
+                  _PortalButton(
+                    icon: Icons.calendar_today_rounded,
+                    label: 'Seasons',
+                    url: links.seasonsUrl!,
+                  ),
+                if (links.hasRegulations)
+                  _PortalButton(
+                    icon: Icons.description_rounded,
+                    label: 'Regulations',
+                    url: links.regulationsUrl!,
+                  ),
+                if (links.hasLicensing)
+                  _PortalButton(
+                    icon: Icons.badge_rounded,
+                    label: 'Licensing',
+                    url: links.licensingUrl!,
+                  ),
+                if (links.hasBuyLicense)
+                  _PortalButton(
+                    icon: Icons.shopping_cart_rounded,
+                    label: 'Buy License',
+                    url: links.buyLicenseUrl!,
+                    isPrimary: true,
+                  ),
+                if (links.hasFishing)
+                  _PortalButton(
+                    icon: Icons.phishing_rounded,
+                    label: 'Fishing',
+                    url: links.fishingUrl!,
+                  ),
+                if (links.hasRecords)
+                  _PortalButton(
+                    icon: Icons.emoji_events_rounded,
+                    label: 'Records',
+                    url: links.recordsUrl!,
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1135,6 +1230,91 @@ class _ApprovalBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Portal button for opening external links.
+class _PortalButton extends StatefulWidget {
+  const _PortalButton({
+    required this.icon,
+    required this.label,
+    required this.url,
+    this.isPrimary = false,
+  });
+  
+  final IconData icon;
+  final String label;
+  final String url;
+  final bool isPrimary;
+  
+  @override
+  State<_PortalButton> createState() => _PortalButtonState();
+}
+
+class _PortalButtonState extends State<_PortalButton> {
+  bool _isHovered = false;
+  
+  Future<void> _launchUrl() async {
+    final uri = Uri.parse(widget.url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final isPrimary = widget.isPrimary;
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: _launchUrl,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            gradient: isPrimary && _isHovered ? AppColors.accentGradient : null,
+            color: isPrimary 
+                ? (_isHovered ? null : AppColors.accent)
+                : (_isHovered ? AppColors.surfaceHover : AppColors.background),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: isPrimary ? null : Border.all(
+              color: _isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.icon,
+                size: 16,
+                color: isPrimary ? Colors.white : (_isHovered ? AppColors.accent : AppColors.textSecondary),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isPrimary ? Colors.white : (_isHovered ? AppColors.accent : AppColors.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.open_in_new_rounded,
+                size: 12,
+                color: isPrimary ? Colors.white.withValues(alpha: 0.7) : AppColors.textTertiary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

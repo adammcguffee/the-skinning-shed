@@ -399,6 +399,101 @@ class RegulationAuditEntry {
   }
 }
 
+/// State portal links for quick access to official agency pages.
+class StatePortalLinks {
+  const StatePortalLinks({
+    required this.stateCode,
+    required this.stateName,
+    this.agencyName,
+    this.seasonsUrl,
+    this.regulationsUrl,
+    this.licensingUrl,
+    this.buyLicenseUrl,
+    this.fishingUrl,
+    this.recordsUrl,
+    this.notes,
+  });
+  
+  final String stateCode;
+  final String stateName;
+  final String? agencyName;
+  final String? seasonsUrl;
+  final String? regulationsUrl;
+  final String? licensingUrl;
+  final String? buyLicenseUrl;
+  final String? fishingUrl;
+  final String? recordsUrl;
+  final String? notes;
+  
+  bool get hasSeasons => seasonsUrl != null && seasonsUrl!.isNotEmpty;
+  bool get hasRegulations => regulationsUrl != null && regulationsUrl!.isNotEmpty;
+  bool get hasLicensing => licensingUrl != null && licensingUrl!.isNotEmpty;
+  bool get hasBuyLicense => buyLicenseUrl != null && buyLicenseUrl!.isNotEmpty;
+  bool get hasFishing => fishingUrl != null && fishingUrl!.isNotEmpty;
+  bool get hasRecords => recordsUrl != null && recordsUrl!.isNotEmpty;
+  
+  factory StatePortalLinks.fromJson(Map<String, dynamic> json) {
+    return StatePortalLinks(
+      stateCode: json['state_code'] as String,
+      stateName: json['state_name'] as String,
+      agencyName: json['agency_name'] as String?,
+      seasonsUrl: json['seasons_url'] as String?,
+      regulationsUrl: json['regulations_url'] as String?,
+      licensingUrl: json['licensing_url'] as String?,
+      buyLicenseUrl: json['buy_license_url'] as String?,
+      fishingUrl: json['fishing_url'] as String?,
+      recordsUrl: json['records_url'] as String?,
+      notes: json['notes'] as String?,
+    );
+  }
+  
+  Map<String, dynamic> toJson() => {
+    'state_code': stateCode,
+    'state_name': stateName,
+    if (agencyName != null) 'agency_name': agencyName,
+    if (seasonsUrl != null) 'seasons_url': seasonsUrl,
+    if (regulationsUrl != null) 'regulations_url': regulationsUrl,
+    if (licensingUrl != null) 'licensing_url': licensingUrl,
+    if (buyLicenseUrl != null) 'buy_license_url': buyLicenseUrl,
+    if (fishingUrl != null) 'fishing_url': fishingUrl,
+    if (recordsUrl != null) 'records_url': recordsUrl,
+    if (notes != null) 'notes': notes,
+  };
+}
+
+/// Source counts by category.
+class SourceCounts {
+  const SourceCounts({
+    this.total = 0,
+    this.deer = 0,
+    this.turkey = 0,
+    this.fishing = 0,
+  });
+  
+  final int total;
+  final int deer;
+  final int turkey;
+  final int fishing;
+  
+  factory SourceCounts.fromList(List<Map<String, dynamic>> rows) {
+    int total = 0;
+    int deer = 0;
+    int turkey = 0;
+    int fishing = 0;
+    
+    for (final row in rows) {
+      final category = row['category'] as String;
+      final count = row['count'] as int;
+      total += count;
+      if (category == 'deer') deer = count;
+      if (category == 'turkey') turkey = count;
+      if (category == 'fishing') fishing = count;
+    }
+    
+    return SourceCounts(total: total, deer: deer, turkey: turkey, fishing: fishing);
+  }
+}
+
 /// Coverage status for a state/category combination.
 class RegulationCoverage {
   const RegulationCoverage({
@@ -900,6 +995,84 @@ class RegulationsService {
         .order('category');
     
     return List<Map<String, dynamic>>.from(response as List);
+  }
+  
+  /// Fetch source counts by category (admin only).
+  Future<SourceCounts> fetchSourceCounts() async {
+    final client = _supabaseService.client;
+    if (client == null) return const SourceCounts();
+    
+    // Use RPC or raw query for grouping
+    final response = await client
+        .from('state_regulations_sources')
+        .select('category');
+    
+    int deer = 0;
+    int turkey = 0;
+    int fishing = 0;
+    
+    for (final row in response as List) {
+      final category = row['category'] as String;
+      if (category == 'deer') deer++;
+      if (category == 'turkey') turkey++;
+      if (category == 'fishing') fishing++;
+    }
+    
+    return SourceCounts(
+      total: deer + turkey + fishing,
+      deer: deer,
+      turkey: turkey,
+      fishing: fishing,
+    );
+  }
+  
+  /// Fetch portal links for a state.
+  Future<StatePortalLinks?> fetchPortalLinks(String stateCode) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+    
+    final response = await client
+        .from('state_portal_links')
+        .select()
+        .eq('state_code', stateCode)
+        .maybeSingle();
+    
+    if (response == null) return null;
+    return StatePortalLinks.fromJson(response as Map<String, dynamic>);
+  }
+  
+  /// Seed portal links for all states (admin only).
+  Future<Map<String, int>> seedPortalLinks(List<Map<String, dynamic>> links) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    int inserted = 0;
+    int updated = 0;
+    
+    for (final link in links) {
+      try {
+        final existing = await client
+            .from('state_portal_links')
+            .select('state_code')
+            .eq('state_code', link['state_code'])
+            .maybeSingle();
+        
+        if (existing != null) {
+          await client.from('state_portal_links').update({
+            ...link,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('state_code', link['state_code']);
+          updated++;
+        } else {
+          await client.from('state_portal_links').insert(link);
+          inserted++;
+        }
+      } catch (e) {
+        print('Error seeding portal link ${link['state_code']}: $e');
+      }
+    }
+    
+    return {'inserted': inserted, 'updated': updated};
   }
 }
 
