@@ -33,6 +33,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   bool _isRunningChecker = false;
   bool _showMissingOnly = false;
   Map<String, dynamic>? _lastRunResult;
+  SourceCounts _sourceCounts = const SourceCounts();
   
   @override
   void initState() {
@@ -58,12 +59,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final pending = await service.fetchPendingRegulations();
       final coverage = await service.fetchCoverageData();
       final stats = await service.getCheckerStats(days: 7);
+      final sourceCounts = await service.fetchSourceCounts();
       
       if (mounted) {
         setState(() {
           _pendingRegulations = pending;
           _coverage = coverage;
           _checkerStats = stats;
+          _sourceCounts = sourceCounts;
           _isLoading = false;
         });
       }
@@ -335,9 +338,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Seed Sources'),
+        title: const Text('Seed Extraction Sources'),
         content: const Text(
-          'This will upsert official source URLs for all 50 states from the seed file. '
+          'This will upsert 150 official source URLs (50 states × 3 categories) for extraction. '
           'Existing sources will be updated with new URLs.',
         ),
         actions: [
@@ -383,10 +386,65 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
   
+  Future<void> _seedPortalLinks() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: const Text('Seed Portal Links'),
+        content: const Text(
+          'This will upsert portal links for all 50 states. '
+          'Portal links provide quick access to seasons, regulations, licensing, and fishing pages.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+            ),
+            child: const Text('Seed Portal'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true) return;
+    
+    try {
+      final portalData = _getPortalLinksSeedData();
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.seedPortalLinks(portalData);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Seeded portal links: ${result['inserted']} inserted, ${result['updated']} updated'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Seed error: $e')),
+        );
+      }
+    }
+  }
+  
   /// Get seed data for all 50 states - embedded for reliability
   List<Map<String, dynamic>> _getSourcesSeedData() {
     // Return embedded seed data for all 50 states
     return _allStatesSeedData;
+  }
+  
+  /// Get portal links seed data for all 50 states
+  List<Map<String, dynamic>> _getPortalLinksSeedData() {
+    return _allStatesPortalLinks;
   }
 
   @override
@@ -717,6 +775,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // How it works explanation
+          _HowItWorksCard(),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Source counts display
+          _SourceCountsCard(counts: _sourceCounts),
+          const SizedBox(height: AppSpacing.md),
+          
           // Checker stats header
           _CheckerStatsCard(
             stats: _checkerStats,
@@ -731,15 +797,51 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           const SizedBox(height: AppSpacing.md),
           
-          // Seed Sources
+          // Seed section header
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Seed Data',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          
+          // Seed Portal Links (50)
+          _ToolCard(
+            icon: Icons.link_rounded,
+            title: 'Seed Portal Links (50)',
+            description: 'Populate portal buttons (seasons, regs, licensing, fishing) for all states',
+            buttonLabel: 'Seed Portal',
+            onPressed: _seedPortalLinks,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Seed Extraction Sources (150)
           _ToolCard(
             icon: Icons.cloud_download_outlined,
-            title: 'Seed Sources',
-            description: 'Populate source URLs for all 50 states from embedded seed data',
+            title: 'Seed Extraction Sources (150)',
+            description: 'Populate 150 source URLs (50 states × 3 categories) for checker',
             buttonLabel: 'Seed Sources',
             onPressed: _seedSources,
           ),
           const SizedBox(height: AppSpacing.md),
+          
+          // Import/Export section
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Import / Export',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
           
           // Bulk Import
           _ToolCard(
@@ -749,7 +851,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             buttonLabel: 'Import JSON',
             onPressed: _showBulkImportDialog,
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm),
           
           // Export
           _ToolCard(
@@ -1444,6 +1546,211 @@ const _allStatesSeedData = <Map<String, dynamic>>[
   {'state_code': 'WY', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Hunting/Turkey', 'source_name': 'Wyoming Game & Fish'},
   {'state_code': 'WY', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Fishing', 'source_name': 'Wyoming Game & Fish'},
 ];
+
+/// Portal links seed data for all 50 states
+const _allStatesPortalLinks = <Map<String, dynamic>>[
+  {'state_code': 'AL', 'state_name': 'Alabama', 'agency_name': 'Alabama DCNR', 'seasons_url': 'https://www.outdooralabama.com/hunting/seasons-bag-limits', 'regulations_url': 'https://www.outdooralabama.com/hunting', 'licensing_url': 'https://www.outdooralabama.com/licenses', 'buy_license_url': 'https://www.outdooralabama.com/licenses/buy-licenses-online', 'fishing_url': 'https://www.outdooralabama.com/fishing'},
+  {'state_code': 'AK', 'state_name': 'Alaska', 'agency_name': 'Alaska DFG', 'seasons_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=huntingmain.main', 'regulations_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=hunting.main', 'licensing_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=license.main', 'buy_license_url': 'https://store.prior.adfg.state.ak.us/', 'fishing_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=fishregulations.main'},
+  {'state_code': 'AZ', 'state_name': 'Arizona', 'agency_name': 'Arizona Game & Fish', 'seasons_url': 'https://www.azgfd.com/hunting/regulations/', 'regulations_url': 'https://www.azgfd.com/hunting/', 'licensing_url': 'https://www.azgfd.com/license/', 'buy_license_url': 'https://license.azgfd.com/', 'fishing_url': 'https://www.azgfd.com/fishing/regulations/'},
+  {'state_code': 'AR', 'state_name': 'Arkansas', 'agency_name': 'Arkansas GFC', 'seasons_url': 'https://www.agfc.com/en/hunting/seasons/', 'regulations_url': 'https://www.agfc.com/en/hunting/', 'licensing_url': 'https://www.agfc.com/en/licenses/', 'buy_license_url': 'https://www.agfc.com/en/buy-a-license/', 'fishing_url': 'https://www.agfc.com/en/fishing/regulations/'},
+  {'state_code': 'CA', 'state_name': 'California', 'agency_name': 'California DFW', 'seasons_url': 'https://wildlife.ca.gov/hunting', 'regulations_url': 'https://wildlife.ca.gov/hunting', 'licensing_url': 'https://wildlife.ca.gov/licensing', 'buy_license_url': 'https://wildlife.ca.gov/Licensing/Hunting', 'fishing_url': 'https://wildlife.ca.gov/fishing'},
+  {'state_code': 'CO', 'state_name': 'Colorado', 'agency_name': 'Colorado Parks & Wildlife', 'seasons_url': 'https://cpw.state.co.us/thingstodo/Pages/Hunting.aspx', 'regulations_url': 'https://cpw.state.co.us/thingstodo/Pages/Hunting.aspx', 'licensing_url': 'https://cpw.state.co.us/buyapply/Pages/Hunting.aspx', 'buy_license_url': 'https://cpw.state.co.us/buyapply/Pages/Hunting.aspx', 'fishing_url': 'https://cpw.state.co.us/thingstodo/Pages/Fishing.aspx'},
+  {'state_code': 'CT', 'state_name': 'Connecticut', 'agency_name': 'Connecticut DEEP', 'seasons_url': 'https://portal.ct.gov/DEEP/Hunting/Hunting-Seasons', 'regulations_url': 'https://portal.ct.gov/DEEP/Hunting/Hunting', 'licensing_url': 'https://portal.ct.gov/DEEP/Hunting/Hunting-License', 'buy_license_url': 'https://ct.aspirafocus.com/internetsales', 'fishing_url': 'https://portal.ct.gov/DEEP/Fishing/Fishing'},
+  {'state_code': 'DE', 'state_name': 'Delaware', 'agency_name': 'Delaware DFW', 'seasons_url': 'https://dnrec.delaware.gov/fish-wildlife/hunting/', 'regulations_url': 'https://dnrec.delaware.gov/fish-wildlife/hunting/', 'licensing_url': 'https://dnrec.delaware.gov/fish-wildlife/licenses/', 'buy_license_url': 'https://dnrec.delaware.gov/fish-wildlife/licenses/', 'fishing_url': 'https://dnrec.delaware.gov/fish-wildlife/fishing/'},
+  {'state_code': 'FL', 'state_name': 'Florida', 'agency_name': 'Florida FWC', 'seasons_url': 'https://myfwc.com/hunting/season-dates/', 'regulations_url': 'https://myfwc.com/hunting/', 'licensing_url': 'https://myfwc.com/license/', 'buy_license_url': 'https://gooutdoorsflorida.com/', 'fishing_url': 'https://myfwc.com/fishing/'},
+  {'state_code': 'GA', 'state_name': 'Georgia', 'agency_name': 'Georgia DNR', 'seasons_url': 'https://georgiawildlife.com/hunting/seasons', 'regulations_url': 'https://georgiawildlife.com/hunting', 'licensing_url': 'https://georgiawildlife.com/licenses-permits-passes', 'buy_license_url': 'https://gooutdoorsgeorgia.com/', 'fishing_url': 'https://georgiawildlife.com/fishing'},
+  {'state_code': 'HI', 'state_name': 'Hawaii', 'agency_name': 'Hawaii DLNR', 'seasons_url': 'https://dlnr.hawaii.gov/hunting/', 'regulations_url': 'https://dlnr.hawaii.gov/hunting/', 'licensing_url': 'https://dlnr.hawaii.gov/hunting/licenses/', 'buy_license_url': 'https://dlnr.hawaii.gov/hunting/licenses/', 'fishing_url': 'https://dlnr.hawaii.gov/dar/fishing/'},
+  {'state_code': 'ID', 'state_name': 'Idaho', 'agency_name': 'Idaho Fish & Game', 'seasons_url': 'https://idfg.idaho.gov/hunt', 'regulations_url': 'https://idfg.idaho.gov/hunt', 'licensing_url': 'https://idfg.idaho.gov/licenses', 'buy_license_url': 'https://idfg.idaho.gov/buy', 'fishing_url': 'https://idfg.idaho.gov/fish'},
+  {'state_code': 'IL', 'state_name': 'Illinois', 'agency_name': 'Illinois DNR', 'seasons_url': 'https://www2.illinois.gov/dnr/hunting/Pages/HuntingSeasons.aspx', 'regulations_url': 'https://www2.illinois.gov/dnr/hunting/Pages/default.aspx', 'licensing_url': 'https://www2.illinois.gov/dnr/LPR/Pages/default.aspx', 'buy_license_url': 'https://www.exploremoreil.com/', 'fishing_url': 'https://www2.illinois.gov/dnr/fishing/Pages/default.aspx'},
+  {'state_code': 'IN', 'state_name': 'Indiana', 'agency_name': 'Indiana DNR', 'seasons_url': 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/hunting-seasons/', 'regulations_url': 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/', 'licensing_url': 'https://www.in.gov/dnr/fish-and-wildlife/licenses-and-permits/', 'buy_license_url': 'https://secure.in.gov/apps/dnr/portal/#/home', 'fishing_url': 'https://www.in.gov/dnr/fish-and-wildlife/fishing/'},
+  {'state_code': 'IA', 'state_name': 'Iowa', 'agency_name': 'Iowa DNR', 'seasons_url': 'https://www.iowadnr.gov/Hunting/Seasons', 'regulations_url': 'https://www.iowadnr.gov/Hunting', 'licensing_url': 'https://www.iowadnr.gov/Hunting/Licenses', 'buy_license_url': 'https://www.gooutdoorsiowa.com/', 'fishing_url': 'https://www.iowadnr.gov/Fishing'},
+  {'state_code': 'KS', 'state_name': 'Kansas', 'agency_name': 'Kansas Wildlife', 'seasons_url': 'https://ksoutdoors.com/Hunting/Seasons-More', 'regulations_url': 'https://ksoutdoors.com/Hunting', 'licensing_url': 'https://ksoutdoors.com/License-Permits', 'buy_license_url': 'https://ksoutdoors.com/License-Permits/Buy-A-License', 'fishing_url': 'https://ksoutdoors.com/Fishing'},
+  {'state_code': 'KY', 'state_name': 'Kentucky', 'agency_name': 'Kentucky DFW', 'seasons_url': 'https://fw.ky.gov/Hunt/Pages/Seasons-Dates.aspx', 'regulations_url': 'https://fw.ky.gov/Hunt/Pages/default.aspx', 'licensing_url': 'https://fw.ky.gov/License/Pages/default.aspx', 'buy_license_url': 'https://app.fw.ky.gov/SportLicense/', 'fishing_url': 'https://fw.ky.gov/Fish/Pages/default.aspx'},
+  {'state_code': 'LA', 'state_name': 'Louisiana', 'agency_name': 'Louisiana WLF', 'seasons_url': 'https://www.wlf.louisiana.gov/page/hunting-seasons', 'regulations_url': 'https://www.wlf.louisiana.gov/page/hunting', 'licensing_url': 'https://www.wlf.louisiana.gov/page/licenses-permits', 'buy_license_url': 'https://la-web.s3licensing.com/', 'fishing_url': 'https://www.wlf.louisiana.gov/page/freshwater-fishing'},
+  {'state_code': 'ME', 'state_name': 'Maine', 'agency_name': 'Maine IFW', 'seasons_url': 'https://www.maine.gov/ifw/hunting-trapping/hunting-laws.html', 'regulations_url': 'https://www.maine.gov/ifw/hunting-trapping/', 'licensing_url': 'https://www.maine.gov/ifw/licenses-permits/', 'buy_license_url': 'https://moses.informe.org/online/licensing/', 'fishing_url': 'https://www.maine.gov/ifw/fishing-boating/fishing/'},
+  {'state_code': 'MD', 'state_name': 'Maryland', 'agency_name': 'Maryland DNR', 'seasons_url': 'https://dnr.maryland.gov/wildlife/Pages/hunt_trap/seasons.aspx', 'regulations_url': 'https://dnr.maryland.gov/wildlife/Pages/hunt_trap/default.aspx', 'licensing_url': 'https://dnr.maryland.gov/fisheries/Pages/license.aspx', 'buy_license_url': 'https://compass.dnr.maryland.gov/', 'fishing_url': 'https://dnr.maryland.gov/fisheries/Pages/regulations/'},
+  {'state_code': 'MA', 'state_name': 'Massachusetts', 'agency_name': 'Massachusetts DFW', 'seasons_url': 'https://www.mass.gov/service-details/hunting-seasons', 'regulations_url': 'https://www.mass.gov/hunting-regulations', 'licensing_url': 'https://www.mass.gov/how-to/buy-a-hunting-or-fishing-license', 'buy_license_url': 'https://www.mass.gov/how-to/buy-a-hunting-or-fishing-license', 'fishing_url': 'https://www.mass.gov/freshwater-fishing-regulations'},
+  {'state_code': 'MI', 'state_name': 'Michigan', 'agency_name': 'Michigan DNR', 'seasons_url': 'https://www.michigan.gov/dnr/things-to-do/hunting/seasons', 'regulations_url': 'https://www.michigan.gov/dnr/things-to-do/hunting', 'licensing_url': 'https://www.michigan.gov/dnr/buy-and-apply/licenses', 'buy_license_url': 'https://www.mdnr-elicense.com/', 'fishing_url': 'https://www.michigan.gov/dnr/things-to-do/fishing'},
+  {'state_code': 'MN', 'state_name': 'Minnesota', 'agency_name': 'Minnesota DNR', 'seasons_url': 'https://www.dnr.state.mn.us/hunting/seasons.html', 'regulations_url': 'https://www.dnr.state.mn.us/hunting/index.html', 'licensing_url': 'https://www.dnr.state.mn.us/licenses/index.html', 'buy_license_url': 'https://www.dnr.state.mn.us/buyalicense/index.html', 'fishing_url': 'https://www.dnr.state.mn.us/fishing/index.html'},
+  {'state_code': 'MS', 'state_name': 'Mississippi', 'agency_name': 'Mississippi DWFP', 'seasons_url': 'https://www.mdwfp.com/wildlife-hunting/hunting-seasons/', 'regulations_url': 'https://www.mdwfp.com/wildlife-hunting/', 'licensing_url': 'https://www.mdwfp.com/license/', 'buy_license_url': 'https://www.ms.gov/mdwfp/license/', 'fishing_url': 'https://www.mdwfp.com/fishing-boating/'},
+  {'state_code': 'MO', 'state_name': 'Missouri', 'agency_name': 'Missouri MDC', 'seasons_url': 'https://mdc.mo.gov/hunting-trapping/seasons', 'regulations_url': 'https://mdc.mo.gov/hunting-trapping', 'licensing_url': 'https://mdc.mo.gov/permits/hunting-permits', 'buy_license_url': 'https://mdc-web.s3licensing.com/', 'fishing_url': 'https://mdc.mo.gov/fishing'},
+  {'state_code': 'MT', 'state_name': 'Montana', 'agency_name': 'Montana FWP', 'seasons_url': 'https://fwp.mt.gov/hunt/regulations', 'regulations_url': 'https://fwp.mt.gov/hunt', 'licensing_url': 'https://fwp.mt.gov/buyandapply', 'buy_license_url': 'https://fwp.mt.gov/buyandapply', 'fishing_url': 'https://fwp.mt.gov/fish'},
+  {'state_code': 'NE', 'state_name': 'Nebraska', 'agency_name': 'Nebraska Game & Parks', 'seasons_url': 'https://outdoornebraska.gov/huntingseasons/', 'regulations_url': 'https://outdoornebraska.gov/hunt/', 'licensing_url': 'https://outdoornebraska.gov/permits/', 'buy_license_url': 'https://outdoornebraska.ne.gov/', 'fishing_url': 'https://outdoornebraska.gov/fishing/'},
+  {'state_code': 'NV', 'state_name': 'Nevada', 'agency_name': 'Nevada DOW', 'seasons_url': 'https://www.ndow.org/hunt/seasons-regulations/', 'regulations_url': 'https://www.ndow.org/hunt/', 'licensing_url': 'https://www.ndow.org/licenses-tags/', 'buy_license_url': 'https://www.ndow.org/licenses-tags/', 'fishing_url': 'https://www.ndow.org/fish/'},
+  {'state_code': 'NH', 'state_name': 'New Hampshire', 'agency_name': 'New Hampshire FG', 'seasons_url': 'https://www.wildlife.nh.gov/hunting/seasons', 'regulations_url': 'https://www.wildlife.nh.gov/hunting', 'licensing_url': 'https://www.wildlife.nh.gov/licensing', 'buy_license_url': 'https://www.wildlife.nh.gov/licensing', 'fishing_url': 'https://www.wildlife.nh.gov/fishing'},
+  {'state_code': 'NJ', 'state_name': 'New Jersey', 'agency_name': 'New Jersey DFW', 'seasons_url': 'https://www.nj.gov/dep/fgw/hunting_dates.htm', 'regulations_url': 'https://www.nj.gov/dep/fgw/hunting.htm', 'licensing_url': 'https://www.nj.gov/dep/fgw/licenses.htm', 'buy_license_url': 'https://www.njfishandwildlife.com/', 'fishing_url': 'https://www.nj.gov/dep/fgw/fishing.htm'},
+  {'state_code': 'NM', 'state_name': 'New Mexico', 'agency_name': 'New Mexico DGF', 'seasons_url': 'https://www.wildlife.state.nm.us/hunting/game-and-seasons/', 'regulations_url': 'https://www.wildlife.state.nm.us/hunting/', 'licensing_url': 'https://www.wildlife.state.nm.us/hunting/licenses-and-applications/', 'buy_license_url': 'https://onlinesales.wildlife.state.nm.us/', 'fishing_url': 'https://www.wildlife.state.nm.us/fishing/'},
+  {'state_code': 'NY', 'state_name': 'New York', 'agency_name': 'New York DEC', 'seasons_url': 'https://www.dec.ny.gov/outdoor/hunting_seasons.html', 'regulations_url': 'https://www.dec.ny.gov/outdoor/hunting.html', 'licensing_url': 'https://www.dec.ny.gov/permits/6094.html', 'buy_license_url': 'https://decals.dec.ny.gov/', 'fishing_url': 'https://www.dec.ny.gov/outdoor/fishing.html'},
+  {'state_code': 'NC', 'state_name': 'North Carolina', 'agency_name': 'North Carolina WRC', 'seasons_url': 'https://www.ncwildlife.org/Hunting/Seasons-Regulations', 'regulations_url': 'https://www.ncwildlife.org/Hunting', 'licensing_url': 'https://www.ncwildlife.org/Licensing', 'buy_license_url': 'https://www.ncwildlife.org/Licensing/How-to-Buy', 'fishing_url': 'https://www.ncwildlife.org/Fishing/Regulations'},
+  {'state_code': 'ND', 'state_name': 'North Dakota', 'agency_name': 'North Dakota GF', 'seasons_url': 'https://gf.nd.gov/hunting/seasons', 'regulations_url': 'https://gf.nd.gov/hunting', 'licensing_url': 'https://gf.nd.gov/licensing', 'buy_license_url': 'https://gf.nd.gov/licensing', 'fishing_url': 'https://gf.nd.gov/fishing'},
+  {'state_code': 'OH', 'state_name': 'Ohio', 'agency_name': 'Ohio DNR', 'seasons_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/hunting-seasons-bag-limits', 'regulations_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources', 'licensing_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/hunting-license', 'buy_license_url': 'https://oh-web.s3licensing.com/', 'fishing_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/fishing-resources'},
+  {'state_code': 'OK', 'state_name': 'Oklahoma', 'agency_name': 'Oklahoma DWC', 'seasons_url': 'https://www.wildlifedepartment.com/hunting/seasons', 'regulations_url': 'https://www.wildlifedepartment.com/hunting', 'licensing_url': 'https://www.wildlifedepartment.com/licensing', 'buy_license_url': 'https://www.gooutdoorsoklahoma.com/', 'fishing_url': 'https://www.wildlifedepartment.com/fishing'},
+  {'state_code': 'OR', 'state_name': 'Oregon', 'agency_name': 'Oregon DFW', 'seasons_url': 'https://myodfw.com/hunting/seasons', 'regulations_url': 'https://myodfw.com/hunting', 'licensing_url': 'https://myodfw.com/licenses-and-tags', 'buy_license_url': 'https://odfw.huntfishoregon.com/', 'fishing_url': 'https://myodfw.com/fishing'},
+  {'state_code': 'PA', 'state_name': 'Pennsylvania', 'agency_name': 'Pennsylvania GC', 'seasons_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/HuntTrapSeasonsDates.aspx', 'regulations_url': 'https://www.pgc.pa.gov/HuntTrap/Pages/default.aspx', 'licensing_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/Licenses.aspx', 'buy_license_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/HuntingLicenses.aspx', 'fishing_url': 'https://www.fishandboat.com/Fish/FishingRegulations/Pages/default.aspx'},
+  {'state_code': 'RI', 'state_name': 'Rhode Island', 'agency_name': 'Rhode Island DEM', 'seasons_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/hunting', 'regulations_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/hunting', 'licensing_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/licenses-permits', 'buy_license_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/licenses-permits', 'fishing_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/freshwater-fisheries'},
+  {'state_code': 'SC', 'state_name': 'South Carolina', 'agency_name': 'South Carolina DNR', 'seasons_url': 'https://www.dnr.sc.gov/hunting/seasons/', 'regulations_url': 'https://www.dnr.sc.gov/hunting/', 'licensing_url': 'https://www.dnr.sc.gov/licenses/', 'buy_license_url': 'https://www.sc.wildlifelicense.com/', 'fishing_url': 'https://www.dnr.sc.gov/fishing/'},
+  {'state_code': 'SD', 'state_name': 'South Dakota', 'agency_name': 'South Dakota GFP', 'seasons_url': 'https://gfp.sd.gov/hunting/', 'regulations_url': 'https://gfp.sd.gov/hunting/', 'licensing_url': 'https://gfp.sd.gov/licenses/', 'buy_license_url': 'https://gfp.sd.gov/licenses/', 'fishing_url': 'https://gfp.sd.gov/fishing/'},
+  {'state_code': 'TN', 'state_name': 'Tennessee', 'agency_name': 'Tennessee TWRA', 'seasons_url': 'https://www.tn.gov/twra/hunting/seasons.html', 'regulations_url': 'https://www.tn.gov/twra/hunting.html', 'licensing_url': 'https://www.tn.gov/twra/license-sales.html', 'buy_license_url': 'https://www.gooutdoorstennessee.com/', 'fishing_url': 'https://www.tn.gov/twra/fishing.html'},
+  {'state_code': 'TX', 'state_name': 'Texas', 'agency_name': 'Texas Parks & Wildlife', 'seasons_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/hunting/general-regulations/seasons', 'regulations_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/hunting', 'licensing_url': 'https://tpwd.texas.gov/business/licenses/', 'buy_license_url': 'https://tpwd.texas.gov/business/licenses/online-sales/', 'fishing_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/fishing'},
+  {'state_code': 'UT', 'state_name': 'Utah', 'agency_name': 'Utah DWR', 'seasons_url': 'https://wildlife.utah.gov/hunting-in-utah.html', 'regulations_url': 'https://wildlife.utah.gov/hunting-in-utah.html', 'licensing_url': 'https://wildlife.utah.gov/licenses.html', 'buy_license_url': 'https://wildlife.utah.gov/licenses.html', 'fishing_url': 'https://wildlife.utah.gov/fishing-in-utah.html'},
+  {'state_code': 'VT', 'state_name': 'Vermont', 'agency_name': 'Vermont FW', 'seasons_url': 'https://vtfishandwildlife.com/hunt/hunting-seasons', 'regulations_url': 'https://vtfishandwildlife.com/hunt', 'licensing_url': 'https://vtfishandwildlife.com/licenses-and-lotteries', 'buy_license_url': 'https://vtfishandwildlife.com/licenses-and-lotteries', 'fishing_url': 'https://vtfishandwildlife.com/fish'},
+  {'state_code': 'VA', 'state_name': 'Virginia', 'agency_name': 'Virginia DWR', 'seasons_url': 'https://dwr.virginia.gov/hunting/regulations/', 'regulations_url': 'https://dwr.virginia.gov/hunting/', 'licensing_url': 'https://dwr.virginia.gov/licenses/', 'buy_license_url': 'https://gooutdoorsvirginia.com/', 'fishing_url': 'https://dwr.virginia.gov/fishing/'},
+  {'state_code': 'WA', 'state_name': 'Washington', 'agency_name': 'Washington DFW', 'seasons_url': 'https://wdfw.wa.gov/hunting/regulations', 'regulations_url': 'https://wdfw.wa.gov/hunting', 'licensing_url': 'https://wdfw.wa.gov/licensing', 'buy_license_url': 'https://fishhunt.dfw.wa.gov/', 'fishing_url': 'https://wdfw.wa.gov/fishing/regulations'},
+  {'state_code': 'WV', 'state_name': 'West Virginia', 'agency_name': 'West Virginia DNR', 'seasons_url': 'https://wvdnr.gov/hunting/seasons/', 'regulations_url': 'https://wvdnr.gov/hunting/', 'licensing_url': 'https://wvdnr.gov/licenses/', 'buy_license_url': 'https://www.wvhunt.com/', 'fishing_url': 'https://wvdnr.gov/fishing/'},
+  {'state_code': 'WI', 'state_name': 'Wisconsin', 'agency_name': 'Wisconsin DNR', 'seasons_url': 'https://dnr.wisconsin.gov/topic/Hunt/seasons', 'regulations_url': 'https://dnr.wisconsin.gov/topic/Hunt', 'licensing_url': 'https://dnr.wisconsin.gov/permits/licenses', 'buy_license_url': 'https://gowild.wi.gov/', 'fishing_url': 'https://dnr.wisconsin.gov/topic/Fishing'},
+  {'state_code': 'WY', 'state_name': 'Wyoming', 'agency_name': 'Wyoming Game & Fish', 'seasons_url': 'https://wgfd.wyo.gov/Hunting/Season-Dates', 'regulations_url': 'https://wgfd.wyo.gov/Hunting', 'licensing_url': 'https://wgfd.wyo.gov/Apply-or-Buy', 'buy_license_url': 'https://wgfd.wyo.gov/Apply-or-Buy', 'fishing_url': 'https://wgfd.wyo.gov/Fishing'},
+];
+
+/// Explanation card for how the system works.
+class _HowItWorksCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.help_outline_rounded, size: 18, color: AppColors.accent),
+              const SizedBox(width: AppSpacing.sm),
+              const Text(
+                'How This System Works',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            '• Portal links always work – direct links to official state pages\n'
+            '• Checker extracts facts from structured pages when possible\n'
+            '• High-confidence extractions (≥85%) auto-approve\n'
+            '• Lower confidence items appear in Pending for manual review\n'
+            '• Automation runs weekly to detect changes',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Source counts display card.
+class _SourceCountsCard extends StatelessWidget {
+  const _SourceCountsCard({required this.counts});
+  
+  final SourceCounts counts;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.source_rounded, size: 18, color: AppColors.info),
+              const SizedBox(width: AppSpacing.sm),
+              const Text(
+                'Extraction Sources',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: counts.total >= 150 ? AppColors.success.withValues(alpha: 0.15) : AppColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                ),
+                child: Text(
+                  '${counts.total} total',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: counts.total >= 150 ? AppColors.success : AppColors.warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: _CountItem(label: 'Deer', count: counts.deer, target: 50),
+              ),
+              Expanded(
+                child: _CountItem(label: 'Turkey', count: counts.turkey, target: 50),
+              ),
+              Expanded(
+                child: _CountItem(label: 'Fishing', count: counts.fishing, target: 50),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CountItem extends StatelessWidget {
+  const _CountItem({
+    required this.label,
+    required this.count,
+    required this.target,
+  });
+  
+  final String label;
+  final int count;
+  final int target;
+  
+  @override
+  Widget build(BuildContext context) {
+    final isComplete = count >= target;
+    return Column(
+      children: [
+        Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: isComplete ? AppColors.success : AppColors.warning,
+          ),
+        ),
+        Text(
+          '$label / $target',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// Stats card showing checker activity over the past week.
 class _CheckerStatsCard extends StatelessWidget {
