@@ -42,7 +42,12 @@ class TrophyService {
     
     // Apply filters before transforms
     if (category != null) {
-      query = query.eq('category', category);
+      // Handle "other" category specially - maps to both other_game and other_fishing
+      if (category == 'other') {
+        query = query.inFilter('category', ['other_game', 'other_fishing']);
+      } else {
+        query = query.eq('category', category);
+      }
     }
     if (state != null) {
       query = query.eq('state', state);

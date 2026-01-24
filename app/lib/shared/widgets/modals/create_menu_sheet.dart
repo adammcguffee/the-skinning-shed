@@ -172,14 +172,23 @@ class _CreateMenuContent extends StatelessWidget {
             
             // Create options - order based on context
             if (isLandContext) ...[
-              // Land first when on Land page
+              // Land options first when on Land page - show both lease and sale
               _CreateOption(
-                icon: Icons.landscape_rounded,
+                icon: Icons.calendar_month_outlined,
                 iconColor: AppColors.success,
-                title: _landTitle,
-                description: _landDescription,
-                isHighlighted: true,
-                onTap: () => _handleCreate(context, _landRoute),
+                title: 'Land For Lease',
+                description: 'List hunting land for seasonal lease',
+                isHighlighted: createContext == CreateContext.landLease || 
+                              (createContext == CreateContext.land && landMode != 'sale'),
+                onTap: () => _handleCreate(context, '/land/create?mode=lease'),
+              ),
+              _CreateOption(
+                icon: Icons.sell_outlined,
+                iconColor: AppColors.success,
+                title: 'Land For Sale',
+                description: 'List hunting land for sale',
+                isHighlighted: createContext == CreateContext.landSale || landMode == 'sale',
+                onTap: () => _handleCreate(context, '/land/create?mode=sale'),
               ),
               _CreateOption(
                 icon: Icons.emoji_events_rounded,

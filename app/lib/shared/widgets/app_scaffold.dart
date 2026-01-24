@@ -69,6 +69,16 @@ class AppScaffold extends ConsumerWidget {
       label: 'Weather',
     ),
     AppNavDestination(
+      icon: Icons.insights_outlined,
+      selectedIcon: Icons.insights_rounded,
+      label: 'Research',
+    ),
+    AppNavDestination(
+      icon: Icons.map_outlined,
+      selectedIcon: Icons.map_rounded,
+      label: 'Regulations',
+    ),
+    AppNavDestination(
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings_rounded,
       label: 'Settings',
@@ -93,6 +103,12 @@ class AppScaffold extends ConsumerWidget {
         context.go('/weather');
         break;
       case 5:
+        context.go('/research');
+        break;
+      case 6:
+        context.go('/regulations');
+        break;
+      case 7:
         context.go('/settings');
         break;
     }
@@ -106,7 +122,9 @@ class AppScaffold extends ConsumerWidget {
       case 2: return CreateContext.trophyWall;
       case 3: return CreateContext.land;
       case 4: return CreateContext.other; // Weather
-      case 5: return CreateContext.other; // Settings
+      case 5: return CreateContext.other; // Research
+      case 6: return CreateContext.other; // Regulations
+      case 7: return CreateContext.other; // Settings
       default: return CreateContext.other;
     }
   }

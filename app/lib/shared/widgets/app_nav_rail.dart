@@ -36,6 +36,7 @@ class AppNavRail extends StatelessWidget {
         ),
       ),
       child: SafeArea(
+        bottom: true,
         child: Column(
           children: [
             const SizedBox(height: AppSpacing.xl),
@@ -45,24 +46,31 @@ class AppNavRail extends StatelessWidget {
 
             const SizedBox(height: AppSpacing.xxxl),
 
-            // Navigation items
+            // Navigation items - scrollable if needed
             Expanded(
-              child: Column(
-                children: [
-                  for (int i = 0; i < destinations.length; i++)
-                    _NavItem(
-                      destination: destinations[i],
-                      isSelected: i == selectedIndex,
-                      onTap: () => onDestinationSelected(i),
-                    ),
-                ],
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < destinations.length; i++)
+                      _NavItem(
+                        destination: destinations[i],
+                        isSelected: i == selectedIndex,
+                        onTap: () => onDestinationSelected(i),
+                      ),
+                  ],
+                ),
               ),
             ),
 
-            // Post button
-            _PostButton(onTap: onPostTap),
-
-            const SizedBox(height: AppSpacing.xxl),
+            // Create button area - fixed at bottom with proper spacing
+            const SizedBox(height: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              child: _PostButton(onTap: onPostTap),
+            ),
+            const SizedBox(height: AppSpacing.lg),
           ],
         ),
       ),

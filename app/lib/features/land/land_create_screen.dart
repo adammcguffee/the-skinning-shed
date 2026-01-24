@@ -200,31 +200,37 @@ class _LandCreateScreenState extends ConsumerState<LandCreateScreen> {
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
-              // Type selection
-              _SectionHeader(title: 'Listing Type'),
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ListingTypeChip(
-                      label: 'For Lease',
-                      icon: Icons.calendar_month_outlined,
-                      isSelected: _listingType == 'lease',
-                      onTap: () => setState(() => _listingType = 'lease'),
+              // Type selection - only show if NOT pre-specified via initialMode
+              if (widget.initialMode == null) ...[
+                _SectionHeader(title: 'Listing Type'),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ListingTypeChip(
+                        label: 'For Lease',
+                        icon: Icons.calendar_month_outlined,
+                        isSelected: _listingType == 'lease',
+                        onTap: () => setState(() => _listingType = 'lease'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: _ListingTypeChip(
-                      label: 'For Sale',
-                      icon: Icons.sell_outlined,
-                      isSelected: _listingType == 'sale',
-                      onTap: () => setState(() => _listingType = 'sale'),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: _ListingTypeChip(
+                        label: 'For Sale',
+                        icon: Icons.sell_outlined,
+                        isSelected: _listingType == 'sale',
+                        onTap: () => setState(() => _listingType = 'sale'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xxl),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+              ] else ...[
+                // Show a subtle indicator of the pre-selected type
+                _ListingTypeIndicator(listingType: _listingType),
+                const SizedBox(height: AppSpacing.lg),
+              ],
 
               // Photos section
               _SectionHeader(title: 'Photos', subtitle: 'Up to 10 photos'),
@@ -496,6 +502,50 @@ class _ListingTypeChipState extends State<_ListingTypeChip> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Subtle indicator showing pre-selected listing type
+class _ListingTypeIndicator extends StatelessWidget {
+  const _ListingTypeIndicator({required this.listingType});
+  
+  final String listingType;
+  
+  @override
+  Widget build(BuildContext context) {
+    final isLease = listingType == 'lease';
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(
+          color: AppColors.success.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isLease ? Icons.calendar_month_outlined : Icons.sell_outlined,
+            size: 18,
+            color: AppColors.success,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            isLease ? 'Creating Land For Lease Listing' : 'Creating Land For Sale Listing',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppColors.success,
+            ),
+          ),
+        ],
       ),
     );
   }

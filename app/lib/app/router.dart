@@ -102,7 +102,9 @@ int _getIndexFromLocation(String location) {
   if (location.startsWith('/trophy-wall')) return 2;
   if (location.startsWith('/land')) return 3;
   if (location.startsWith('/weather')) return 4;
-  if (location.startsWith('/settings')) return 5;
+  if (location.startsWith('/research')) return 5;
+  if (location.startsWith('/regulations')) return 6;
+  if (location.startsWith('/settings')) return 7;
   return 0; // Feed is default
 }
 
