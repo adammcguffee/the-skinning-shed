@@ -724,14 +724,14 @@ class RegulationsService {
   }
   
   /// Run the regulations checker edge function (admin only).
-  /// Uses v5 (portal-first): only extractable sources, no junk pending.
-  /// Returns a map with check results: checked, auto_approved, pending, skipped.
+  /// Uses v6: OpenAI normalization + strict validation + processes all 150.
+  /// Returns a map with check results: checked, auto_approved, pending, skipped, failed.
   Future<Map<String, dynamic>> runRegulationsChecker() async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
     final response = await client.functions.invoke(
-      'regulations-check-v5',
+      'regulations-check-v6',
       body: {},
     );
     
