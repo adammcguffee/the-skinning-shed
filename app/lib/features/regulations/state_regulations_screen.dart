@@ -268,14 +268,28 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
             // Header
             Row(
               children: [
-                Icon(Icons.public_rounded, size: 16, color: AppColors.accent),
+                Icon(Icons.verified_rounded, size: 16, color: AppColors.success),
                 const SizedBox(width: AppSpacing.sm),
-                Text(
-                  links.agencyName ?? 'Official Portal',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Official ${links.agencyName ?? 'State Agency'}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Verified links to authoritative sources',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

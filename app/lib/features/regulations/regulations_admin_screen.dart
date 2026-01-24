@@ -369,6 +369,153 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
   
+  Future<void> _verifyPortalLinks() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.verifyPortalLinks();
+      
+      final ok = result['ok'] ?? 0;
+      final broken = result['broken'] ?? 0;
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verified: $ok OK, $broken broken'),
+            backgroundColor: broken > 0 ? AppColors.warning : AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Verify error: $e')),
+        );
+      }
+    }
+  }
+  
+  Future<void> _discoverPortalLinks() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.discoverPortalLinks(limit: 10);
+      
+      final updated = result['updated'] ?? 0;
+      final failed = result['failed'] ?? 0;
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Discovered: $updated updated, $failed failed'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Discovery error: $e')),
+        );
+      }
+    }
+  }
+  
+  Future<void> _showBrokenLinksReport() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final broken = await service.fetchBrokenLinks();
+      
+      if (!mounted) return;
+      
+      if (broken.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No broken links! All portal links verified.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        return;
+      }
+      
+      showShedCenterModal(
+        context: context,
+        title: 'Broken Links (${broken.length} states)',
+        maxWidth: 600,
+        maxHeight: 700,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: broken.length,
+          itemBuilder: (context, index) {
+            final state = broken[index];
+            return ListTile(
+              title: Text('${state['state_name']} (${state['state_code']})'),
+              subtitle: Text('Last verified: ${state['last_verified_at'] ?? 'never'}'),
+              trailing: const Icon(Icons.warning_rounded, color: AppColors.warning),
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+  
+  Future<void> _showResetConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: const Text('Reset Regulations Data?'),
+        content: const Text(
+          'This will DELETE:\\n'
+          '• All pending regulations\\n'
+          '• All approved regulations\\n'
+          '• All extraction sources\\n\\n'
+          'Portal links will be PRESERVED.\\n\\n'
+          'This action cannot be undone.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      try {
+        final service = ref.read(regulationsServiceProvider);
+        final result = await service.resetRegulationsData();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Reset: ${result['pending']} pending, ${result['approved']} approved, ${result['sources']} sources deleted'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Reset error: $e')),
+          );
+        }
+      }
+    }
+  }
+  
   Future<void> _seedSources() async {
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -878,6 +1025,49 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           const SizedBox(height: AppSpacing.md),
           
+          // Portal Links section
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Portal Links Management',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          
+          // Verify Links
+          _ToolCard(
+            icon: Icons.verified_rounded,
+            title: 'Verify Portal Links',
+            description: 'Check HTTP status of all portal URLs (50 states)',
+            buttonLabel: 'Verify Now',
+            onPressed: _verifyPortalLinks,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Discover Links
+          _ToolCard(
+            icon: Icons.travel_explore_rounded,
+            title: 'Discover Links (Auto)',
+            description: 'Auto-find official URLs using search API',
+            buttonLabel: 'Discover',
+            onPressed: _discoverPortalLinks,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Broken Links Report
+          _ToolCard(
+            icon: Icons.link_off_rounded,
+            title: 'Broken Links Report',
+            description: 'View and fix broken portal links',
+            buttonLabel: 'View Report',
+            onPressed: _showBrokenLinksReport,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
           // Import/Export section
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -908,6 +1098,30 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             description: 'Export all approved regulations as JSON to clipboard',
             buttonLabel: 'Export',
             onPressed: _exportRegulations,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Danger Zone
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Text(
+              'Danger Zone',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.error,
+              ),
+            ),
+          ),
+          
+          // Reset Data
+          _ToolCard(
+            icon: Icons.delete_forever_rounded,
+            title: 'Reset Regulations Data',
+            description: 'Delete all pending, approved, and sources. Keeps portal links.',
+            buttonLabel: 'Reset',
+            onPressed: _showResetConfirmation,
+            isDanger: true,
           ),
         ],
       ),
@@ -1353,6 +1567,7 @@ class _ToolCard extends StatelessWidget {
     required this.description,
     required this.buttonLabel,
     required this.onPressed,
+    this.isDanger = false,
   });
   
   final IconData icon;
@@ -1360,15 +1575,20 @@ class _ToolCard extends StatelessWidget {
   final String description;
   final String buttonLabel;
   final VoidCallback onPressed;
+  final bool isDanger;
   
   @override
   Widget build(BuildContext context) {
+    final color = isDanger ? AppColors.error : AppColors.accent;
+    
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: isDanger ? AppColors.error.withValues(alpha: 0.05) : AppColors.surface,
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderSubtle),
+        border: Border.all(
+          color: isDanger ? AppColors.error.withValues(alpha: 0.3) : AppColors.borderSubtle
+        ),
       ),
       child: Row(
         children: [
@@ -1376,10 +1596,10 @@ class _ToolCard extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.15),
+              color: color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
             ),
-            child: Icon(icon, color: AppColors.accent, size: 20),
+            child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -1388,10 +1608,10 @@ class _ToolCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: isDanger ? AppColors.error : AppColors.textPrimary,
                   ),
                 ),
                 Text(
@@ -1407,7 +1627,7 @@ class _ToolCard extends StatelessWidget {
           ElevatedButton(
             onPressed: onPressed,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
+              backgroundColor: color,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md,
