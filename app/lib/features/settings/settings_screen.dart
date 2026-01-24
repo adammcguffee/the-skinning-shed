@@ -196,6 +196,7 @@ class SettingsScreen extends ConsumerWidget {
                           );
                         },
                       ),
+                      _AuthDebugItem(),
                     ],
                   ),
                 ),
@@ -414,6 +415,137 @@ class _SettingsToggleItem extends ConsumerWidget {
               ref.read(provider.notifier).state = newValue;
             },
             activeColor: AppColors.accent,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Debug auth info panel (kDebugMode only).
+class _AuthDebugItem extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final service = ref.watch(supabaseServiceProvider);
+    final client = service.client;
+    final session = client?.auth.currentSession;
+    final user = client?.auth.currentUser;
+    
+    final hasSession = session != null;
+    final hasUser = user != null;
+    final accessTokenLength = session?.accessToken.length ?? 0;
+    final hasRefreshToken = session?.refreshToken != null;
+    final authReadyState = service.authReadyState;
+    
+    return _SettingsItem(
+      icon: Icons.security_rounded,
+      title: 'Auth Debug',
+      subtitle: hasSession ? 'Session OK' : 'No session',
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Auth Debug Info'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _AuthDebugRow('Auth Ready State', authReadyState.name),
+                  _AuthDebugRow('Session Present', hasSession.toString()),
+                  _AuthDebugRow('User Present', hasUser.toString()),
+                  _AuthDebugRow('User ID', user?.id ?? 'N/A'),
+                  _AuthDebugRow('User Email', user?.email ?? 'N/A'),
+                  _AuthDebugRow('Access Token Length', accessTokenLength.toString()),
+                  _AuthDebugRow('Refresh Token Present', hasRefreshToken.toString()),
+                  if (session != null) ...[
+                    _AuthDebugRow(
+                      'Token Expires At',
+                      session.expiresAt != null
+                          ? DateTime.fromMillisecondsSinceEpoch(
+                              session.expiresAt! * 1000,
+                            ).toIso8601String()
+                          : 'N/A',
+                    ),
+                    _AuthDebugRow(
+                      'Token Expired',
+                      session.isExpired.toString(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  try {
+                    await client?.auth.refreshSession();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Session refreshed!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Refresh failed: $e'),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Refresh Token'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AuthDebugRow extends StatelessWidget {
+  const _AuthDebugRow(this.label, this.value);
+  
+  final String label;
+  final String value;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                fontFamily: 'monospace',
+              ),
+            ),
           ),
         ],
       ),

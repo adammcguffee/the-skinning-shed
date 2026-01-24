@@ -1,7 +1,8 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import 'auth_preferences.dart';
 
 /// Initialization status for Supabase.
 enum InitStatus {
@@ -13,6 +14,16 @@ enum InitStatus {
   success,
   /// Failed to initialize (missing credentials or error).
   failure,
+}
+
+/// Auth readiness state.
+enum AuthReadyState {
+  /// Still recovering session from storage.
+  recovering,
+  /// Authenticated (session present).
+  authenticated,
+  /// Not authenticated (no session after recovery).
+  unauthenticated,
 }
 
 /// Supabase client singleton.
@@ -30,6 +41,21 @@ class SupabaseService {
   
   InitStatus _status = InitStatus.idle;
   String? _errorMessage;
+  
+  /// Completes when auth session recovery finishes.
+  final Completer<void> _authReadyCompleter = Completer<void>();
+  
+  /// Current auth ready state.
+  AuthReadyState _authReadyState = AuthReadyState.recovering;
+  
+  /// Whether auth recovery has completed.
+  bool get isAuthReady => _authReadyCompleter.isCompleted;
+  
+  /// Current auth ready state.
+  AuthReadyState get authReadyState => _authReadyState;
+  
+  /// Future that completes when auth is ready.
+  Future<void> get authReady => _authReadyCompleter.future;
   
   /// Initialize Supabase client.
   /// Call once at app startup from main.dart.
@@ -66,24 +92,95 @@ class SupabaseService {
         authOptions: const FlutterAuthClientOptions(
           authFlowType: AuthFlowType.pkce,
           autoRefreshToken: true,
+          // Required for web: handle OAuth callback URLs
+          // Required for all: persist session to storage
         ),
       );
-
-      final keepSignedIn = await AuthPreferences.getKeepSignedIn();
-      if (!keepSignedIn) {
-        final client = Supabase.instance.client;
-        if (client.auth.currentSession != null) {
-          await client.auth.signOut();
-        }
-      }
       
       _status = InitStatus.success;
+      
+      // Wait for auth recovery to complete.
+      // Supabase SDK recovers session from storage asynchronously after initialize().
+      // We listen for the first auth state change to know when recovery is done.
+      _waitForAuthRecovery();
+      
       return true;
     } catch (e) {
       _status = InitStatus.failure;
       _errorMessage = 'Failed to initialize Supabase: $e';
       return false;
     }
+  }
+  
+  /// Wait for auth session recovery from storage.
+  /// Called immediately after Supabase.initialize() succeeds.
+  void _waitForAuthRecovery() {
+    final client = Supabase.instance.client;
+    
+    // Check if we already have a session (happens on some platforms)
+    if (client.auth.currentSession != null) {
+      _authReadyState = AuthReadyState.authenticated;
+      if (!_authReadyCompleter.isCompleted) {
+        _authReadyCompleter.complete();
+      }
+      if (kDebugMode) {
+        debugPrint('[SupabaseService] Auth ready: already authenticated');
+      }
+      return;
+    }
+    
+    // Listen for the first auth state change.
+    // On web, Supabase SDK emits INITIAL_SESSION or SIGNED_IN after recovery.
+    StreamSubscription<AuthState>? subscription;
+    Timer? timeout;
+    
+    void complete(AuthReadyState state) {
+      subscription?.cancel();
+      timeout?.cancel();
+      _authReadyState = state;
+      if (!_authReadyCompleter.isCompleted) {
+        _authReadyCompleter.complete();
+      }
+      if (kDebugMode) {
+        debugPrint('[SupabaseService] Auth ready: $state');
+      }
+    }
+    
+    subscription = client.auth.onAuthStateChange.listen((state) {
+      final event = state.event;
+      final session = state.session;
+      
+      if (kDebugMode) {
+        debugPrint('[SupabaseService] Auth event: $event, hasSession: ${session != null}');
+      }
+      
+      // INITIAL_SESSION: SDK has finished loading session from storage
+      // SIGNED_IN: User authenticated (fresh login or recovered)
+      // SIGNED_OUT: No session found
+      // TOKEN_REFRESHED: Session was refreshed (still authenticated)
+      if (event == AuthChangeEvent.initialSession ||
+          event == AuthChangeEvent.signedIn ||
+          event == AuthChangeEvent.signedOut ||
+          event == AuthChangeEvent.tokenRefreshed) {
+        complete(session != null
+            ? AuthReadyState.authenticated
+            : AuthReadyState.unauthenticated);
+      }
+    });
+    
+    // Timeout: if no auth event within 5 seconds, consider recovery done.
+    // This handles edge cases where no event is emitted.
+    timeout = Timer(const Duration(seconds: 5), () {
+      if (!_authReadyCompleter.isCompleted) {
+        final hasSession = client.auth.currentSession != null;
+        if (kDebugMode) {
+          debugPrint('[SupabaseService] Auth recovery timeout, hasSession: $hasSession');
+        }
+        complete(hasSession
+            ? AuthReadyState.authenticated
+            : AuthReadyState.unauthenticated);
+      }
+    });
   }
   
   /// Get Supabase client instance.
@@ -130,7 +227,7 @@ final currentUserProvider = Provider<User?>((ref) {
   return ref.watch(supabaseServiceProvider).currentUser;
 });
 
-/// Provider for authentication state.
+/// Provider for authentication state stream.
 final authStateProvider = StreamProvider<AuthState>((ref) {
   final service = ref.watch(supabaseServiceProvider);
   final stream = service.authStateChanges;
@@ -145,6 +242,57 @@ final isAuthenticatedProvider = Provider<bool>((ref) {
   final user = ref.watch(currentUserProvider);
   return user != null;
 });
+
+/// Provider for auth ready state.
+/// Use this to wait for auth recovery before showing login screen.
+final authReadyStateProvider = StateNotifierProvider<AuthReadyNotifier, AuthReadyState>((ref) {
+  final service = ref.watch(supabaseServiceProvider);
+  return AuthReadyNotifier(service);
+});
+
+/// Notifier that tracks auth ready state.
+class AuthReadyNotifier extends StateNotifier<AuthReadyState> {
+  AuthReadyNotifier(this._service) : super(AuthReadyState.recovering) {
+    _init();
+  }
+  
+  final SupabaseService _service;
+  StreamSubscription<AuthState>? _subscription;
+  
+  void _init() {
+    // If auth is already ready, update state immediately
+    if (_service.isAuthReady) {
+      state = _service.authReadyState;
+    } else {
+      // Wait for auth ready, then start listening
+      _service.authReady.then((_) {
+        if (!mounted) return;
+        state = _service.authReadyState;
+        _startListening();
+      });
+    }
+    
+    // Also start listening for ongoing auth changes
+    _startListening();
+  }
+  
+  void _startListening() {
+    _subscription?.cancel();
+    _subscription = _service.authStateChanges?.listen((authState) {
+      if (!mounted) return;
+      final hasSession = authState.session != null;
+      state = hasSession
+          ? AuthReadyState.authenticated
+          : AuthReadyState.unauthenticated;
+    });
+  }
+  
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+}
 
 /// Provider for checking if user is admin.
 /// Fetches the is_admin flag from the profiles table.

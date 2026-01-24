@@ -27,6 +27,7 @@ import '../features/trophy_wall/trophy_wall_screen.dart';
 import '../features/weather/weather_screen.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
+import 'theme/app_colors.dart';
 
 /// Navigation shell key for preserving state
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -34,33 +35,57 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Auth state notifier that listens to Supabase auth changes.
 /// Also triggers location prefetch in background after auth succeeds.
+/// 
+/// This notifier now waits for auth recovery before reporting state,
+/// preventing the flash-to-login problem on page refresh.
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier(this._service) {
-    _subscription = _service.authStateChanges?.listen((state) {
-      final wasAuthenticated = _session != null;
-      _session = state.session;
-      notifyListeners();
-      
-      // Trigger location prefetch when user becomes authenticated
-      if (!wasAuthenticated && _session != null) {
-        _triggerLocationPrefetch();
-      }
-    });
-    _session = _service.currentSession;
-    
-    // If already authenticated on startup, trigger prefetch
-    if (_session != null) {
-      _triggerLocationPrefetch();
-    }
+    _init();
   }
 
   final SupabaseService _service;
   Session? _session;
   dynamic _subscription;
   bool _didPrefetch = false;
+  
+  /// Auth is still recovering from storage.
+  bool _isRecovering = true;
+  
+  /// Whether auth is still recovering session from storage.
+  bool get isRecovering => _isRecovering;
 
   bool get isAuthenticated => _session != null;
   Session? get session => _session;
+  
+  void _init() {
+    // Wait for auth recovery before reading session
+    _service.authReady.then((_) {
+      if (_service.authReadyState == AuthReadyState.authenticated) {
+        _session = _service.currentSession;
+        if (_session != null) {
+          _triggerLocationPrefetch();
+        }
+      }
+      _isRecovering = false;
+      notifyListeners();
+    });
+    
+    // Listen for ongoing auth changes
+    _subscription = _service.authStateChanges?.listen((state) {
+      final wasAuthenticated = _session != null;
+      _session = state.session;
+      
+      // If recovery finished, notify listeners
+      if (!_isRecovering) {
+        notifyListeners();
+      }
+      
+      // Trigger location prefetch when user becomes authenticated
+      if (!wasAuthenticated && _session != null) {
+        _triggerLocationPrefetch();
+      }
+    });
+  }
   
   /// Trigger location prefetch in background (non-blocking).
   void _triggerLocationPrefetch() {
@@ -98,6 +123,42 @@ final authNotifierProvider = ChangeNotifierProvider<AuthNotifier>((ref) {
   return AuthNotifier(service);
 });
 
+/// Screen shown while auth is recovering.
+class _AuthRecoveringScreen extends StatelessWidget {
+  const _AuthRecoveringScreen();
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Reconnecting...',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Helper to get current index from location
 int _getIndexFromLocation(String location) {
   if (location.startsWith('/explore')) return 1;
@@ -120,11 +181,24 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     refreshListenable: authNotifier,
     redirect: (context, state) {
+      final isRecovering = authNotifier.isRecovering;
       final isAuthenticated = authNotifier.isAuthenticated;
       final isAuthRoute = state.matchedLocation == '/auth';
+      final isRecoveringRoute = state.matchedLocation == '/recovering';
+      
+      // During auth recovery, show the recovering screen
+      // (prevents flash-to-login on page refresh)
+      if (isRecovering && !isRecoveringRoute) {
+        return '/recovering';
+      }
+      
+      // Once recovery is done, leave recovering screen
+      if (!isRecovering && isRecoveringRoute) {
+        return isAuthenticated ? '/' : '/auth';
+      }
       
       // If not authenticated and not on auth page, redirect to auth
-      if (!isAuthenticated && !isAuthRoute) {
+      if (!isRecovering && !isAuthenticated && !isAuthRoute) {
         return '/auth';
       }
       
@@ -136,6 +210,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      // Auth recovering route (shown during session recovery)
+      GoRoute(
+        path: '/recovering',
+        builder: (context, state) => const _AuthRecoveringScreen(),
+      ),
+      
       // Auth route (outside shell)
       GoRoute(
         path: '/auth',
