@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/config/dev_flags.dart';
 import 'package:shed/services/auth_service.dart';
 import 'package:shed/services/auth_preferences.dart';
+import 'package:shed/services/dev_auth_service.dart';
 import 'package:shed/shared/widgets/no_scrollbar_scroll_behavior.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
@@ -333,6 +336,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
               ],
             ),
+            
+            // Dev bypass button (only visible in debug mode with flag)
+            if (DevFlags.isDevBypassAuthEnabled) ...[
+              const SizedBox(height: AppSpacing.xxl),
+              const Divider(color: AppColors.divider),
+              const SizedBox(height: AppSpacing.lg),
+              _DevBypassButton(
+                onPressed: () async {
+                  final devAuth = ref.read(devAuthNotifierProvider);
+                  final success = await devAuth.activate();
+                  if (success && mounted) {
+                    context.go('/');
+                  }
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -457,6 +476,76 @@ class _KeepSignedInToggle extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dev bypass button - only shown when DevFlags.isDevBypassAuthEnabled is true.
+/// This button allows developers to skip authentication during development.
+class _DevBypassButton extends StatelessWidget {
+  const _DevBypassButton({required this.onPressed});
+  
+  final VoidCallback onPressed;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.bug_report_rounded, size: 14, color: AppColors.warning),
+              SizedBox(width: 6),
+              Text(
+                'DEV MODE ENABLED',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.warning,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: onPressed,
+            icon: const Icon(Icons.login_rounded),
+            label: const Text('Continue (Dev Mode)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.warning,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        const Text(
+          'Bypasses authentication for development only.\nNo Supabase session will be created.',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textTertiary,
+          ),
+          textAlign: TextAlign.center,
         ),
       ],
     );

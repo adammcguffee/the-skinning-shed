@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shed/app/router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/config/dev_flags.dart';
 import 'package:shed/services/auth_service.dart';
+import 'package:shed/services/dev_auth_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// ⚙️ SETTINGS SCREEN - 2025 PREMIUM
@@ -115,20 +118,9 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
 
-              // Sign out
+              // Sign out section
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.screenPadding),
-                  child: AppButtonSecondary(
-                    label: 'Sign Out',
-                    icon: Icons.logout_rounded,
-                    onPressed: () async {
-                      final authService = ref.read(authServiceProvider);
-                      await authService.signOut();
-                    },
-                    isExpanded: true,
-                  ),
-                ),
+                child: _SignOutSection(),
               ),
 
               // Bottom padding
@@ -266,6 +258,83 @@ class _SettingsItemState extends State<_SettingsItem> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Sign out section that handles both real auth and dev bypass.
+class _SignOutSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authNotifier = ref.watch(authNotifierProvider);
+    final isDevBypass = authNotifier.isDevBypass;
+    
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Column(
+        children: [
+          // Dev bypass indicator
+          if (isDevBypass) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.bug_report_rounded, size: 18, color: AppColors.warning),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Dev Mode Active',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.warning,
+                          ),
+                        ),
+                        Text(
+                          'No Supabase session - using local bypass',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+          
+          // Sign out button
+          AppButtonSecondary(
+            label: isDevBypass ? 'Sign Out (Dev Mode)' : 'Sign Out',
+            icon: Icons.logout_rounded,
+            onPressed: () async {
+              if (isDevBypass) {
+                // Clear dev bypass state
+                await ref.read(devAuthNotifierProvider).deactivate();
+              } else {
+                // Real sign out
+                final authService = ref.read(authServiceProvider);
+                await authService.signOut();
+                // Also clear any dev bypass state
+                await DevAuthService.clearDevBypassState();
+              }
+            },
+            isExpanded: true,
+          ),
+        ],
       ),
     );
   }
