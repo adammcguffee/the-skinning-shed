@@ -397,6 +397,24 @@ class RegulationsService {
       'notes': notes,
     }).eq('id', pendingId);
   }
+  
+  /// Run the regulations checker edge function (admin only).
+  /// Returns a map with check results: checked, changed, results array.
+  Future<Map<String, dynamic>> runRegulationsChecker() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final response = await client.functions.invoke(
+      'regulations-check',
+      body: {},
+    );
+    
+    if (response.status != 200) {
+      throw Exception('Failed to run checker: ${response.data}');
+    }
+    
+    return response.data as Map<String, dynamic>;
+  }
 }
 
 /// Provider for regulations service.

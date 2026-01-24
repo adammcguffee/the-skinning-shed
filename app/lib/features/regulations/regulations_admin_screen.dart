@@ -22,6 +22,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   bool _isLoading = true;
   String? _error;
   List<PendingRegulation> _pendingRegulations = [];
+  bool _isRunningChecker = false;
   
   @override
   void initState() {
@@ -146,6 +147,35 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     
     notesController.dispose();
   }
+  
+  Future<void> _runChecker() async {
+    setState(() => _isRunningChecker = true);
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.runRegulationsChecker();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Check complete: ${result['checked']} sources, ${result['changed']} changed'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        _loadPendingRegulations();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error running checker: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRunningChecker = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +226,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 ),
               ),
               
+              // Run Checker button
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                child: _RunCheckerButton(
+                  isRunning: _isRunningChecker,
+                  onPressed: _runChecker,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              
               // Content
               Expanded(
                 child: _isLoading
@@ -226,6 +266,89 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RunCheckerButton extends StatelessWidget {
+  const _RunCheckerButton({
+    required this.isRunning,
+    required this.onPressed,
+  });
+  
+  final bool isRunning;
+  final VoidCallback onPressed;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.info.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: const Icon(
+              Icons.sync_rounded,
+              color: AppColors.info,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Regulations Checker',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Check official sources for updates',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: isRunning ? null : onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.info,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+            ),
+            child: isRunning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  )
+                : const Text('Run Now'),
+          ),
+        ],
       ),
     );
   }
