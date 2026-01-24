@@ -36,10 +36,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   SourceCounts _sourceCounts = const SourceCounts();
   Map<String, dynamic> _coverageStats = {};
   
+  // Portal links coverage
+  List<StatePortalLinks> _portalLinks = [];
+  bool _isVerifyingLinks = false;
+  
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this); // Added Links tab
     _loadData();
   }
   
@@ -62,6 +66,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final stats = await service.getCheckerStats(days: 7);
       final sourceCounts = await service.fetchSourceCounts();
       final coverageStats = await service.fetchCoverageStats();
+      final portalLinks = await service.fetchAllPortalLinks();
       
       if (mounted) {
         setState(() {
@@ -70,6 +75,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           _checkerStats = stats;
           _sourceCounts = sourceCounts;
           _coverageStats = coverageStats;
+          _portalLinks = portalLinks;
           _isLoading = false;
         });
       }
@@ -370,12 +376,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
   
   Future<void> _verifyPortalLinks() async {
+    setState(() => _isVerifyingLinks = true);
     try {
       final service = ref.read(regulationsServiceProvider);
       final result = await service.verifyPortalLinks();
       
-      final ok = result['ok'] ?? 0;
-      final broken = result['broken'] ?? 0;
+      final ok = result['verified_ok'] ?? result['ok'] ?? 0;
+      final broken = result['failed'] ?? result['broken'] ?? 0;
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -384,6 +391,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             backgroundColor: broken > 0 ? AppColors.warning : AppColors.success,
           ),
         );
+        _loadData(); // Reload to show updated verification status
       }
     } catch (e) {
       if (mounted) {
@@ -391,7 +399,142 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           SnackBar(content: Text('Verify error: $e')),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isVerifyingLinks = false);
+      }
     }
+  }
+  
+  Future<void> _showEditLinksDialog(StatePortalLinks links) async {
+    final seasonsController = TextEditingController(text: links.seasonsUrl ?? '');
+    final regsController = TextEditingController(text: links.regulationsUrl ?? '');
+    final fishingController = TextEditingController(text: links.fishingUrl ?? '');
+    final licensingController = TextEditingController(text: links.licensingUrl ?? '');
+    final buyController = TextEditingController(text: links.buyLicenseUrl ?? '');
+    final recordsController = TextEditingController(text: links.recordsUrl ?? '');
+    
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: Text('Edit Links: ${links.stateName}'),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _LinkTextField(
+                  label: 'Hunting Seasons URL',
+                  controller: seasonsController,
+                  isVerified: links.verifiedSeasonsOk,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _LinkTextField(
+                  label: 'Hunting Regulations URL',
+                  controller: regsController,
+                  isVerified: links.verifiedRegsOk,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _LinkTextField(
+                  label: 'Fishing Regulations URL',
+                  controller: fishingController,
+                  isVerified: links.verifiedFishingOk,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _LinkTextField(
+                  label: 'Licensing Info URL',
+                  controller: licensingController,
+                  isVerified: links.verifiedLicensingOk,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _LinkTextField(
+                  label: 'Buy License URL',
+                  controller: buyController,
+                  isVerified: links.verifiedBuyLicenseOk,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _LinkTextField(
+                  label: 'Records URL (optional)',
+                  controller: recordsController,
+                  isVerified: links.verifiedRecordsOk,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 14, color: AppColors.info),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          'Changed URLs will be marked as unverified. Run "Verify Now" after editing.',
+                          style: TextStyle(fontSize: 11, color: AppColors.info),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    
+    if (result == true) {
+      try {
+        final service = ref.read(regulationsServiceProvider);
+        await service.updatePortalLink(
+          stateCode: links.stateCode,
+          huntingSeasonsUrl: seasonsController.text,
+          huntingRegsUrl: regsController.text,
+          fishingRegsUrl: fishingController.text,
+          licensingUrl: licensingController.text,
+          buyLicenseUrl: buyController.text,
+          recordsUrl: recordsController.text,
+        );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Links updated. Run Verify to check.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+    
+    seasonsController.dispose();
+    regsController.dispose();
+    fishingController.dispose();
+    licensingController.dispose();
+    buyController.dispose();
+    recordsController.dispose();
   }
   
   Future<void> _discoverPortalLinks() async {
@@ -756,6 +899,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   tabs: [
                     Tab(text: 'Pending (${_pendingRegulations.length})'),
                     const Tab(text: 'Coverage'),
+                    const Tab(text: 'Links'),
                     const Tab(text: 'Tools'),
                   ],
                 ),
@@ -776,6 +920,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                             children: [
                               _buildPendingTab(),
                               _buildCoverageTab(),
+                              _buildLinksTab(),
                               _buildToolsTab(),
                             ],
                           ),
@@ -948,6 +1093,169 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                     }),
                   ],
                 ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildLinksTab() {
+    final allStates = USStates.all;
+    
+    // Build map for quick lookup
+    final linksMap = <String, StatePortalLinks>{};
+    for (final link in _portalLinks) {
+      linksMap[link.stateCode] = link;
+    }
+    
+    // Count stats
+    int verifiedCount = 0;
+    int brokenCount = 0;
+    int missingCount = 0;
+    
+    for (final state in allStates) {
+      final link = linksMap[state.code];
+      if (link == null) {
+        missingCount++;
+      } else if (link.hasAnyVerifiedLinks) {
+        verifiedCount++;
+        // Count broken links within verified states
+        if (link.hasSeasons && !link.canShowSeasons) brokenCount++;
+        if (link.hasRegulations && !link.canShowRegulations) brokenCount++;
+        if (link.hasFishing && !link.canShowFishing) brokenCount++;
+        if (link.hasLicensing && !link.canShowLicensing) brokenCount++;
+        if (link.hasBuyLicense && !link.canShowBuyLicense) brokenCount++;
+      } else if (link.hasSeasons || link.hasRegulations || link.hasFishing) {
+        brokenCount++;
+      } else {
+        missingCount++;
+      }
+    }
+    
+    return Column(
+      children: [
+        // Header with verify button and stats
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Trust banner
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.verified_user_rounded, size: 20, color: AppColors.success),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Official State Agency Sources Only',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            'Links must be verified 200 OK to show in app. Unverified links show "Unavailable".',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              
+              // Stats row
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  _CoverageSummaryChip(
+                    label: 'Verified',
+                    count: verifiedCount,
+                    color: AppColors.success,
+                  ),
+                  _CoverageSummaryChip(
+                    label: 'Broken',
+                    count: brokenCount,
+                    color: AppColors.error,
+                  ),
+                  _CoverageSummaryChip(
+                    label: 'Missing',
+                    count: missingCount,
+                    color: AppColors.textTertiary,
+                  ),
+                  // Verify button
+                  ElevatedButton.icon(
+                    onPressed: _isVerifyingLinks ? null : _verifyPortalLinks,
+                    icon: _isVerifyingLinks
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.verified_rounded, size: 14),
+                    label: const Text('Verify All'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        
+        // Column headers
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          child: Row(
+            children: const [
+              SizedBox(width: 50, child: Text('State', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+              Expanded(child: Center(child: Text('Seasons', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
+              Expanded(child: Center(child: Text('Regs', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
+              Expanded(child: Center(child: Text('Fish', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
+              Expanded(child: Center(child: Text('License', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
+              Expanded(child: Center(child: Text('Buy', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
+              SizedBox(width: 36),
+            ],
+          ),
+        ),
+        const Divider(height: 8),
+        
+        // Links matrix
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+            itemCount: allStates.length,
+            itemBuilder: (context, index) {
+              final state = allStates[index];
+              final link = linksMap[state.code];
+              
+              return _PortalLinksRow(
+                stateCode: state.code,
+                links: link,
+                onEdit: link != null ? () => _showEditLinksDialog(link) : null,
               );
             },
           ),
@@ -2432,6 +2740,149 @@ class _StatItem extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+}
+
+/// Portal links row in the coverage matrix.
+class _PortalLinksRow extends StatelessWidget {
+  const _PortalLinksRow({
+    required this.stateCode,
+    required this.links,
+    this.onEdit,
+  });
+  
+  final String stateCode;
+  final StatePortalLinks? links;
+  final VoidCallback? onEdit;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 50,
+            child: Text(
+              stateCode,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          Expanded(child: _LinkStatusCell(hasUrl: links?.hasSeasons ?? false, isVerified: links?.canShowSeasons ?? false)),
+          Expanded(child: _LinkStatusCell(hasUrl: links?.hasRegulations ?? false, isVerified: links?.canShowRegulations ?? false)),
+          Expanded(child: _LinkStatusCell(hasUrl: links?.hasFishing ?? false, isVerified: links?.canShowFishing ?? false)),
+          Expanded(child: _LinkStatusCell(hasUrl: links?.hasLicensing ?? false, isVerified: links?.canShowLicensing ?? false)),
+          Expanded(child: _LinkStatusCell(hasUrl: links?.hasBuyLicense ?? false, isVerified: links?.canShowBuyLicense ?? false)),
+          SizedBox(
+            width: 36,
+            child: links != null
+                ? IconButton(
+                    icon: const Icon(Icons.edit_rounded, size: 14),
+                    onPressed: onEdit,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    color: AppColors.textTertiary,
+                    tooltip: 'Edit links',
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Link status cell showing verified/broken/missing status.
+class _LinkStatusCell extends StatelessWidget {
+  const _LinkStatusCell({
+    required this.hasUrl,
+    required this.isVerified,
+  });
+  
+  final bool hasUrl;
+  final bool isVerified;
+  
+  @override
+  Widget build(BuildContext context) {
+    if (!hasUrl) {
+      // Missing - no URL configured
+      return Center(
+        child: Icon(
+          Icons.remove_rounded,
+          size: 14,
+          color: AppColors.textTertiary.withValues(alpha: 0.5),
+        ),
+      );
+    }
+    
+    if (isVerified) {
+      // Verified OK
+      return Center(
+        child: Icon(
+          Icons.check_circle_rounded,
+          size: 14,
+          color: AppColors.success,
+        ),
+      );
+    }
+    
+    // Has URL but not verified (broken or unverified)
+    return Center(
+      child: Icon(
+        Icons.warning_rounded,
+        size: 14,
+        color: AppColors.error,
+      ),
+    );
+  }
+}
+
+/// Text field for editing portal links with verification indicator.
+class _LinkTextField extends StatelessWidget {
+  const _LinkTextField({
+    required this.label,
+    required this.controller,
+    required this.isVerified,
+  });
+  
+  final String label;
+  final TextEditingController controller;
+  final bool isVerified;
+  
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(
+          fontSize: 12,
+          color: AppColors.textSecondary,
+        ),
+        hintText: 'https://...',
+        hintStyle: TextStyle(
+          fontSize: 12,
+          color: AppColors.textTertiary,
+        ),
+        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: AppColors.surface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        suffixIcon: isVerified
+            ? const Icon(Icons.verified_rounded, size: 16, color: AppColors.success)
+            : controller.text.isNotEmpty
+                ? const Icon(Icons.warning_rounded, size: 16, color: AppColors.warning)
+                : null,
+      ),
+      style: const TextStyle(
+        fontSize: 12,
+        fontFamily: 'monospace',
+      ),
     );
   }
 }

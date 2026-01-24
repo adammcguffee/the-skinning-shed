@@ -403,6 +403,7 @@ class RegulationAuditEntry {
 }
 
 /// State portal links for quick access to official agency pages.
+/// Links are only shown in UI if verified OK AND within 14 days.
 class StatePortalLinks {
   const StatePortalLinks({
     required this.stateCode,
@@ -415,6 +416,14 @@ class StatePortalLinks {
     this.fishingUrl,
     this.recordsUrl,
     this.notes,
+    // Verification status booleans - THE GATEKEEPER
+    this.verifiedSeasonsOk = false,
+    this.verifiedRegsOk = false,
+    this.verifiedFishingOk = false,
+    this.verifiedLicensingOk = false,
+    this.verifiedBuyLicenseOk = false,
+    this.verifiedRecordsOk = false,
+    this.lastVerifiedAt,
   });
   
   final String stateCode;
@@ -428,12 +437,72 @@ class StatePortalLinks {
   final String? recordsUrl;
   final String? notes;
   
+  // Verification status - must be true AND recent to show link
+  final bool verifiedSeasonsOk;
+  final bool verifiedRegsOk;
+  final bool verifiedFishingOk;
+  final bool verifiedLicensingOk;
+  final bool verifiedBuyLicenseOk;
+  final bool verifiedRecordsOk;
+  final DateTime? lastVerifiedAt;
+  
+  /// Maximum age for verification to be considered valid (14 days).
+  static const verificationMaxAgeDays = 14;
+  
+  /// Check if verification is recent enough (within 14 days).
+  bool get isVerificationRecent {
+    if (lastVerifiedAt == null) return false;
+    final age = DateTime.now().difference(lastVerifiedAt!);
+    return age.inDays <= verificationMaxAgeDays;
+  }
+  
+  // GATED ACCESSORS: Only true if URL exists AND verified OK AND recent
+  bool get canShowSeasons => 
+      seasonsUrl != null && seasonsUrl!.isNotEmpty && 
+      verifiedSeasonsOk && isVerificationRecent;
+  
+  bool get canShowRegulations => 
+      regulationsUrl != null && regulationsUrl!.isNotEmpty && 
+      verifiedRegsOk && isVerificationRecent;
+  
+  bool get canShowFishing => 
+      fishingUrl != null && fishingUrl!.isNotEmpty && 
+      verifiedFishingOk && isVerificationRecent;
+  
+  bool get canShowLicensing => 
+      licensingUrl != null && licensingUrl!.isNotEmpty && 
+      verifiedLicensingOk && isVerificationRecent;
+  
+  bool get canShowBuyLicense => 
+      buyLicenseUrl != null && buyLicenseUrl!.isNotEmpty && 
+      verifiedBuyLicenseOk && isVerificationRecent;
+  
+  bool get canShowRecords => 
+      recordsUrl != null && recordsUrl!.isNotEmpty && 
+      verifiedRecordsOk && isVerificationRecent;
+  
+  // Legacy accessors (just check URL presence) - use canShow* instead
   bool get hasSeasons => seasonsUrl != null && seasonsUrl!.isNotEmpty;
   bool get hasRegulations => regulationsUrl != null && regulationsUrl!.isNotEmpty;
   bool get hasLicensing => licensingUrl != null && licensingUrl!.isNotEmpty;
   bool get hasBuyLicense => buyLicenseUrl != null && buyLicenseUrl!.isNotEmpty;
   bool get hasFishing => fishingUrl != null && fishingUrl!.isNotEmpty;
   bool get hasRecords => recordsUrl != null && recordsUrl!.isNotEmpty;
+  
+  /// Count of links that can be shown (verified + recent).
+  int get verifiedLinkCount {
+    int count = 0;
+    if (canShowSeasons) count++;
+    if (canShowRegulations) count++;
+    if (canShowFishing) count++;
+    if (canShowLicensing) count++;
+    if (canShowBuyLicense) count++;
+    if (canShowRecords) count++;
+    return count;
+  }
+  
+  /// True if at least one link can be shown.
+  bool get hasAnyVerifiedLinks => verifiedLinkCount > 0;
   
   factory StatePortalLinks.fromJson(Map<String, dynamic> json) {
     return StatePortalLinks(
@@ -447,6 +516,16 @@ class StatePortalLinks {
       fishingUrl: json['fishing_regs_url'] as String? ?? json['fishing_url'] as String?,
       recordsUrl: json['records_url'] as String?,
       notes: json['notes'] as String?,
+      // Parse verification booleans
+      verifiedSeasonsOk: json['verified_hunting_seasons_ok'] as bool? ?? false,
+      verifiedRegsOk: json['verified_hunting_regs_ok'] as bool? ?? false,
+      verifiedFishingOk: json['verified_fishing_regs_ok'] as bool? ?? false,
+      verifiedLicensingOk: json['verified_licensing_ok'] as bool? ?? false,
+      verifiedBuyLicenseOk: json['verified_buy_license_ok'] as bool? ?? false,
+      verifiedRecordsOk: json['verified_records_ok'] as bool? ?? false,
+      lastVerifiedAt: json['last_verified_at'] != null
+          ? DateTime.tryParse(json['last_verified_at'] as String)
+          : null,
     );
   }
   
@@ -454,11 +533,11 @@ class StatePortalLinks {
     'state_code': stateCode,
     'state_name': stateName,
     if (agencyName != null) 'agency_name': agencyName,
-    if (seasonsUrl != null) 'seasons_url': seasonsUrl,
-    if (regulationsUrl != null) 'regulations_url': regulationsUrl,
+    if (seasonsUrl != null) 'hunting_seasons_url': seasonsUrl,
+    if (regulationsUrl != null) 'hunting_regs_url': regulationsUrl,
     if (licensingUrl != null) 'licensing_url': licensingUrl,
     if (buyLicenseUrl != null) 'buy_license_url': buyLicenseUrl,
-    if (fishingUrl != null) 'fishing_url': fishingUrl,
+    if (fishingUrl != null) 'fishing_regs_url': fishingUrl,
     if (recordsUrl != null) 'records_url': recordsUrl,
     if (notes != null) 'notes': notes,
   };
@@ -856,20 +935,113 @@ class RegulationsService {
     return response.data as Map<String, dynamic>;
   }
   
-  /// Fetch broken portal links for admin review.
+  /// Fetch broken portal links for admin review (where URL exists but verification failed).
   Future<List<Map<String, dynamic>>> fetchBrokenLinks() async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
     
+    // Fetch all states with their URLs and verification status
     final res = await client.from('state_portal_links')
-        .select('state_code, state_name, hunting_seasons_url, hunting_seasons_status, '
-                'hunting_regs_url, hunting_regs_status, fishing_regs_url, fishing_regs_status, '
-                'licensing_url, licensing_status, buy_license_url, buy_license_status, '
-                'last_verified_at')
-        .or('hunting_seasons_status.neq.200,hunting_regs_status.neq.200,fishing_regs_status.neq.200,licensing_status.neq.200,buy_license_status.neq.200')
+        .select()
         .order('state_code');
     
-    return (res as List).cast<Map<String, dynamic>>();
+    final broken = <Map<String, dynamic>>[];
+    
+    for (final row in res as List) {
+      final state = row as Map<String, dynamic>;
+      final stateCode = state['state_code'] as String;
+      final stateName = state['state_name'] as String;
+      
+      // Check each URL field
+      final fields = [
+        {'url': 'hunting_seasons_url', 'ok': 'verified_hunting_seasons_ok', 'label': 'Hunting Seasons'},
+        {'url': 'hunting_regs_url', 'ok': 'verified_hunting_regs_ok', 'label': 'Hunting Regs'},
+        {'url': 'fishing_regs_url', 'ok': 'verified_fishing_regs_ok', 'label': 'Fishing Regs'},
+        {'url': 'licensing_url', 'ok': 'verified_licensing_ok', 'label': 'Licensing'},
+        {'url': 'buy_license_url', 'ok': 'verified_buy_license_ok', 'label': 'Buy License'},
+        {'url': 'records_url', 'ok': 'verified_records_ok', 'label': 'Records'},
+      ];
+      
+      for (final field in fields) {
+        final url = state[field['url']] as String?;
+        final isOk = state[field['ok']] as bool? ?? false;
+        
+        // Broken = URL exists but not verified OK
+        if (url != null && url.isNotEmpty && !isOk) {
+          broken.add({
+            'state_code': stateCode,
+            'state_name': stateName,
+            'field': field['label'],
+            'url': url,
+            'verified_ok': false,
+          });
+        }
+      }
+    }
+    
+    return broken;
+  }
+  
+  /// Fetch all portal links for coverage matrix.
+  Future<List<StatePortalLinks>> fetchAllPortalLinks() async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+    
+    final res = await client.from('state_portal_links')
+        .select()
+        .order('state_code');
+    
+    return (res as List)
+        .map((json) => StatePortalLinks.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+  
+  /// Update a single portal link field for a state.
+  Future<void> updatePortalLink({
+    required String stateCode,
+    String? huntingSeasonsUrl,
+    String? huntingRegsUrl,
+    String? fishingRegsUrl,
+    String? licensingUrl,
+    String? buyLicenseUrl,
+    String? recordsUrl,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    final updates = <String, dynamic>{
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    
+    // Only include fields that were provided (null = keep existing, empty string = clear)
+    if (huntingSeasonsUrl != null) {
+      updates['hunting_seasons_url'] = huntingSeasonsUrl.isEmpty ? null : huntingSeasonsUrl;
+      updates['verified_hunting_seasons_ok'] = false; // Reset verification
+    }
+    if (huntingRegsUrl != null) {
+      updates['hunting_regs_url'] = huntingRegsUrl.isEmpty ? null : huntingRegsUrl;
+      updates['verified_hunting_regs_ok'] = false;
+    }
+    if (fishingRegsUrl != null) {
+      updates['fishing_regs_url'] = fishingRegsUrl.isEmpty ? null : fishingRegsUrl;
+      updates['verified_fishing_regs_ok'] = false;
+    }
+    if (licensingUrl != null) {
+      updates['licensing_url'] = licensingUrl.isEmpty ? null : licensingUrl;
+      updates['verified_licensing_ok'] = false;
+    }
+    if (buyLicenseUrl != null) {
+      updates['buy_license_url'] = buyLicenseUrl.isEmpty ? null : buyLicenseUrl;
+      updates['verified_buy_license_ok'] = false;
+    }
+    if (recordsUrl != null) {
+      updates['records_url'] = recordsUrl.isEmpty ? null : recordsUrl;
+      updates['verified_records_ok'] = false;
+    }
+    
+    await client.from('state_portal_links')
+        .update(updates)
+        .eq('state_code', stateCode);
   }
   
   /// Fetch audit log entries (admin only).
