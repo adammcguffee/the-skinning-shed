@@ -41,8 +41,8 @@ class AppNavRail extends StatelessWidget {
           children: [
             const SizedBox(height: AppSpacing.xl),
 
-            // Logo/Brand mark
-            _buildBrandMark(),
+            // Logo/Brand mark - clickable to go Home
+            _buildBrandMark(context),
 
             const SizedBox(height: AppSpacing.xxxl),
 
@@ -77,17 +77,29 @@ class AppNavRail extends StatelessWidget {
     );
   }
 
-  Widget _buildBrandMark() {
+  Widget _buildBrandMark(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: SizedBox(
-        width: 52,
-        height: 52,
-        child: Image.asset(
-          BrandAssets.crest,
-          fit: BoxFit.contain,
-          alignment: Alignment.center,
-          filterQuality: FilterQuality.high,
+      child: Tooltip(
+        message: 'Home',
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () {
+              // Navigate to feed (index 0) regardless of current page
+              onDestinationSelected(0);
+            },
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: Image.asset(
+                BrandAssets.crest,
+                fit: BoxFit.contain,
+                alignment: Alignment.center,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -203,7 +215,7 @@ class _NavItemState extends State<_NavItem> {
   }
 }
 
-/// Extended Create button for nav rail - shows label on desktop
+/// Extended Create button for nav rail - constrained to fit nav width
 class _PostButton extends StatefulWidget {
   const _PostButton({required this.onTap});
 
@@ -218,45 +230,53 @@ class _PostButtonState extends State<_PostButton> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
-          decoration: BoxDecoration(
-            gradient: AppColors.accentGradient,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            boxShadow: _isHovered ? AppColors.shadowAccent : AppColors.shadowButton,
-          ),
-          transform: _isHovered
-              ? (Matrix4.identity()..scale(1.03))
-              : Matrix4.identity(),
-          transformAlignment: Alignment.center,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.add_rounded,
-                size: 20,
-                color: AppColors.textInverse,
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Create',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+    // Constrain button width to fit within nav rail (80 - 16 padding = 64)
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 64),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              gradient: AppColors.accentGradient,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              boxShadow: _isHovered ? AppColors.shadowAccent : AppColors.shadowButton,
+            ),
+            transform: _isHovered
+                ? (Matrix4.identity()..scale(1.03))
+                : Matrix4.identity(),
+            transformAlignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.add_rounded,
+                  size: 18,
                   color: AppColors.textInverse,
                 ),
-              ),
-            ],
+                const SizedBox(width: 4),
+                const Flexible(
+                  child: Text(
+                    'Create',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textInverse,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
