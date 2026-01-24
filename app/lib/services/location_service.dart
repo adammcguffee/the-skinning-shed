@@ -232,11 +232,12 @@ class LocationService {
         return null;
       }
       
-      // Get current position with reasonable timeout
+      // Get current position with fast timeout (6 seconds max)
+      // Low accuracy is fine for county-level detection
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low, // Low accuracy is fine for county
-          timeLimit: Duration(seconds: 10),
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 6),
         ),
       );
       

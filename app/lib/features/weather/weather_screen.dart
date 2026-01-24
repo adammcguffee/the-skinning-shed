@@ -9,14 +9,17 @@ import 'package:shed/services/location_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/weather_favorites_service.dart';
 import 'package:shed/services/weather_providers.dart';
+import 'package:shed/services/weather_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// 🌤️ WEATHER SCREEN - 2025 CINEMATIC DARK THEME
 ///
 /// Premium weather with:
+/// - LIVE weather data from Open-Meteo Forecast API
 /// - Auto-detect local weather (geolocation)
 /// - Quick location chips (Local, Last Viewed, Favorites)
 /// - Synced favorites via Supabase
+/// - Correct timezone handling via unixtime
 /// - Hourly forecast (scrollable)
 /// - Wind speed, direction, gusts
 /// - Temperature & precipitation
@@ -34,11 +37,11 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
   String? _selectedCounty;
   String? _selectedCountyFips;
   bool _didInit = false;
+  CountySelection? _lastFetchedSelection;
 
   @override
   void initState() {
     super.initState();
-    // Initialize location on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeLocation();
     });
@@ -55,6 +58,12 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
     if (ref.read(isAuthenticatedProvider)) {
       await ref.read(weatherFavoritesProvider.notifier).fetchFavorites();
     }
+    
+    // Fetch weather for initial selection
+    final selection = ref.read(selectedLocationProvider).selection;
+    if (selection != null) {
+      await _fetchWeatherForSelection(selection);
+    }
   }
 
   void _syncFromProviderState() {
@@ -70,7 +79,18 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
           _selectedCountyFips = selection.countyFips;
         });
       }
+      
+      // Fetch weather if selection changed
+      if (_lastFetchedSelection != selection) {
+        _fetchWeatherForSelection(selection);
+      }
     }
+  }
+  
+  Future<void> _fetchWeatherForSelection(CountySelection selection) async {
+    if (_lastFetchedSelection == selection) return;
+    _lastFetchedSelection = selection;
+    await ref.read(liveWeatherProvider.notifier).fetchWeatherForSelection(selection);
   }
 
   Future<void> _handleManualSelection(USState? state, String? county, String? fips) async {
@@ -82,6 +102,7 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
         countyFips: fips,
       );
       await ref.read(selectedLocationProvider.notifier).setManualSelection(selection);
+      await _fetchWeatherForSelection(selection);
     }
   }
 
@@ -94,6 +115,7 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
       countyFips: favorite.countyFips,
     );
     await ref.read(selectedLocationProvider.notifier).setFavoriteSelection(selection);
+    await _fetchWeatherForSelection(selection);
   }
 
   @override
@@ -101,8 +123,9 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
     
-    // Watch provider state and sync local state
+    // Watch provider states
     final locationState = ref.watch(selectedLocationProvider);
+    final weatherState = ref.watch(liveWeatherProvider);
     final favoritesState = ref.watch(weatherFavoritesProvider);
     final isAuthenticated = ref.watch(isAuthenticatedProvider);
     final isFavorite = ref.watch(isCurrentLocationFavoriteProvider);
@@ -111,11 +134,13 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncFromProviderState();
     });
+    
+    final hasSelection = _selectedState != null && _selectedCounty != null;
+    final isLoading = locationState.isLoading || weatherState.isLoading;
+    final hasWeatherData = weatherState.data != null;
 
     return CustomScrollView(
       slivers: [
-        // Banner header is now rendered by AppScaffold
-
         // Header with favorite toggle
         SliverToBoxAdapter(
           child: _buildHeader(
@@ -135,9 +160,17 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
             isLoading: locationState.isLoading,
             onLocalTap: () async {
               await ref.read(selectedLocationProvider.notifier).detectLocalLocation();
+              final selection = ref.read(selectedLocationProvider).selection;
+              if (selection != null) {
+                await _fetchWeatherForSelection(selection);
+              }
             },
             onLastViewedTap: () async {
               await ref.read(selectedLocationProvider.notifier).loadLastViewed();
+              final selection = ref.read(selectedLocationProvider).selection;
+              if (selection != null) {
+                await _fetchWeatherForSelection(selection);
+              }
             },
             onFavoriteTap: _handleFavoriteSelection,
           ),
@@ -166,14 +199,18 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
           ),
         ),
 
-        // Loading state for location detection
-        if (locationState.isLoading)
+        // Loading state
+        if (isLoading)
           SliverToBoxAdapter(
-            child: _LocationLoadingIndicator(),
+            child: _LocationLoadingIndicator(
+              message: locationState.isLoading 
+                  ? 'Detecting your location...'
+                  : 'Loading weather data...',
+            ),
           ),
 
         // Weather content
-        if (_selectedState != null && _selectedCounty != null && !locationState.isLoading) ...[
+        if (hasSelection && !isLoading && hasWeatherData) ...[
           // Source label
           if (locationState.source != null)
             SliverToBoxAdapter(
@@ -182,29 +219,33 @@ class _WeatherScreenState extends ConsumerState<WeatherScreen> {
 
           // Current conditions hero
           SliverToBoxAdapter(
-            child: _CurrentConditionsHero(),
+            child: _CurrentConditionsHero(data: weatherState.data!),
           ),
 
           // Hourly forecast (scrollable)
           SliverToBoxAdapter(
-            child: _HourlyForecast(),
+            child: _HourlyForecast(hourly: weatherState.data!.hourly),
           ),
 
           // Wind section (emphasized)
           SliverToBoxAdapter(
-            child: _WindSection(),
+            child: _WindSection(current: weatherState.data!.current),
           ),
 
           // 5-Day forecast
           SliverToBoxAdapter(
-            child: _DailyForecast(),
+            child: _DailyForecast(daily: weatherState.data!.daily),
           ),
 
           // Hunting tools
           SliverToBoxAdapter(
-            child: _HuntingTools(),
+            child: _HuntingTools(daily: weatherState.data!.daily),
           ),
-        ] else if (!locationState.isLoading)
+        ] else if (hasSelection && !isLoading && weatherState.error != null)
+          SliverToBoxAdapter(
+            child: _WeatherErrorState(error: weatherState.error!),
+          )
+        else if (!hasSelection && !isLoading)
           SliverToBoxAdapter(
             child: _LocationPrompt(),
           ),
@@ -550,6 +591,10 @@ class _QuickLocationChipState extends State<_QuickLocationChip> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _LocationLoadingIndicator extends StatelessWidget {
+  const _LocationLoadingIndicator({this.message = 'Loading...'});
+  
+  final String message;
+  
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -564,7 +609,7 @@ class _LocationLoadingIndicator extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(
+            const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
@@ -573,12 +618,64 @@ class _LocationLoadingIndicator extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppSpacing.md),
-            const Text(
-              'Detecting your location...',
-              style: TextStyle(
+            Text(
+              message,
+              style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textSecondary,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WEATHER ERROR STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _WeatherErrorState extends StatelessWidget {
+  const _WeatherErrorState({required this.error});
+  
+  final String error;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(color: AppColors.error.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 48,
+              color: AppColors.error.withOpacity(0.7),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const Text(
+              'Weather Unavailable',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              error,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -746,8 +843,15 @@ class _LocationPrompt extends StatelessWidget {
 
 /// Current conditions hero card
 class _CurrentConditionsHero extends StatelessWidget {
+  const _CurrentConditionsHero({required this.data});
+  
+  final LiveWeatherData data;
+  
   @override
   Widget build(BuildContext context) {
+    final current = data.current;
+    final icon = _getWeatherIcon(current.conditionCode);
+    
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Container(
@@ -784,9 +888,9 @@ class _CurrentConditionsHero extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.sm),
-                    const Text(
-                      '58°F',
-                      style: TextStyle(
+                    Text(
+                      '${current.tempF.round()}°F',
+                      style: const TextStyle(
                         fontSize: 56,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
@@ -794,18 +898,18 @@ class _CurrentConditionsHero extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xs),
-                    const Text(
-                      'Partly Cloudy',
-                      style: TextStyle(
+                    Text(
+                      current.conditionText,
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w500,
                         color: Colors.white70,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Feels like 55°F',
-                      style: TextStyle(
+                    Text(
+                      'Feels like ${current.feelsLikeF.round()}°F',
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white54,
                       ),
@@ -821,8 +925,8 @@ class _CurrentConditionsHero extends StatelessWidget {
                     color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                   ),
-                  child: const Icon(
-                    Icons.cloud_outlined,
+                  child: Icon(
+                    icon,
                     size: 48,
                     color: Colors.white70,
                   ),
@@ -835,10 +939,10 @@ class _CurrentConditionsHero extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _QuickStat(icon: Icons.water_drop_outlined, label: 'Humidity', value: '65%'),
-                _QuickStat(icon: Icons.umbrella_outlined, label: 'Precip', value: '10%'),
-                _QuickStat(icon: Icons.visibility_outlined, label: 'Visibility', value: '10 mi'),
-                _QuickStat(icon: Icons.speed_outlined, label: 'Pressure', value: '30.12"'),
+                _QuickStat(icon: Icons.water_drop_outlined, label: 'Humidity', value: '${current.humidity}%'),
+                _QuickStat(icon: Icons.umbrella_outlined, label: 'Precip', value: '${current.precipProbability}%'),
+                _QuickStat(icon: Icons.visibility_outlined, label: 'Visibility', value: '${current.visibility.round()} mi'),
+                _QuickStat(icon: Icons.speed_outlined, label: 'Pressure', value: '${current.pressureInHg.toStringAsFixed(2)}"'),
               ],
             ),
           ],
@@ -846,6 +950,19 @@ class _CurrentConditionsHero extends StatelessWidget {
       ),
     );
   }
+}
+
+IconData _getWeatherIcon(int code) {
+  if (code == 0 || code == 1) return Icons.wb_sunny_outlined;
+  if (code == 2) return Icons.cloud_outlined;
+  if (code == 3) return Icons.cloud;
+  if (code >= 45 && code <= 48) return Icons.foggy;
+  if (code >= 51 && code <= 67) return Icons.water_drop;
+  if (code >= 71 && code <= 77) return Icons.ac_unit;
+  if (code >= 80 && code <= 82) return Icons.grain;
+  if (code >= 85 && code <= 86) return Icons.ac_unit;
+  if (code >= 95) return Icons.thunderstorm;
+  return Icons.cloud_outlined;
 }
 
 class _QuickStat extends StatelessWidget {
@@ -887,20 +1004,28 @@ class _QuickStat extends StatelessWidget {
 
 /// Hourly forecast - scrollable
 class _HourlyForecast extends StatelessWidget {
+  const _HourlyForecast({required this.hourly});
+  
+  final List<HourlyForecast> hourly;
+
   @override
   Widget build(BuildContext context) {
-    // Mock hourly data with full details
-    final hours = [
-      _HourData(time: 'Now', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 10, windSpeed: 12, windDirectionDegrees: 225, windDirectionText: 'SW', gusts: 18, humidity: 65, pressure: 30.12, visibility: 10, condition: 'Partly Cloudy'),
-      _HourData(time: '1PM', temp: 60, feelsLike: 58, icon: Icons.wb_sunny_outlined, precip: 5, windSpeed: 14, windDirectionDegrees: 230, windDirectionText: 'SW', gusts: 20, humidity: 60, pressure: 30.10, visibility: 10, condition: 'Mostly Sunny'),
-      _HourData(time: '2PM', temp: 62, feelsLike: 60, icon: Icons.wb_sunny_outlined, precip: 0, windSpeed: 15, windDirectionDegrees: 235, windDirectionText: 'SW', gusts: 22, humidity: 55, pressure: 30.08, visibility: 10, condition: 'Sunny'),
-      _HourData(time: '3PM', temp: 63, feelsLike: 61, icon: Icons.wb_sunny_outlined, precip: 0, windSpeed: 16, windDirectionDegrees: 240, windDirectionText: 'WSW', gusts: 24, humidity: 52, pressure: 30.06, visibility: 10, condition: 'Sunny'),
-      _HourData(time: '4PM', temp: 61, feelsLike: 59, icon: Icons.cloud_outlined, precip: 5, windSpeed: 14, windDirectionDegrees: 245, windDirectionText: 'WSW', gusts: 21, humidity: 58, pressure: 30.04, visibility: 10, condition: 'Partly Cloudy'),
-      _HourData(time: '5PM', temp: 58, feelsLike: 55, icon: Icons.cloud_outlined, precip: 15, windSpeed: 12, windDirectionDegrees: 250, windDirectionText: 'W', gusts: 18, humidity: 62, pressure: 30.02, visibility: 9, condition: 'Cloudy'),
-      _HourData(time: '6PM', temp: 54, feelsLike: 51, icon: Icons.wb_twilight_rounded, precip: 20, windSpeed: 10, windDirectionDegrees: 255, windDirectionText: 'W', gusts: 15, humidity: 68, pressure: 30.00, visibility: 8, condition: 'Evening Clouds'),
-      _HourData(time: '7PM', temp: 50, feelsLike: 47, icon: Icons.nightlight_round, precip: 25, windSpeed: 8, windDirectionDegrees: 260, windDirectionText: 'W', gusts: 12, humidity: 72, pressure: 29.98, visibility: 8, condition: 'Partly Cloudy'),
-      _HourData(time: '8PM', temp: 48, feelsLike: 44, icon: Icons.nightlight_round, precip: 30, windSpeed: 7, windDirectionDegrees: 265, windDirectionText: 'W', gusts: 10, humidity: 75, pressure: 29.96, visibility: 7, condition: 'Scattered Showers'),
-    ];
+    // Convert HourlyForecast to _HourData for UI compatibility
+    final hours = hourly.map((h) => _HourData(
+      time: h.timeLabel,
+      temp: h.tempF.round(),
+      feelsLike: h.feelsLikeF.round(),
+      icon: _getWeatherIcon(h.conditionCode),
+      precip: h.precipProbability,
+      windSpeed: h.windSpeedMph.round(),
+      windDirectionDegrees: h.windDirDeg,
+      windDirectionText: h.windDirText,
+      gusts: h.gustsMph.round(),
+      humidity: h.humidity,
+      pressure: h.pressureInHg,
+      visibility: h.visibility.round(),
+      condition: h.conditionText,
+    )).toList();
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
@@ -1476,8 +1601,17 @@ String _directionLabel(int? degrees, String? label) {
 
 /// Wind section with emphasis
 class _WindSection extends StatelessWidget {
+  const _WindSection({required this.current});
+  
+  final CurrentWeather current;
+  
   @override
   Widget build(BuildContext context) {
+    final windSpeed = current.windSpeedMph.round();
+    final gustSpeed = current.gustsMph.round();
+    final isGoodForHunting = windSpeed >= 5 && windSpeed <= 15;
+    final hasStrongGusts = gustSpeed > 20;
+    
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Column(
@@ -1494,24 +1628,25 @@ class _WindSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                  vertical: AppSpacing.xxs,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                ),
-                child: const Text(
-                  'Good for Hunting',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accent,
+              if (isGoodForHunting)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xxs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                  ),
+                  child: const Text(
+                    'Good for Hunting',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accent,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -1526,7 +1661,7 @@ class _WindSection extends StatelessWidget {
             child: Row(
               children: [
                 // Wind compass
-                _WindCompass(),
+                _WindCompass(directionDeg: current.windDirDeg),
                 const SizedBox(width: AppSpacing.xl),
 
                 // Wind details
@@ -1537,9 +1672,9 @@ class _WindSection extends StatelessWidget {
                       // Speed
                       Row(
                         children: [
-                          const Text(
-                            '12',
-                            style: TextStyle(
+                          Text(
+                            '$windSpeed',
+                            style: const TextStyle(
                               fontSize: 40,
                               fontWeight: FontWeight.w700,
                               color: AppColors.accent,
@@ -1576,15 +1711,15 @@ class _WindSection extends StatelessWidget {
                         children: [
                           _WindStat(
                             label: 'Direction',
-                            value: 'NNW',
+                            value: current.windDirText,
                             icon: Icons.navigation_rounded,
                           ),
                           const SizedBox(width: AppSpacing.xl),
                           _WindStat(
                             label: 'Gusts',
-                            value: '18 mph',
+                            value: '$gustSpeed mph',
                             icon: Icons.air_rounded,
-                            isWarning: true,
+                            isWarning: hasStrongGusts,
                           ),
                         ],
                       ),
@@ -1601,8 +1736,16 @@ class _WindSection extends StatelessWidget {
 }
 
 class _WindCompass extends StatelessWidget {
+  const _WindCompass({required this.directionDeg});
+  
+  final int directionDeg;
+  
   @override
   Widget build(BuildContext context) {
+    // Convert wind direction to radians
+    // Wind direction indicates where wind is coming FROM, arrow points in that direction
+    final angleRadians = directionDeg * math.pi / 180;
+    
     return Container(
       width: 100,
       height: 100,
@@ -1638,9 +1781,9 @@ class _WindCompass extends StatelessWidget {
             );
           }),
 
-          // Wind arrow
+          // Wind arrow (points where wind is coming from)
           Transform.rotate(
-            angle: -0.4, // NNW direction
+            angle: angleRadians,
             child: Icon(
               Icons.navigation_rounded,
               size: 36,
@@ -1713,6 +1856,10 @@ class _WindStat extends StatelessWidget {
 
 /// 5-Day forecast
 class _DailyForecast extends StatelessWidget {
+  const _DailyForecast({required this.daily});
+  
+  final List<DailyForecast> daily;
+  
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -1720,9 +1867,9 @@ class _DailyForecast extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '5-Day Forecast',
-            style: TextStyle(
+          Text(
+            '${daily.length}-Day Forecast',
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
@@ -1737,15 +1884,18 @@ class _DailyForecast extends StatelessWidget {
             ),
             child: Column(
               children: [
-                _ForecastDay(day: 'Today', high: 58, low: 42, icon: Icons.cloud_outlined, precip: 10, wind: 12),
-                const Divider(height: 1, color: AppColors.divider),
-                _ForecastDay(day: 'Tomorrow', high: 62, low: 45, icon: Icons.wb_sunny_outlined, precip: 5, wind: 8),
-                const Divider(height: 1, color: AppColors.divider),
-                _ForecastDay(day: 'Wednesday', high: 55, low: 38, icon: Icons.grain_outlined, precip: 65, wind: 15),
-                const Divider(height: 1, color: AppColors.divider),
-                _ForecastDay(day: 'Thursday', high: 48, low: 32, icon: Icons.ac_unit_outlined, precip: 40, wind: 20),
-                const Divider(height: 1, color: AppColors.divider),
-                _ForecastDay(day: 'Friday', high: 52, low: 35, icon: Icons.wb_cloudy_outlined, precip: 20, wind: 10),
+                for (int i = 0; i < daily.length; i++) ...[
+                  _ForecastDay(
+                    day: daily[i].dayLabel,
+                    high: daily[i].highF.round(),
+                    low: daily[i].lowF.round(),
+                    icon: _getWeatherIcon(daily[i].conditionCode),
+                    precip: daily[i].precipProbability,
+                    wind: daily[i].windSpeedMax.round(),
+                  ),
+                  if (i < daily.length - 1)
+                    const Divider(height: 1, color: AppColors.divider),
+                ],
               ],
             ),
           ),
@@ -1866,8 +2016,43 @@ class _ForecastDay extends StatelessWidget {
 
 /// Hunting tools section
 class _HuntingTools extends StatelessWidget {
+  const _HuntingTools({required this.daily});
+  
+  final List<DailyForecast> daily;
+  
+  String _formatTime(DateTime time) {
+    final hour = time.hour;
+    final minute = time.minute;
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $suffix';
+  }
+  
+  String _getGoldenHour(DateTime time, {required bool before}) {
+    final adjusted = before 
+        ? time.subtract(const Duration(minutes: 30))
+        : time.add(const Duration(minutes: 30));
+    return before 
+        ? '${_formatTime(adjusted)}-${_formatTime(time)}'
+        : '${_formatTime(time)}-${_formatTime(adjusted)}';
+  }
+  
   @override
   Widget build(BuildContext context) {
+    // Get today's data
+    final today = daily.isNotEmpty ? daily.first : null;
+    
+    // Calculate moon phase
+    final moonService = WeatherService();
+    final moon = moonService.getMoonPhase(DateTime.now());
+    
+    // Determine activity level based on moon phase
+    final activityLevel = moon.phaseNumber == 0 || moon.phaseNumber == 4
+        ? 'High'
+        : moon.phaseNumber == 2 || moon.phaseNumber == 6
+            ? 'Moderate'
+            : 'Low';
+    
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Column(
@@ -1888,8 +2073,10 @@ class _HuntingTools extends StatelessWidget {
                 child: _ToolCard(
                   icon: Icons.wb_twilight_rounded,
                   title: 'Sunrise',
-                  value: '6:42 AM',
-                  subtitle: 'Golden hour: 6:12-6:42',
+                  value: today != null ? _formatTime(today.sunrise) : '--:-- AM',
+                  subtitle: today != null 
+                      ? 'Golden hour: ${_getGoldenHour(today.sunrise, before: true)}'
+                      : 'Golden hour: --',
                   color: AppColors.accent,
                 ),
               ),
@@ -1898,8 +2085,10 @@ class _HuntingTools extends StatelessWidget {
                 child: _ToolCard(
                   icon: Icons.nightlight_round,
                   title: 'Sunset',
-                  value: '5:48 PM',
-                  subtitle: 'Golden hour: 5:18-5:48',
+                  value: today != null ? _formatTime(today.sunset) : '--:-- PM',
+                  subtitle: today != null 
+                      ? 'Golden hour: ${_getGoldenHour(today.sunset, before: false)}'
+                      : 'Golden hour: --',
                   color: AppColors.primary,
                 ),
               ),
@@ -1912,8 +2101,8 @@ class _HuntingTools extends StatelessWidget {
                 child: _ToolCard(
                   icon: Icons.dark_mode_outlined,
                   title: 'Moon Phase',
-                  value: 'Waxing Gibbous',
-                  subtitle: '67% illuminated',
+                  value: moon.phaseName,
+                  subtitle: '${moon.illuminationPct.round()}% illuminated',
                   color: AppColors.info,
                 ),
               ),
@@ -1922,8 +2111,10 @@ class _HuntingTools extends StatelessWidget {
                 child: _ToolCard(
                   icon: Icons.pest_control_outlined,
                   title: 'Activity',
-                  value: 'Moderate',
-                  subtitle: 'Best: 6-9 AM, 4-6 PM',
+                  value: activityLevel,
+                  subtitle: today != null 
+                      ? 'Best: ${_formatTime(today.sunrise)}, ${_formatTime(today.sunset.subtract(const Duration(hours: 1)))}'
+                      : 'Best: Dawn & Dusk',
                   color: AppColors.success,
                 ),
               ),
