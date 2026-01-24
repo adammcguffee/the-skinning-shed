@@ -38,7 +38,7 @@ class Conversation {
       otherUserAvatar: json['other_user_avatar'] as String?,
       lastMessageBody: json['last_message_body'] as String?,
       lastMessageAt: json['last_message_at'] != null
-          ? DateTime.parse(json['last_message_at'] as String)
+          ? DateTime.parse(json['last_message_at'] as String).toLocal()
           : null,
       lastMessageSenderId: json['last_message_sender_id'] as String?,
       subjectType: json['subject_type'] as String?,
@@ -49,6 +49,22 @@ class Conversation {
 
   bool get hasUnread => unreadCount > 0;
 
+  /// Short context label for inbox (e.g., "Swap", "Land", "Trophy")
+  String get contextBadge {
+    if (subjectType == null) return '';
+    switch (subjectType) {
+      case 'swap':
+        return 'Swap';
+      case 'land':
+        return 'Land';
+      case 'trophy':
+        return 'Trophy';
+      default:
+        return '';
+    }
+  }
+
+  /// Full subject label with title
   String get subjectLabel {
     if (subjectType == null || subjectTitle == null) return '';
     switch (subjectType) {
@@ -90,13 +106,24 @@ class Message {
       conversationId: json['conversation_id'] as String,
       senderId: json['sender_id'] as String,
       body: json['body'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
       subjectType: json['subject_type'] as String?,
       subjectTitle: json['subject_title'] as String?,
     );
   }
 
   bool isMine(String? currentUserId) => senderId == currentUserId;
+}
+
+/// Result for paginated messages.
+class MessagesPage {
+  MessagesPage({
+    required this.messages,
+    required this.hasMore,
+  });
+
+  final List<Message> messages;
+  final bool hasMore;
 }
 
 /// Messaging service for DMs.
@@ -143,22 +170,55 @@ class MessagingService {
         .toList();
   }
 
-  /// Get messages for a conversation.
-  Future<List<Message>> getMessages(String conversationId, {int limit = 50}) async {
-    if (_client == null) return [];
+  /// Get messages for a conversation (paginated).
+  /// Returns newest messages first, reversed to oldest-first for display.
+  /// Use [beforeId] to load older messages (pagination).
+  Future<MessagesPage> getMessages(
+    String conversationId, {
+    int limit = 50,
+    String? beforeId,
+  }) async {
+    if (_client == null) return MessagesPage(messages: [], hasMore: false);
 
-    final response = await _client
+    var query = _client
         .from('messages')
         .select()
-        .eq('conversation_id', conversationId)
-        .order('created_at', ascending: false)
-        .limit(limit);
+        .eq('conversation_id', conversationId);
 
-    return (response as List)
+    // If loading older messages, get messages created before the cursor message
+    if (beforeId != null) {
+      // First get the timestamp of the cursor message
+      final cursorMsg = await _client
+          .from('messages')
+          .select('created_at')
+          .eq('id', beforeId)
+          .single();
+      final cursorTime = cursorMsg['created_at'] as String;
+      query = query.lt('created_at', cursorTime);
+    }
+
+    final response = await query
+        .order('created_at', ascending: false)
+        .limit(limit + 1); // Fetch one extra to check if there's more
+
+    final allRows = (response as List)
         .map((row) => Message.fromJson(row as Map<String, dynamic>))
-        .toList()
-        .reversed
-        .toList(); // Return oldest first for display
+        .toList();
+
+    final hasMore = allRows.length > limit;
+    final messages = hasMore ? allRows.sublist(0, limit) : allRows;
+
+    // Return oldest first for display
+    return MessagesPage(
+      messages: messages.reversed.toList(),
+      hasMore: hasMore,
+    );
+  }
+
+  /// Get initial messages (convenience wrapper).
+  Future<List<Message>> getInitialMessages(String conversationId, {int limit = 50}) async {
+    final page = await getMessages(conversationId, limit: limit);
+    return page.messages;
   }
 
   /// Send a message to a conversation.
@@ -235,19 +295,20 @@ class MessagingService {
         .subscribe();
   }
 
-  /// Subscribe to inbox changes (new messages in any conversation).
-  RealtimeChannel subscribeToInbox(void Function() onUpdate) {
+  /// Subscribe to conversation updates (when conversations are updated).
+  /// This is more efficient than subscribing to all messages.
+  RealtimeChannel subscribeToConversationUpdates(void Function() onUpdate) {
     if (_client == null) throw Exception('Not connected');
 
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
 
     return _client
-        .channel('inbox:$userId')
+        .channel('conversation_updates:$userId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent.update,
           schema: 'public',
-          table: 'messages',
+          table: 'conversations',
           callback: (payload) {
             onUpdate();
           },

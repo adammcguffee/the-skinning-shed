@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
@@ -11,7 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// 💬 CONVERSATION SCREEN - 2025 PREMIUM
 ///
-/// Real-time 1:1 chat with message history.
+/// Real-time 1:1 chat with message history and pagination.
 class ConversationScreen extends ConsumerStatefulWidget {
   const ConversationScreen({
     super.key,
@@ -31,6 +33,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
   List<Message> _messages = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = false;
   bool _isSending = false;
   String? _error;
 
@@ -45,15 +49,34 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     _loadMessages();
     _markAsRead();
     _subscribeToMessages();
+    _scrollController.addListener(_onScroll);
+    _messageController.addListener(_onTextChanged);
   }
 
   @override
   void dispose() {
+    _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _focusNode.dispose();
     _channel?.unsubscribe();
     super.dispose();
+  }
+
+  void _onTextChanged() {
+    // Trigger rebuild for send button enabled state
+    setState(() {});
+  }
+
+  void _onScroll() {
+    // Load more messages when scrolling near the top
+    if (_scrollController.position.pixels < 100 &&
+        !_isLoadingMore &&
+        _hasMoreMessages &&
+        _messages.isNotEmpty) {
+      _loadOlderMessages();
+    }
   }
 
   Future<void> _loadMessages() async {
@@ -64,7 +87,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
     try {
       final service = ref.read(messagingServiceProvider);
-      final messages = await service.getMessages(widget.conversationId);
+      final page = await service.getMessages(widget.conversationId, limit: 50);
 
       // Get conversation details from inbox
       final inbox = await service.getInbox();
@@ -79,7 +102,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 
       if (mounted) {
         setState(() {
-          _messages = messages;
+          _messages = page.messages;
+          _hasMoreMessages = page.hasMore;
           _otherUserName = conversation.otherUserName;
           _subjectLabel = conversation.subjectLabel;
           _isLoading = false;
@@ -92,6 +116,47 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           _error = e.toString();
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingMore || _messages.isEmpty) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final service = ref.read(messagingServiceProvider);
+      final oldestMessage = _messages.first;
+      final page = await service.getMessages(
+        widget.conversationId,
+        limit: 30,
+        beforeId: oldestMessage.id,
+      );
+
+      if (mounted) {
+        // Preserve scroll position when prepending messages
+        final oldScrollPosition = _scrollController.position.pixels;
+        final oldMaxScroll = _scrollController.position.maxScrollExtent;
+
+        setState(() {
+          _messages = [...page.messages, ..._messages];
+          _hasMoreMessages = page.hasMore;
+          _isLoadingMore = false;
+        });
+
+        // Restore scroll position after new messages are added
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            final newMaxScroll = _scrollController.position.maxScrollExtent;
+            final scrollDelta = newMaxScroll - oldMaxScroll;
+            _scrollController.jumpTo(oldScrollPosition + scrollDelta);
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
       }
     }
   }
@@ -171,10 +236,24 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
   }
 
+  /// Handle keyboard shortcuts for web: Enter sends, Shift+Enter adds newline
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (!kIsWeb) return KeyEventResult.ignored;
+
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.enter &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      _sendMessage();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUserId = ref.watch(currentUserProvider)?.id;
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    final hasText = _messageController.text.trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -243,16 +322,34 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                         ),
                       )
                     : _messages.isEmpty
-                        ? _EmptyConversationState()
+                        ? const _EmptyConversationState()
                         : ListView.builder(
                             controller: _scrollController,
                             padding: const EdgeInsets.all(AppSpacing.md),
-                            itemCount: _messages.length,
+                            itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
                             itemBuilder: (context, index) {
-                              final message = _messages[index];
+                              // Show loading indicator at top when loading older messages
+                              if (_isLoadingMore && index == 0) {
+                                return const Padding(
+                                  padding: EdgeInsets.all(AppSpacing.md),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation(AppColors.accent),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              final messageIndex = _isLoadingMore ? index - 1 : index;
+                              final message = _messages[messageIndex];
                               final isMine = message.isMine(currentUserId);
-                              final showAvatar = index == 0 ||
-                                  _messages[index - 1].senderId !=
+                              final showAvatar = messageIndex == 0 ||
+                                  _messages[messageIndex - 1].senderId !=
                                       message.senderId;
 
                               return _MessageBubble(
@@ -284,7 +381,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Text input
+                  // Text input with keyboard handling
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(maxHeight: 120),
@@ -293,26 +390,29 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                         border: Border.all(color: AppColors.borderSubtle),
                       ),
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _focusNode,
-                        decoration: InputDecoration(
-                          hintText: 'Type a message...',
-                          hintStyle: TextStyle(color: AppColors.textTertiary),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md,
-                            vertical: AppSpacing.sm,
+                      child: Focus(
+                        onKeyEvent: _handleKeyEvent,
+                        child: TextField(
+                          controller: _messageController,
+                          focusNode: _focusNode,
+                          decoration: InputDecoration(
+                            hintText: 'Type a message...',
+                            hintStyle: TextStyle(color: AppColors.textTertiary),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm,
+                            ),
                           ),
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 15,
+                          ),
+                          maxLines: 5,
+                          minLines: 1,
+                          textInputAction: kIsWeb ? TextInputAction.none : TextInputAction.send,
+                          onSubmitted: kIsWeb ? null : (_) => _sendMessage(),
                         ),
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 15,
-                        ),
-                        maxLines: 5,
-                        minLines: 1,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
                       ),
                     ),
                   ),
@@ -321,6 +421,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                   // Send button
                   _SendButton(
                     isSending: _isSending,
+                    isEnabled: hasText && !_isSending,
                     onPressed: _sendMessage,
                   ),
                 ],
@@ -334,6 +435,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
 }
 
 class _EmptyConversationState extends StatelessWidget {
+  const _EmptyConversationState();
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -342,18 +445,43 @@ class _EmptyConversationState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.chat_bubble_outline_rounded,
-              size: 48,
-              color: AppColors.textTertiary,
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.accent.withValues(alpha: 0.15),
+                    AppColors.primary.withValues(alpha: 0.1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+              ),
+              child: Icon(
+                Icons.waving_hand_rounded,
+                size: 32,
+                color: AppColors.accent,
+              ),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Start the conversation',
+            const SizedBox(height: AppSpacing.lg),
+            const Text(
+              'Say hello!',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Start the conversation with a friendly message.',
+              style: TextStyle(
+                fontSize: 14,
                 color: AppColors.textSecondary,
               ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -515,10 +643,12 @@ class _MessageBubble extends StatelessWidget {
 class _SendButton extends StatefulWidget {
   const _SendButton({
     required this.isSending,
+    required this.isEnabled,
     required this.onPressed,
   });
 
   final bool isSending;
+  final bool isEnabled;
   final VoidCallback onPressed;
 
   @override
@@ -530,20 +660,27 @@ class _SendButtonState extends State<_SendButton> {
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = !widget.isEnabled || widget.isSending;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
+      cursor: isDisabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.isSending ? null : widget.onPressed,
+        onTap: isDisabled ? null : widget.onPressed,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: _isHovered ? AppColors.accentMuted : AppColors.accent,
+            color: isDisabled
+                ? AppColors.surface
+                : (_isHovered ? AppColors.accentMuted : AppColors.accent),
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            boxShadow: _isHovered ? AppColors.shadowAccent : null,
+            border: isDisabled
+                ? Border.all(color: AppColors.borderSubtle)
+                : null,
+            boxShadow: (!isDisabled && _isHovered) ? AppColors.shadowAccent : null,
           ),
           child: widget.isSending
               ? const Center(
@@ -552,13 +689,13 @@ class _SendButtonState extends State<_SendButton> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                      valueColor: AlwaysStoppedAnimation(AppColors.accent),
                     ),
                   ),
                 )
-              : const Icon(
+              : Icon(
                   Icons.send_rounded,
-                  color: Colors.white,
+                  color: isDisabled ? AppColors.textTertiary : Colors.white,
                   size: 20,
                 ),
         ),
