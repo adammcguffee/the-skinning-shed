@@ -40,6 +40,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   List<StatePortalLinks> _portalLinks = [];
   bool _isVerifyingLinks = false;
   
+  // Discovery run state (full 50-state discovery with progress)
+  DiscoveryRun? _activeDiscoveryRun;
+  DiscoveryRunProgress? _discoveryProgress;
+  List<DiscoveryRunItem> _discoveryItems = [];
+  bool _isDiscoveryRunning = false;
+  
   @override
   void initState() {
     super.initState();
@@ -68,6 +74,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final coverageStats = await service.fetchCoverageStats();
       final portalLinks = await service.fetchAllPortalLinks();
       
+      // Check for active discovery run (resume after refresh)
+      final activeRun = await service.getActiveDiscoveryRun();
+      
       if (mounted) {
         setState(() {
           _pendingRegulations = pending;
@@ -76,8 +85,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           _sourceCounts = sourceCounts;
           _coverageStats = coverageStats;
           _portalLinks = portalLinks;
+          _activeDiscoveryRun = activeRun;
+          _isDiscoveryRunning = activeRun?.isRunning ?? false;
           _isLoading = false;
         });
+        
+        // If there's an active run, resume it
+        if (activeRun?.isRunning == true) {
+          _resumeDiscoveryRun(activeRun!.id);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -95,6 +111,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     if (mounted) {
       setState(() {
         _pendingRegulations = pending;
+      });
+    }
+  }
+  
+  Future<void> _loadPortalLinks() async {
+    final service = ref.read(regulationsServiceProvider);
+    final portalLinks = await service.fetchAllPortalLinks();
+    if (mounted) {
+      setState(() {
+        _portalLinks = portalLinks;
       });
     }
   }
@@ -537,29 +563,134 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     recordsController.dispose();
   }
   
-  Future<void> _discoverPortalLinks() async {
+  /// Start a new full discovery run (all 50 states with progress tracking).
+  Future<void> _startFullDiscovery() async {
+    if (_isDiscoveryRunning) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Discovery already in progress')),
+      );
+      return;
+    }
+    
     try {
+      setState(() {
+        _isDiscoveryRunning = true;
+        _discoveryProgress = null;
+        _discoveryItems = [];
+      });
+      
       final service = ref.read(regulationsServiceProvider);
-      final result = await service.discoverPortalLinks(limit: 10);
+      final run = await service.startDiscoveryRun(batchSize: 5);
       
-      final updated = result['updated'] ?? 0;
-      final failed = result['failed'] ?? 0;
+      setState(() {
+        _activeDiscoveryRun = run;
+      });
       
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Discovered: $updated updated, $failed failed'),
-            backgroundColor: AppColors.info,
-          ),
-        );
-      }
+      // Start processing batches
+      await _runDiscoveryLoop(run.id);
+      
     } catch (e) {
+      setState(() {
+        _isDiscoveryRunning = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Discovery error: $e')),
+          SnackBar(content: Text('Discovery error: $e'), backgroundColor: AppColors.error),
         );
       }
     }
+  }
+  
+  /// Resume an existing discovery run.
+  Future<void> _resumeDiscoveryRun(String runId) async {
+    if (_isDiscoveryRunning) return;
+    
+    setState(() {
+      _isDiscoveryRunning = true;
+    });
+    
+    await _runDiscoveryLoop(runId);
+  }
+  
+  /// Process discovery batches in a loop until done.
+  Future<void> _runDiscoveryLoop(String runId) async {
+    final service = ref.read(regulationsServiceProvider);
+    
+    try {
+      while (mounted && _isDiscoveryRunning) {
+        final progress = await service.continueDiscoveryRun(runId);
+        
+        if (mounted) {
+          setState(() {
+            _discoveryProgress = progress;
+          });
+        }
+        
+        // Check if done
+        if (progress.isDone || progress.status != 'running') {
+          // Load final items for audit
+          final items = await service.getDiscoveryRunItems(runId);
+          
+          if (mounted) {
+            setState(() {
+              _isDiscoveryRunning = false;
+              _discoveryItems = items;
+            });
+            
+            // Refresh portal links
+            await _loadPortalLinks();
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Discovery complete: ${progress.statsOk} ok, ${progress.statsSkipped} skipped, ${progress.statsError} errors'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+          return;
+        }
+        
+        // Small delay between batches
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDiscoveryRunning = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Discovery error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+  
+  /// Cancel the active discovery run.
+  Future<void> _cancelDiscovery() async {
+    if (_activeDiscoveryRun == null) return;
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      await service.cancelDiscoveryRun(_activeDiscoveryRun!.id);
+      
+      setState(() {
+        _isDiscoveryRunning = false;
+        _activeDiscoveryRun = null;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Discovery canceled')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cancel error: $e')),
+      );
+    }
+  }
+  
+  /// Legacy method - now starts full discovery.
+  Future<void> _discoverPortalLinks() async {
+    await _startFullDiscovery();
   }
   
   Future<void> _showBrokenLinksReport() async {
@@ -1363,15 +1494,27 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // DISCOVERY PROGRESS PANEL (shown when running or has recent results)
+          if (_isDiscoveryRunning || _discoveryProgress != null)
+            _DiscoveryProgressPanel(
+              progress: _discoveryProgress,
+              isRunning: _isDiscoveryRunning,
+              items: _discoveryItems,
+              onCancel: _cancelDiscovery,
+            ),
+          if (_isDiscoveryRunning || _discoveryProgress != null)
+            const SizedBox(height: AppSpacing.lg),
+          
           // SETUP WIZARD - Clear step-by-step guide
           _SetupWizardCard(
             portalCount: _coverageStats['portal_coverage'] as int? ?? 0,
             verifiedCount: _portalLinks.where((l) => l.hasAnyVerifiedLinks).length,
             isVerifying: _isVerifyingLinks,
-            isDiscovering: _isRunningChecker,
+            isDiscovering: _isDiscoveryRunning,
+            discoveryProgress: _discoveryProgress,
             onSeedPortal: _seedPortalLinks,
             onVerify: _verifyPortalLinks,
-            onDiscover: _discoverPortalLinks,
+            onDiscover: _startFullDiscovery,
           ),
           const SizedBox(height: AppSpacing.lg),
           
@@ -1461,13 +1604,17 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           const SizedBox(height: AppSpacing.sm),
           
-          // Discover Links (Official Domains Only)
+          // Discover Links (Official Domains Only) - Full 50-state run
           _ToolCard(
             icon: Icons.travel_explore_rounded,
-            title: 'Step 3: Discover Better Pages (Optional)',
-            description: 'Crawls official .gov sites to find season/regulation subpages. Runs 5 states per click.',
-            buttonLabel: 'Run Discovery (5 states)',
-            onPressed: _discoverPortalLinks,
+            title: 'Full Discovery (All 50 States)',
+            description: _isDiscoveryRunning
+                ? 'Discovery in progress: ${_discoveryProgress?.processed ?? 0}/${_discoveryProgress?.total ?? 50}'
+                : 'Crawls all official .gov sites to find portal links. Shows live progress.',
+            buttonLabel: _isDiscoveryRunning 
+                ? 'Running... ${_discoveryProgress?.processed ?? 0}/50' 
+                : 'Run Full Discovery',
+            onPressed: _isDiscoveryRunning ? () {} : () => _startFullDiscovery(),
           ),
           const SizedBox(height: AppSpacing.sm),
           
@@ -2999,6 +3146,7 @@ class _SetupWizardCard extends StatelessWidget {
     required this.verifiedCount,
     required this.isVerifying,
     required this.isDiscovering,
+    this.discoveryProgress,
     required this.onSeedPortal,
     required this.onVerify,
     required this.onDiscover,
@@ -3008,6 +3156,7 @@ class _SetupWizardCard extends StatelessWidget {
   final int verifiedCount;
   final bool isVerifying;
   final bool isDiscovering;
+  final DiscoveryRunProgress? discoveryProgress;
   final VoidCallback onSeedPortal;
   final VoidCallback onVerify;
   final VoidCallback onDiscover;
@@ -3105,16 +3254,20 @@ class _SetupWizardCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           
-          // Step 3: Discover (Optional)
+          // Step 3: Full Discovery (50 states)
           _WizardStep(
             number: 3,
-            title: 'Discover Better Pages (Optional)',
-            description: 'Crawls official sites to find season/regulation subpages. 5 states per click.',
-            isDone: false,
-            isActive: step2Done,
+            title: 'Full Discovery (50 states)',
+            description: isDiscovering && discoveryProgress != null
+                ? 'Processing ${discoveryProgress!.processed}/${discoveryProgress!.total} states... Current: ${discoveryProgress!.lastStateCode ?? "starting"}'
+                : 'Crawls all official .gov sites to find season/regulation pages. Shows live progress.',
+            isDone: discoveryProgress?.isDone == true,
+            isActive: step1Done,
             isOptional: true,
-            buttonLabel: isDiscovering ? 'Discovering...' : 'Run Discovery',
-            onPressed: isDiscovering || !step2Done ? null : onDiscover,
+            buttonLabel: isDiscovering 
+                ? '${discoveryProgress?.processed ?? 0}/${discoveryProgress?.total ?? 50}...' 
+                : 'Run Full Discovery',
+            onPressed: isDiscovering ? null : onDiscover,
           ),
           
           const SizedBox(height: AppSpacing.md),
@@ -3322,6 +3475,363 @@ class _StatusBadge extends StatelessWidget {
             color: AppColors.textPrimary,
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Discovery progress panel - shows live progress during full 50-state discovery.
+class _DiscoveryProgressPanel extends StatefulWidget {
+  const _DiscoveryProgressPanel({
+    required this.progress,
+    required this.isRunning,
+    required this.items,
+    required this.onCancel,
+  });
+  
+  final DiscoveryRunProgress? progress;
+  final bool isRunning;
+  final List<DiscoveryRunItem> items;
+  final VoidCallback onCancel;
+  
+  @override
+  State<_DiscoveryProgressPanel> createState() => _DiscoveryProgressPanelState();
+}
+
+class _DiscoveryProgressPanelState extends State<_DiscoveryProgressPanel> {
+  bool _showDetails = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.progress;
+    final processed = progress?.processed ?? 0;
+    final total = progress?.total ?? 50;
+    final progressValue = total > 0 ? processed / total : 0.0;
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: widget.isRunning 
+            ? AppColors.info.withValues(alpha: 0.1)
+            : AppColors.success.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(
+          color: widget.isRunning 
+              ? AppColors.info.withValues(alpha: 0.3)
+              : AppColors.success.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Icon(
+                widget.isRunning ? Icons.sync_rounded : Icons.check_circle_rounded,
+                size: 20,
+                color: widget.isRunning ? AppColors.info : AppColors.success,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  widget.isRunning 
+                      ? 'Discovery in Progress'
+                      : 'Discovery Complete',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (widget.isRunning)
+                TextButton.icon(
+                  onPressed: widget.onCancel,
+                  icon: const Icon(Icons.cancel_rounded, size: 16),
+                  label: const Text('Cancel'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progressValue,
+              backgroundColor: AppColors.surface,
+              valueColor: AlwaysStoppedAnimation(
+                widget.isRunning ? AppColors.info : AppColors.success,
+              ),
+              minHeight: 8,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Progress text
+          Row(
+            children: [
+              Text(
+                'Processed: $processed/$total states',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              if (progress?.lastStateCode != null) ...[
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  'Current: ${progress!.lastStateCode}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          
+          // Stats row
+          Row(
+            children: [
+              _MiniStat(
+                icon: Icons.check_circle_rounded,
+                label: 'OK',
+                value: progress?.statsOk ?? 0,
+                color: AppColors.success,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              _MiniStat(
+                icon: Icons.skip_next_rounded,
+                label: 'Skipped',
+                value: progress?.statsSkipped ?? 0,
+                color: AppColors.warning,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              _MiniStat(
+                icon: Icons.error_rounded,
+                label: 'Error',
+                value: progress?.statsError ?? 0,
+                color: AppColors.error,
+              ),
+            ],
+          ),
+          
+          // Details toggle
+          if (widget.items.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            InkWell(
+              onTap: () => setState(() => _showDetails = !_showDetails),
+              child: Row(
+                children: [
+                  Icon(
+                    _showDetails ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: AppColors.accent,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _showDetails ? 'Hide Details' : 'Show Details (${widget.items.length} states)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Details list
+            if (_showDetails) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.items.length,
+                  itemBuilder: (context, index) {
+                    final item = widget.items[index];
+                    return _DiscoveryItemRow(item: item);
+                  },
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Mini stat badge for discovery progress.
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  
+  final IconData icon;
+  final String label;
+  final int value;
+  final Color color;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          '$label: $value',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Row showing a single state's discovery result.
+class _DiscoveryItemRow extends StatefulWidget {
+  const _DiscoveryItemRow({required this.item});
+  
+  final DiscoveryRunItem item;
+  
+  @override
+  State<_DiscoveryItemRow> createState() => _DiscoveryItemRowState();
+}
+
+class _DiscoveryItemRowState extends State<_DiscoveryItemRow> {
+  bool _expanded = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final statusColor = item.isOk 
+        ? AppColors.success 
+        : item.isSkipped 
+            ? AppColors.warning 
+            : AppColors.error;
+    
+    return Column(
+      children: [
+        InkWell(
+          onTap: item.discoveredUrls.isNotEmpty 
+              ? () => setState(() => _expanded = !_expanded)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                // Status icon
+                Icon(
+                  item.isOk 
+                      ? Icons.check_circle_rounded 
+                      : item.isSkipped 
+                          ? Icons.skip_next_rounded 
+                          : Icons.error_rounded,
+                  size: 14,
+                  color: statusColor,
+                ),
+                const SizedBox(width: 8),
+                
+                // State code
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    item.stateCode,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                
+                // Message
+                Expanded(
+                  child: Text(
+                    item.message ?? item.status,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                
+                // Expand icon if has URLs
+                if (item.discoveredUrls.isNotEmpty)
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                    color: AppColors.textTertiary,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Expanded URLs
+        if (_expanded && item.discoveredUrls.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.fromLTRB(40, 0, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: item.discoveredUrls.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 80,
+                        child: Text(
+                          entry.key.replaceAll('_', ' '),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          entry.value,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppColors.accent,
+                            fontFamily: 'monospace',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        
+        const Divider(height: 1, color: AppColors.borderSubtle),
       ],
     );
   }

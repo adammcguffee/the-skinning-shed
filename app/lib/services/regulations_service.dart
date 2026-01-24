@@ -1520,6 +1520,336 @@ class RegulationsService {
     
     return {'inserted': inserted, 'updated': updated};
   }
+  
+  // ========================================================================
+  // DISCOVERY RUN METHODS - Full 50-state discovery with progress tracking
+  // ========================================================================
+  
+  /// Start a new discovery run for all states.
+  /// Returns run_id and initial status.
+  Future<DiscoveryRun> startDiscoveryRun({int batchSize = 5}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected to Supabase');
+    
+    final response = await client.functions.invoke('regs-discovery-start', body: {
+      'batch_size': batchSize,
+    });
+    
+    if (response.status != 200) {
+      // Check for ALREADY_RUNNING which includes run info
+      final data = response.data as Map<String, dynamic>?;
+      if (data?['error_code'] == 'ALREADY_RUNNING') {
+        // Return the existing run info
+        return DiscoveryRun(
+          id: data!['run_id'] as String,
+          status: 'running',
+          processed: data['processed'] as int? ?? 0,
+          total: data['total'] as int? ?? 50,
+          statsOk: 0,
+          statsSkipped: 0,
+          statsError: 0,
+        );
+      }
+      throw _parseEdgeFunctionError(response.status, response.data, 'start discovery');
+    }
+    
+    final data = response.data as Map<String, dynamic>;
+    return DiscoveryRun(
+      id: data['run_id'] as String,
+      status: data['status'] as String? ?? 'running',
+      processed: 0,
+      total: data['total'] as int? ?? 50,
+      batchSize: data['batch_size'] as int? ?? 5,
+      statsOk: 0,
+      statsSkipped: 0,
+      statsError: 0,
+    );
+  }
+  
+  /// Continue a discovery run by processing the next batch.
+  /// Returns updated run status and batch results.
+  Future<DiscoveryRunProgress> continueDiscoveryRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected to Supabase');
+    
+    final response = await client.functions.invoke('regs-discovery-continue', body: {
+      'run_id': runId,
+    });
+    
+    if (response.status != 200) {
+      throw _parseEdgeFunctionError(response.status, response.data, 'continue discovery');
+    }
+    
+    final data = response.data as Map<String, dynamic>;
+    final stats = data['stats'] as Map<String, dynamic>? ?? {};
+    final batchResults = (data['batch_results'] as List?)
+        ?.map((r) => DiscoveryBatchResult.fromJson(r as Map<String, dynamic>))
+        .toList() ?? [];
+    
+    return DiscoveryRunProgress(
+      runId: data['run_id'] as String,
+      status: data['status'] as String? ?? 'running',
+      processed: data['processed'] as int? ?? 0,
+      total: data['total'] as int? ?? 50,
+      lastStateCode: data['last_state_code'] as String?,
+      statsOk: stats['ok'] as int? ?? 0,
+      statsSkipped: stats['skipped'] as int? ?? 0,
+      statsError: stats['error'] as int? ?? 0,
+      batchResults: batchResults,
+    );
+  }
+  
+  /// Get the current active discovery run (if any).
+  /// Used to resume progress after page refresh.
+  Future<DiscoveryRun?> getActiveDiscoveryRun() async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+    
+    try {
+      final res = await client
+          .from('reg_discovery_runs')
+          .select()
+          .eq('status', 'running')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (res == null) return null;
+      return DiscoveryRun.fromJson(res as Map<String, dynamic>);
+    } catch (e) {
+      print('Error getting active discovery run: $e');
+      return null;
+    }
+  }
+  
+  /// Get a specific discovery run by ID.
+  Future<DiscoveryRun?> getDiscoveryRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+    
+    try {
+      final res = await client
+          .from('reg_discovery_runs')
+          .select()
+          .eq('id', runId)
+          .single();
+      
+      return DiscoveryRun.fromJson(res as Map<String, dynamic>);
+    } catch (e) {
+      print('Error getting discovery run: $e');
+      return null;
+    }
+  }
+  
+  /// Get per-state audit results for a discovery run.
+  Future<List<DiscoveryRunItem>> getDiscoveryRunItems(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+    
+    final res = await client
+        .from('reg_discovery_run_items')
+        .select()
+        .eq('run_id', runId)
+        .order('state_code');
+    
+    return (res as List)
+        .map((json) => DiscoveryRunItem.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+  
+  /// Get recent discovery runs for history.
+  Future<List<DiscoveryRun>> getRecentDiscoveryRuns({int limit = 10}) async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+    
+    final res = await client
+        .from('reg_discovery_runs')
+        .select()
+        .order('created_at', ascending: false)
+        .limit(limit);
+    
+    return (res as List)
+        .map((json) => DiscoveryRun.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+  
+  /// Cancel an active discovery run.
+  Future<void> cancelDiscoveryRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+    
+    await client.from('reg_discovery_runs')
+        .update({'status': 'canceled', 'finished_at': DateTime.now().toIso8601String()})
+        .eq('id', runId);
+  }
+}
+
+// ============================================================================
+// DISCOVERY RUN MODELS
+// ============================================================================
+
+/// Represents a discovery run job.
+class DiscoveryRun {
+  final String id;
+  final String status;
+  final int processed;
+  final int total;
+  final int? batchSize;
+  final String? lastStateCode;
+  final DateTime? startedAt;
+  final DateTime? finishedAt;
+  final int statsOk;
+  final int statsSkipped;
+  final int statsError;
+  
+  DiscoveryRun({
+    required this.id,
+    required this.status,
+    required this.processed,
+    required this.total,
+    this.batchSize,
+    this.lastStateCode,
+    this.startedAt,
+    this.finishedAt,
+    this.statsOk = 0,
+    this.statsSkipped = 0,
+    this.statsError = 0,
+  });
+  
+  factory DiscoveryRun.fromJson(Map<String, dynamic> json) {
+    return DiscoveryRun(
+      id: json['id'] as String,
+      status: json['status'] as String? ?? 'unknown',
+      processed: json['processed'] as int? ?? 0,
+      total: json['total'] as int? ?? 50,
+      batchSize: json['batch_size'] as int?,
+      lastStateCode: json['last_state_code'] as String?,
+      startedAt: json['started_at'] != null 
+          ? DateTime.tryParse(json['started_at'] as String)
+          : null,
+      finishedAt: json['finished_at'] != null 
+          ? DateTime.tryParse(json['finished_at'] as String)
+          : null,
+      statsOk: json['stats_ok'] as int? ?? 0,
+      statsSkipped: json['stats_skipped'] as int? ?? 0,
+      statsError: json['stats_error'] as int? ?? 0,
+    );
+  }
+  
+  bool get isRunning => status == 'running';
+  bool get isDone => status == 'done';
+  bool get isCanceled => status == 'canceled';
+  bool get isError => status == 'error';
+  
+  double get progress => total > 0 ? processed / total : 0;
+  String get progressText => '$processed/$total';
+}
+
+/// Progress update from continuing a discovery run.
+class DiscoveryRunProgress {
+  final String runId;
+  final String status;
+  final int processed;
+  final int total;
+  final String? lastStateCode;
+  final int statsOk;
+  final int statsSkipped;
+  final int statsError;
+  final List<DiscoveryBatchResult> batchResults;
+  
+  DiscoveryRunProgress({
+    required this.runId,
+    required this.status,
+    required this.processed,
+    required this.total,
+    this.lastStateCode,
+    this.statsOk = 0,
+    this.statsSkipped = 0,
+    this.statsError = 0,
+    this.batchResults = const [],
+  });
+  
+  bool get isRunning => status == 'running';
+  bool get isDone => status == 'done';
+  double get progress => total > 0 ? processed / total : 0;
+}
+
+/// Result of processing a single state in a batch.
+class DiscoveryBatchResult {
+  final String stateCode;
+  final String status;
+  final String? message;
+  final int linksFound;
+  
+  DiscoveryBatchResult({
+    required this.stateCode,
+    required this.status,
+    this.message,
+    this.linksFound = 0,
+  });
+  
+  factory DiscoveryBatchResult.fromJson(Map<String, dynamic> json) {
+    return DiscoveryBatchResult(
+      stateCode: json['state_code'] as String,
+      status: json['status'] as String? ?? 'unknown',
+      message: json['message'] as String?,
+      linksFound: json['links_found'] as int? ?? 0,
+    );
+  }
+}
+
+/// Per-state audit item from a discovery run.
+class DiscoveryRunItem {
+  final String runId;
+  final String stateCode;
+  final String status;
+  final String? message;
+  final Map<String, dynamic>? discovered;
+  final Map<String, dynamic>? verified;
+  final int pagesCrawled;
+  final int linksFound;
+  final DateTime? updatedAt;
+  
+  DiscoveryRunItem({
+    required this.runId,
+    required this.stateCode,
+    required this.status,
+    this.message,
+    this.discovered,
+    this.verified,
+    this.pagesCrawled = 0,
+    this.linksFound = 0,
+    this.updatedAt,
+  });
+  
+  factory DiscoveryRunItem.fromJson(Map<String, dynamic> json) {
+    return DiscoveryRunItem(
+      runId: json['run_id'] as String,
+      stateCode: json['state_code'] as String,
+      status: json['status'] as String? ?? 'unknown',
+      message: json['message'] as String?,
+      discovered: json['discovered'] as Map<String, dynamic>?,
+      verified: json['verified'] as Map<String, dynamic>?,
+      pagesCrawled: json['pages_crawled'] as int? ?? 0,
+      linksFound: json['links_found'] as int? ?? 0,
+      updatedAt: json['updated_at'] != null 
+          ? DateTime.tryParse(json['updated_at'] as String)
+          : null,
+    );
+  }
+  
+  bool get isOk => status == 'ok';
+  bool get isSkipped => status == 'skipped';
+  bool get isError => status == 'error';
+  
+  /// Get list of discovered URLs as key-value pairs.
+  List<MapEntry<String, String>> get discoveredUrls {
+    if (discovered == null) return [];
+    return discovered!.entries
+        .where((e) => e.value != null && e.value is String)
+        .map((e) => MapEntry(e.key.replaceAll('_url', ''), e.value as String))
+        .toList();
+  }
 }
 
 /// Provider for regulations service.
