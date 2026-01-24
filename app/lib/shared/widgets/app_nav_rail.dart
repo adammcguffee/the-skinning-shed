@@ -166,6 +166,7 @@ class _NavItemState extends State<_NavItem> {
   }
 }
 
+/// Extended Create button for nav rail - shows label on desktop
 class _PostButton extends StatefulWidget {
   const _PostButton({required this.onTap});
 
@@ -183,27 +184,42 @@ class _PostButtonState extends State<_PostButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          width: 48,
-          height: 48,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
           decoration: BoxDecoration(
             gradient: AppColors.accentGradient,
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             boxShadow: _isHovered ? AppColors.shadowAccent : AppColors.shadowButton,
           ),
           transform: _isHovered
-              ? (Matrix4.identity()..scale(1.05))
+              ? (Matrix4.identity()..scale(1.03))
               : Matrix4.identity(),
           transformAlignment: Alignment.center,
-          child: const Center(
-            child: Icon(
-              Icons.add_rounded,
-              size: 24,
-              color: AppColors.textInverse,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.add_rounded,
+                size: 20,
+                color: AppColors.textInverse,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Create',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textInverse,
+                ),
+              ),
+            ],
           ),
         ),
       ),

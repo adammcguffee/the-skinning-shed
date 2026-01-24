@@ -13,8 +13,17 @@ import 'package:shed/services/land_listing_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
 /// 🏞️ LAND CREATE SCREEN - 2025 PREMIUM
+/// 
+/// Supports [initialMode] to pre-select 'lease' or 'sale' based on context.
 class LandCreateScreen extends ConsumerStatefulWidget {
-  const LandCreateScreen({super.key});
+  const LandCreateScreen({
+    super.key,
+    this.initialMode,
+  });
+  
+  /// Optional initial mode: 'lease' or 'sale'.
+  /// If provided, the type selector will be pre-selected.
+  final String? initialMode;
 
   @override
   ConsumerState<LandCreateScreen> createState() => _LandCreateScreenState();
@@ -29,7 +38,14 @@ class _LandCreateScreenState extends ConsumerState<LandCreateScreen> {
   final _contactController = TextEditingController();
   final _imagePicker = ImagePicker();
 
-  String _listingType = 'lease'; // lease or sale
+  late String _listingType; // lease or sale
+  
+  @override
+  void initState() {
+    super.initState();
+    // Use initial mode if provided, default to 'lease'
+    _listingType = widget.initialMode ?? 'lease';
+  }
   USState? _selectedState;
   String? _selectedCounty;
   String _contactMethod = 'email';

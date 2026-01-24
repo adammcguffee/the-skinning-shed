@@ -10,6 +10,8 @@ enum CreateContext {
   trophyWall,
   swapShop,
   land,
+  landLease,
+  landSale,
   explore,
   other,
 }
@@ -18,11 +20,14 @@ enum CreateContext {
 /// 
 /// Shows context-aware create options with the most relevant option highlighted
 /// based on which page the user is on.
+/// 
+/// [landMode] can be 'lease' or 'sale' to pre-select the land listing type.
 Future<void> showCreateMenu({
   required BuildContext context,
   CreateContext createContext = CreateContext.other,
   bool isAuthenticated = true,
   VoidCallback? onLoginRequired,
+  String? landMode,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -32,6 +37,7 @@ Future<void> showCreateMenu({
       createContext: createContext,
       isAuthenticated: isAuthenticated,
       onLoginRequired: onLoginRequired,
+      landMode: landMode,
     ),
   );
 }
@@ -41,14 +47,57 @@ class _CreateMenuContent extends StatelessWidget {
     required this.createContext,
     required this.isAuthenticated,
     this.onLoginRequired,
+    this.landMode,
   });
   
   final CreateContext createContext;
   final bool isAuthenticated;
   final VoidCallback? onLoginRequired;
+  final String? landMode;
+  
+  /// Get the land route with mode if specified
+  String get _landRoute {
+    if (landMode != null) {
+      return '/land/create?mode=$landMode';
+    }
+    // Use context to determine default mode
+    if (createContext == CreateContext.landLease) {
+      return '/land/create?mode=lease';
+    }
+    if (createContext == CreateContext.landSale) {
+      return '/land/create?mode=sale';
+    }
+    return '/land/create';
+  }
+  
+  /// Get land listing description based on context
+  String get _landDescription {
+    if (createContext == CreateContext.landLease || landMode == 'lease') {
+      return 'List hunting land for lease';
+    }
+    if (createContext == CreateContext.landSale || landMode == 'sale') {
+      return 'List hunting land for sale';
+    }
+    return 'List hunting land for lease or sale';
+  }
+  
+  /// Get land listing title based on context
+  String get _landTitle {
+    if (createContext == CreateContext.landLease || landMode == 'lease') {
+      return 'Land Lease Listing';
+    }
+    if (createContext == CreateContext.landSale || landMode == 'sale') {
+      return 'Land For Sale Listing';
+    }
+    return 'Land Listing';
+  }
   
   @override
   Widget build(BuildContext context) {
+    final isLandContext = createContext == CreateContext.land ||
+        createContext == CreateContext.landLease ||
+        createContext == CreateContext.landSale;
+    
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
@@ -120,33 +169,88 @@ class _CreateMenuContent extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.xl),
             
-            // Create options
-            _CreateOption(
-              icon: Icons.emoji_events_rounded,
-              iconColor: AppColors.accent,
-              title: 'Trophy Post',
-              description: 'Share your harvest with the community',
-              isHighlighted: createContext == CreateContext.feed || 
-                            createContext == CreateContext.trophyWall ||
-                            createContext == CreateContext.explore,
-              onTap: () => _handleCreate(context, '/post'),
-            ),
-            _CreateOption(
-              icon: Icons.storefront_rounded,
-              iconColor: AppColors.primary,
-              title: 'Swap Shop Listing',
-              description: 'Sell or trade hunting & fishing gear',
-              isHighlighted: createContext == CreateContext.swapShop,
-              onTap: () => _handleCreate(context, '/swap-shop/create'),
-            ),
-            _CreateOption(
-              icon: Icons.landscape_rounded,
-              iconColor: AppColors.success,
-              title: 'Land Listing',
-              description: 'List hunting land for lease or sale',
-              isHighlighted: createContext == CreateContext.land,
-              onTap: () => _handleCreate(context, '/land/create'),
-            ),
+            // Create options - order based on context
+            if (isLandContext) ...[
+              // Land first when on Land page
+              _CreateOption(
+                icon: Icons.landscape_rounded,
+                iconColor: AppColors.success,
+                title: _landTitle,
+                description: _landDescription,
+                isHighlighted: true,
+                onTap: () => _handleCreate(context, _landRoute),
+              ),
+              _CreateOption(
+                icon: Icons.emoji_events_rounded,
+                iconColor: AppColors.accent,
+                title: 'Trophy Post',
+                description: 'Share your harvest with the community',
+                isHighlighted: false,
+                onTap: () => _handleCreate(context, '/post'),
+              ),
+              _CreateOption(
+                icon: Icons.storefront_rounded,
+                iconColor: AppColors.primary,
+                title: 'Swap Shop Listing',
+                description: 'Sell or trade hunting & fishing gear',
+                isHighlighted: false,
+                onTap: () => _handleCreate(context, '/swap-shop/create'),
+              ),
+            ] else if (createContext == CreateContext.swapShop) ...[
+              // Swap Shop first when on Swap Shop page
+              _CreateOption(
+                icon: Icons.storefront_rounded,
+                iconColor: AppColors.primary,
+                title: 'Swap Shop Listing',
+                description: 'Sell or trade hunting & fishing gear',
+                isHighlighted: true,
+                onTap: () => _handleCreate(context, '/swap-shop/create'),
+              ),
+              _CreateOption(
+                icon: Icons.emoji_events_rounded,
+                iconColor: AppColors.accent,
+                title: 'Trophy Post',
+                description: 'Share your harvest with the community',
+                isHighlighted: false,
+                onTap: () => _handleCreate(context, '/post'),
+              ),
+              _CreateOption(
+                icon: Icons.landscape_rounded,
+                iconColor: AppColors.success,
+                title: 'Land Listing',
+                description: 'List hunting land for lease or sale',
+                isHighlighted: false,
+                onTap: () => _handleCreate(context, _landRoute),
+              ),
+            ] else ...[
+              // Default: Trophy first
+              _CreateOption(
+                icon: Icons.emoji_events_rounded,
+                iconColor: AppColors.accent,
+                title: 'Trophy Post',
+                description: 'Share your harvest with the community',
+                isHighlighted: createContext == CreateContext.feed || 
+                              createContext == CreateContext.trophyWall ||
+                              createContext == CreateContext.explore,
+                onTap: () => _handleCreate(context, '/post'),
+              ),
+              _CreateOption(
+                icon: Icons.storefront_rounded,
+                iconColor: AppColors.primary,
+                title: 'Swap Shop Listing',
+                description: 'Sell or trade hunting & fishing gear',
+                isHighlighted: false,
+                onTap: () => _handleCreate(context, '/swap-shop/create'),
+              ),
+              _CreateOption(
+                icon: Icons.landscape_rounded,
+                iconColor: AppColors.success,
+                title: 'Land Listing',
+                description: 'List hunting land for lease or sale',
+                isHighlighted: false,
+                onTap: () => _handleCreate(context, _landRoute),
+              ),
+            ],
             
             const SizedBox(height: AppSpacing.xl),
           ],

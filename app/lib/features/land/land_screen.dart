@@ -188,7 +188,10 @@ class _LandScreenState extends ConsumerState<LandScreen>
                                 title: 'No listings yet',
                                 message: 'Be the first to list hunting land!',
                                 actionLabel: 'Create Listing',
-                                onAction: () => context.push('/land/create'),
+                                onAction: () {
+                                  final mode = _tabController.index == 0 ? 'lease' : 'sale';
+                                  context.push('/land/create?mode=$mode');
+                                },
                               )
                             : _buildListingsList(listingsState.listings, isWide),
               ),

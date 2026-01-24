@@ -226,10 +226,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       
-      // Land create
+      // Land create (supports ?mode=lease|sale query param)
       GoRoute(
         path: '/land/create',
-        builder: (context, state) => const LandCreateScreen(),
+        builder: (context, state) {
+          final mode = state.uri.queryParameters['mode'];
+          return LandCreateScreen(initialMode: mode);
+        },
       ),
       
       // Trophy detail
