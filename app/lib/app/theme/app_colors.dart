@@ -209,4 +209,50 @@ abstract final class AppColors {
 
   /// Glass border color
   static Color get glassBorder => textPrimary.withOpacity(0.1);
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // BACKGROUND PATTERN CONFIGURATION
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /// Main scaffold background pattern opacity (0.14-0.22 range)
+  static const double kBgPatternOpacity = 0.18;
+
+  /// Navigation rail background pattern opacity (stronger than main)
+  static const double kSidebarPatternOpacity = 0.22;
+
+  /// Hero/banner background pattern opacity
+  static const double kHeroPatternOpacity = 0.16;
+
+  /// Warm sage/tan colors for background gradient overlay
+  static const Color warmSage = Color(0xFF1A2E1F); // Sage green
+  static const Color warmBrown = Color(0xFF2A2418); // Light brown/tan
+  static const Color warmOlive = Color(0xFF1F2A1E); // Olive green
+  static const Color cattailTan = Color(0xFF2E251A); // Cattail brown
+
+  /// Warm background gradient overlay (greens + tan/brown)
+  static const LinearGradient warmBackgroundGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      warmSage,
+      warmOlive,
+      warmBrown,
+      cattailTan,
+      backgroundAlt,
+    ],
+    stops: [0.0, 0.3, 0.6, 0.8, 1.0],
+  );
+
+  /// Navigation rail warm gradient (vertical, warmer tones near bottom)
+  static const LinearGradient navRailWarmGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      warmSage,
+      warmOlive,
+      warmBrown,
+      cattailTan,
+    ],
+    stops: [0.0, 0.4, 0.7, 1.0],
+  );
 }

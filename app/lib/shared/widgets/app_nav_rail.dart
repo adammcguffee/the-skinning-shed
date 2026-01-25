@@ -29,13 +29,7 @@ class AppNavRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: AppSpacing.navRailWidth,
-      decoration: BoxDecoration(
-        // Semi-transparent to let camo show through
-        color: AppColors.surface.withValues(alpha: 0.85),
-        border: Border(
-          right: BorderSide(color: AppColors.borderSubtle),
-        ),
-      ),
+      // Background and border handled by NavRailCamoBackground wrapper
       child: SafeArea(
         bottom: true,
         child: Column(

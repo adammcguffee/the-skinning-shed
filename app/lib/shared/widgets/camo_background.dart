@@ -31,7 +31,7 @@ class ScaffoldCamoBackground extends StatelessWidget {
     super.key,
     required this.child,
     this.baseGradient,
-    this.camoOpacity = 0.12, // Increased for visibility
+    this.camoOpacity = AppColors.kBgPatternOpacity,
   });
 
   final Widget child;
@@ -65,28 +65,39 @@ class ScaffoldCamoBackground extends StatelessWidget {
           ),
         ),
         
-        // Layer 3: Soft radial vignette - lets camo show through more
-        // Fades camo slightly toward center but still visible everywhere
+        // Layer 3: Warm sage/tan gradient overlay (adds warm tones)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: AppColors.warmBackgroundGradient,
+              ),
+            ),
+          ),
+        ),
+        
+        // Layer 4: Soft radial vignette - subtle darkening at edges
+        // Allows camo and warm tones to show through, slightly darker at edges
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: Alignment.center,
-                  radius: 1.2, // Larger radius = more visible camo
+                  radius: 1.3,
                   colors: [
-                    AppColors.background.withValues(alpha: 0.6), // Less hiding in center
-                    AppColors.background.withValues(alpha: 0.3), // Medium 
-                    Colors.transparent, // Full camo at edges
+                    Colors.transparent, // Full visibility in center
+                    AppColors.background.withValues(alpha: 0.2), // Subtle fade
+                    AppColors.background.withValues(alpha: 0.5), // More darkening at edges
                   ],
-                  stops: const [0.0, 0.5, 1.0],
+                  stops: const [0.0, 0.6, 1.0],
                 ),
               ),
             ),
           ),
         ),
         
-        // Layer 4: Content (sits above camo - NOT affected)
+        // Layer 5: Content (sits above camo - NOT affected)
         child,
       ],
     );
@@ -101,7 +112,7 @@ class HeroCamoBackground extends StatelessWidget {
   const HeroCamoBackground({
     super.key,
     required this.child,
-    this.camoOpacity = 0.15, // Increased for visibility
+    this.camoOpacity = AppColors.kHeroPatternOpacity,
   });
 
   final Widget child;
@@ -125,10 +136,25 @@ class HeroCamoBackground extends StatelessWidget {
           ),
         ),
         
-        // NO gradient mask here - wordmark sits directly on top, crisp
-        // The camo is behind, wordmark is above, no fading
+        // Layer 2: Subtle warm gradient overlay (very light)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.warmSage.withValues(alpha: 0.3),
+                    AppColors.warmBrown.withValues(alpha: 0.2),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
         
-        // Layer 2: Content (wordmark sits ABOVE camo, NOT faded)
+        // Layer 3: Content (wordmark sits ABOVE camo, NOT faded)
         child,
       ],
     );
@@ -137,12 +163,12 @@ class HeroCamoBackground extends StatelessWidget {
 
 /// 📌 NAV RAIL CAMO BACKGROUND
 /// 
-/// Visible camo for the navigation rail.
+/// Visible camo for the navigation rail with warm tones and border.
 class NavRailCamoBackground extends StatelessWidget {
   const NavRailCamoBackground({
     super.key,
     required this.child,
-    this.camoOpacity = 0.10, // Increased for visibility
+    this.camoOpacity = AppColors.kSidebarPatternOpacity,
   });
 
   final Widget child;
@@ -150,25 +176,46 @@ class NavRailCamoBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Layer 1: Camo texture (visible behind nav items)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _HuntingCamoPainter(
-                  opacity: camoOpacity,
-                  pattern: CamoPattern.subtle,
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: AppColors.borderSubtle.withValues(alpha: 0.4),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Layer 1: Camo texture (stronger than main background)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _HuntingCamoPainter(
+                    opacity: camoOpacity,
+                    pattern: CamoPattern.subtle,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        
-        // Layer 2: Content (nav items sit above camo)
-        child,
-      ],
+          
+          // Layer 2: Warm vertical gradient overlay (warmer tones near bottom)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: AppColors.navRailWarmGradient,
+                ),
+              ),
+            ),
+          ),
+          
+          // Layer 3: Content (nav items sit above camo)
+          child,
+        ],
+      ),
     );
   }
 }
@@ -189,7 +236,7 @@ class _HuntingCamoPainter extends CustomPainter {
   final CamoPattern pattern;
   
   // Hunting camo colors (switchgrass/swamp-bottom palette)
-  // LIGHTER shades for better visibility against dark background
+  // Enhanced with warm tones (sage, tan, cattail brown) for better visibility
   static const _colors = [
     Color(0xFF1A2E20), // Dark green
     Color(0xFF2A4030), // Forest green
@@ -199,6 +246,9 @@ class _HuntingCamoPainter extends CustomPainter {
     Color(0xFF2E3B2A), // Dark olive
     Color(0xFF3D3A28), // Tan
     Color(0xFF253525), // Deep green
+    Color(0xFF2E3A2A), // Sage green (warm)
+    Color(0xFF3A2E1F), // Cattail brown (warm)
+    Color(0xFF2F2A1D), // Light tan (warm)
   ];
 
   @override
