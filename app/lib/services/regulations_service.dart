@@ -2841,13 +2841,43 @@ class AdminRunStatus {
   
   String get progressLabel => '$progressDone/$progressTotal';
   
+  /// Number of jobs that can still be stopped (queued or running)
+  int get stoppableJobCount => (jobs['queued'] ?? 0) + (jobs['running'] ?? 0);
+  
+  /// True if there are jobs that can be stopped
+  bool get hasStoppableJobs => stoppableJobCount > 0;
+  
+  /// True if all jobs are in terminal states (done, failed, skipped, canceled)
+  bool get allJobsTerminal {
+    final queued = jobs['queued'] ?? 0;
+    final running = jobs['running'] ?? 0;
+    return queued == 0 && running == 0;
+  }
+  
+  /// True if the run was stopped (has canceled jobs)
+  bool get wasStopped => (jobs['canceled'] ?? 0) > 0;
+  
   String get summaryLabel {
     final parts = <String>[];
     if (jobs['done'] != null && jobs['done']! > 0) parts.add('${jobs['done']} done');
     if (jobs['failed'] != null && jobs['failed']! > 0) parts.add('${jobs['failed']} failed');
     if (jobs['skipped'] != null && jobs['skipped']! > 0) parts.add('${jobs['skipped']} skipped');
-    if (jobs['canceled'] != null && jobs['canceled']! > 0) parts.add('${jobs['canceled']} canceled');
+    // Show canceled with explanation
+    if (jobs['canceled'] != null && jobs['canceled']! > 0) {
+      parts.add('${jobs['canceled']} skipped (stopped)');
+    }
     return parts.isEmpty ? 'Processing...' : parts.join(', ');
+  }
+  
+  /// Status label for display (finished/stopped/running)
+  String get statusLabel {
+    if (done) {
+      if (wasStopped) return 'Stopped';
+      if (status == 'failed') return 'Failed';
+      return 'Completed';
+    }
+    if (status == 'stopping') return 'Stopping...';
+    return 'Running';
   }
   
   factory AdminRunStatus.fromJson(Map<String, dynamic> json) {

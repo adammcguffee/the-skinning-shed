@@ -2036,31 +2036,60 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    if (_activeExtractionRun!.lastState != null)
-                      Text(
-                        '${_activeExtractionRun!.tier.toUpperCase()} • Last: ${_activeExtractionRun!.lastState}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textTertiary,
-                        ),
+                    // Show status: either "Extracting: XX" or status label
+                    Text(
+                      _activeExtractionRun!.hasStoppableJobs
+                          ? (_activeExtractionRun!.lastState != null
+                              ? '${_activeExtractionRun!.tier.toUpperCase()} • Extracting: ${_activeExtractionRun!.lastState}'
+                              : '${_activeExtractionRun!.tier.toUpperCase()} • Starting...')
+                          : '${_activeExtractionRun!.tier.toUpperCase()} • ${_activeExtractionRun!.statusLabel}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textTertiary,
                       ),
+                    ),
                   ],
                 ),
               ),
-              TextButton.icon(
-                onPressed: _isExtractionStopping ? null : _stopExtractionRun,
-                icon: Icon(
-                  Icons.stop_circle_outlined,
-                  size: 18,
-                  color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
-                ),
-                label: Text(
-                  _isExtractionStopping ? 'Stopping...' : 'Stop',
-                  style: TextStyle(
+              // Only show Stop button if there are stoppable jobs
+              if (_activeExtractionRun!.hasStoppableJobs)
+                TextButton.icon(
+                  onPressed: _isExtractionStopping ? null : _stopExtractionRun,
+                  icon: Icon(
+                    Icons.stop_circle_outlined,
+                    size: 18,
                     color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
                   ),
+                  label: Text(
+                    _isExtractionStopping ? 'Stopping...' : 'Stop',
+                    style: TextStyle(
+                      color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
+                    ),
+                  ),
+                )
+              else
+                // Show "finishing" indicator when no stoppable jobs
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.textTertiary),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Finishing...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
             ],
           ),
         ] else ...[
@@ -2071,19 +2100,47 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(
+                  color: _activeExtractionRun!.wasStopped 
+                      ? AppColors.warning.withValues(alpha: 0.3)
+                      : AppColors.border,
+                ),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _activeExtractionRun!.summaryLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textPrimary,
+                  Row(
+                    children: [
+                      Icon(
+                        _activeExtractionRun!.wasStopped 
+                            ? Icons.stop_circle_outlined 
+                            : Icons.check_circle_outline, 
+                        size: 16, 
+                        color: _activeExtractionRun!.wasStopped 
+                            ? AppColors.warning 
+                            : AppColors.success,
                       ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _activeExtractionRun!.wasStopped 
+                            ? 'Extraction stopped' 
+                            : 'Extraction complete',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _activeExtractionRun!.wasStopped 
+                              ? AppColors.warning 
+                              : AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _activeExtractionRun!.summaryLabel,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -2194,31 +2251,60 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    if (_activeDiscoveryRun!.lastState != null)
-                      Text(
-                        '${_activeDiscoveryRun!.tier.toUpperCase()} • Crawling: ${_activeDiscoveryRun!.lastState}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textTertiary,
-                        ),
+                    // Show status: either "Crawling: XX" or "Finishing..." or status label
+                    Text(
+                      _activeDiscoveryRun!.hasStoppableJobs
+                          ? (_activeDiscoveryRun!.lastState != null
+                              ? '${_activeDiscoveryRun!.tier.toUpperCase()} • Crawling: ${_activeDiscoveryRun!.lastState}'
+                              : '${_activeDiscoveryRun!.tier.toUpperCase()} • Starting...')
+                          : '${_activeDiscoveryRun!.tier.toUpperCase()} • ${_activeDiscoveryRun!.statusLabel}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textTertiary,
                       ),
+                    ),
                   ],
                 ),
               ),
-              TextButton.icon(
-                onPressed: _isDiscoveryStopping ? null : _stopDiscoveryRun,
-                icon: Icon(
-                  Icons.stop_circle_outlined,
-                  size: 18,
-                  color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
-                ),
-                label: Text(
-                  _isDiscoveryStopping ? 'Stopping...' : 'Stop',
-                  style: TextStyle(
+              // Only show Stop button if there are stoppable jobs
+              if (_activeDiscoveryRun!.hasStoppableJobs)
+                TextButton.icon(
+                  onPressed: _isDiscoveryStopping ? null : _stopDiscoveryRun,
+                  icon: Icon(
+                    Icons.stop_circle_outlined,
+                    size: 18,
                     color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
                   ),
+                  label: Text(
+                    _isDiscoveryStopping ? 'Stopping...' : 'Stop',
+                    style: TextStyle(
+                      color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
+                    ),
+                  ),
+                )
+              else
+                // Show "finishing" indicator when no stoppable jobs
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.textTertiary),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Finishing...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
             ],
           ),
         ] else ...[
@@ -2229,19 +2315,47 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(
+                  color: _activeDiscoveryRun!.wasStopped 
+                      ? AppColors.warning.withValues(alpha: 0.3)
+                      : AppColors.border,
+                ),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _activeDiscoveryRun!.summaryLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textPrimary,
+                  Row(
+                    children: [
+                      Icon(
+                        _activeDiscoveryRun!.wasStopped 
+                            ? Icons.stop_circle_outlined 
+                            : Icons.check_circle_outline, 
+                        size: 16, 
+                        color: _activeDiscoveryRun!.wasStopped 
+                            ? AppColors.warning 
+                            : AppColors.success,
                       ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _activeDiscoveryRun!.wasStopped 
+                            ? 'Discovery stopped' 
+                            : 'Discovery complete',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _activeDiscoveryRun!.wasStopped 
+                              ? AppColors.warning 
+                              : AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _activeDiscoveryRun!.summaryLabel,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
