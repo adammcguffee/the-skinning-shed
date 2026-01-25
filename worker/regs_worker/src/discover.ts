@@ -237,7 +237,7 @@ export async function processDiscoveryJob(
   await logJobEvent(job.id, 'info', `Discovery complete for ${stateCode} in ${totalDuration}ms`);
 
   // Success if we found anything
-  const hasAnything = huntingSource || fishingSource || output.misc_related.length > 0;
+  const hasAnything = !!(huntingSource || fishingSource || output.misc_related.length > 0);
   return { success: hasAnything, output, stats };
 }
 
