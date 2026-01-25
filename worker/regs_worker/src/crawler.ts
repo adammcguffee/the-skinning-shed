@@ -330,6 +330,7 @@ async function trySitemapFallback(
   }
   
   return pages;
+}
 
 /**
  * Fetch a page with retry on transient failures.
