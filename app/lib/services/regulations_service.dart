@@ -1290,12 +1290,12 @@ class RegulationsService {
           last_verified_at
         ''');
 
-    int totalLinks = 0;
-    int verifiedCount = 0;
-    int brokenCount = 0;
+    final portalRowsCount = (linksResponse as List).length;
+    int filledFieldsCount = 0;
+    int verifiedFieldsCount = 0;
     DateTime? lastVerified;
 
-    for (final row in linksResponse as List) {
+    for (final row in linksResponse) {
       // Count non-null URLs and their verification status
       final fields = [
         ('hunting_seasons_url', 'verified_hunting_seasons_ok'),
@@ -1309,10 +1309,10 @@ class RegulationsService {
       for (final (urlField, verifiedField) in fields) {
         final url = row[urlField] as String?;
         if (url != null && url.isNotEmpty) {
-          totalLinks++;
+          filledFieldsCount++;
           final isVerified = row[verifiedField] as bool? ?? false;
           if (isVerified) {
-            verifiedCount++;
+            verifiedFieldsCount++;
           }
         }
       }
@@ -1328,17 +1328,65 @@ class RegulationsService {
     }
 
     // Broken = has URL but verified_ok == false and has been checked
-    // For simplicity, we count from broken links query
     final brokenLinks = await fetchBrokenLinks();
-    brokenCount = brokenLinks.length;
+    final brokenCount = brokenLinks.length;
+
+    // Find missing portal rows (states in official_roots but not in portal_links)
+    final rootStateCodes = (rootsResponse as List)
+        .map((r) => r['state_code'] as String)
+        .toSet();
+    final portalStateCodes = (linksResponse)
+        .map((r) => r['state_code'] as String)
+        .toSet();
+    final missingStateCodes = rootStateCodes.difference(portalStateCodes).toList()
+      ..sort();
 
     return {
       'roots_count': rootsCount,
-      'total_links_count': totalLinks,
-      'verified_count': verifiedCount,
+      'portal_rows_count': portalRowsCount,
+      'filled_fields_count': filledFieldsCount,
+      'verified_fields_count': verifiedFieldsCount,
       'broken_count': brokenCount,
+      'missing_state_codes': missingStateCodes,
       'last_verified_at': lastVerified?.toIso8601String(),
     };
+  }
+
+  /// Ensure all states have portal link rows.
+  Future<List<String>> ensurePortalRows() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    // Get all official roots
+    final rootsResponse = await client
+        .from('state_official_roots')
+        .select('state_code, state_name, agency_name');
+
+    // Get existing portal links
+    final linksResponse = await client
+        .from('state_portal_links')
+        .select('state_code');
+
+    final existingCodes = (linksResponse as List)
+        .map((r) => r['state_code'] as String)
+        .toSet();
+
+    final inserted = <String>[];
+
+    for (final root in rootsResponse as List) {
+      final stateCode = root['state_code'] as String;
+      if (!existingCodes.contains(stateCode)) {
+        // Insert missing portal row
+        await client.from('state_portal_links').insert({
+          'state_code': stateCode,
+          'state_name': root['state_name'],
+          'agency_name': root['agency_name'],
+        });
+        inserted.add(stateCode);
+      }
+    }
+
+    return inserted;
   }
 
   /// Fetch broken links for admin dashboard.

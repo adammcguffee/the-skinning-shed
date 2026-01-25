@@ -841,7 +841,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   Widget _buildOverviewCards() {
     return Column(
       children: [
-        // Row 1: Roots + Total Links
+        // Row 1: Roots + Portal Rows
         Row(
           children: [
             Expanded(
@@ -855,40 +855,54 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             const SizedBox(width: 12),
             Expanded(
               child: _StatCard(
-                icon: Icons.link_rounded,
-                label: 'Portal Links',
-                value: '${_stats.totalLinksCount}',
-                color: AppColors.info,
+                icon: Icons.table_rows_rounded,
+                label: 'Portal Rows',
+                value: '${_stats.portalRowsCount}/50',
+                color: _stats.portalRowsCount == 50 ? AppColors.success : AppColors.warning,
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        // Row 2: Verified + Broken
+        // Row 2: Fields Filled + Verified
         Row(
           children: [
             Expanded(
               child: _StatCard(
-                icon: Icons.verified_rounded,
-                label: 'Verified Links',
-                value: '${_stats.verifiedCount}',
-                color: AppColors.success,
+                icon: Icons.link_rounded,
+                label: 'Fields Filled',
+                value: '${_stats.filledFieldsCount}/${_stats.totalPossibleFields}',
+                color: AppColors.info,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _StatCard(
-                icon: Icons.link_off_rounded,
-                label: 'Broken Links',
-                value: '${_stats.brokenCount}',
-                color: _stats.brokenCount > 0 ? AppColors.error : AppColors.textSecondary,
+                icon: Icons.verified_rounded,
+                label: 'Fields Verified',
+                value: '${_stats.verifiedFieldsCount}/${_stats.totalPossibleFields}',
+                color: AppColors.success,
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
+        // Row 3: Broken
+        if (_stats.brokenCount > 0)
+          _StatCard(
+            icon: Icons.link_off_rounded,
+            label: 'Broken Links',
+            value: '${_stats.brokenCount}',
+            color: AppColors.error,
+          ),
+        // Missing states warning
+        if (_stats.missingStateCodes.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildMissingStatesCard(),
+        ],
         // Last verified
-        if (_stats.lastVerifiedAt != null)
+        if (_stats.lastVerifiedAt != null) ...[
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -909,8 +923,89 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               ],
             ),
           ),
+        ],
       ],
     );
+  }
+  
+  Widget _buildMissingStatesCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_rounded, size: 16, color: AppColors.warning),
+              const SizedBox(width: 8),
+              Text(
+                'Missing Portal Rows: ${_stats.missingStateCodes.length}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.warning,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'States: ${_stats.missingStateCodes.join(", ")}',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _fixMissingStates,
+              icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
+              label: const Text('Fix Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.warning,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Future<void> _fixMissingStates() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final inserted = await service.ensurePortalRows();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(inserted.isEmpty 
+                ? 'No missing states found' 
+                : 'Added ${inserted.length} missing state(s): ${inserted.join(", ")}'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        _loadStats(); // Refresh stats
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildActionsCard() {
@@ -1783,24 +1878,38 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
 class _AdminStats {
   const _AdminStats({
     this.rootsCount = 0,
-    this.totalLinksCount = 0,
-    this.verifiedCount = 0,
+    this.portalRowsCount = 0,
+    this.filledFieldsCount = 0,
+    this.verifiedFieldsCount = 0,
     this.brokenCount = 0,
+    this.missingStateCodes = const [],
     this.lastVerifiedAt,
   });
 
   final int rootsCount;
-  final int totalLinksCount;
-  final int verifiedCount;
+  final int portalRowsCount;
+  final int filledFieldsCount;
+  final int verifiedFieldsCount;
   final int brokenCount;
+  final List<String> missingStateCodes;
   final DateTime? lastVerifiedAt;
+
+  /// Total possible fields (6 per state * 50 states = 300)
+  int get totalPossibleFields => rootsCount * 6;
+  
+  /// Whether all states have portal rows
+  bool get allStatesHavePortalRows => portalRowsCount >= rootsCount;
 
   factory _AdminStats.fromMap(Map<String, dynamic> map) {
     return _AdminStats(
       rootsCount: map['roots_count'] ?? 0,
-      totalLinksCount: map['total_links_count'] ?? 0,
-      verifiedCount: map['verified_count'] ?? 0,
+      portalRowsCount: map['portal_rows_count'] ?? 0,
+      filledFieldsCount: map['filled_fields_count'] ?? 0,
+      verifiedFieldsCount: map['verified_fields_count'] ?? 0,
       brokenCount: map['broken_count'] ?? 0,
+      missingStateCodes: (map['missing_state_codes'] as List?)
+          ?.map((e) => e as String)
+          .toList() ?? [],
       lastVerifiedAt: map['last_verified_at'] != null
           ? DateTime.tryParse(map['last_verified_at'])
           : null,
