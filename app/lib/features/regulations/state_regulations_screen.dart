@@ -5,7 +5,6 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/data/us_states.dart';
 import 'package:shed/services/regulations_service.dart';
-import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -561,7 +560,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   }
   
   Widget _buildLoadingState() {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Column(
         children: List.generate(
@@ -1197,8 +1196,10 @@ class _NoteCard extends StatelessWidget {
   }
 }
 
-/// Premium empty state for missing regulations
-class _EmptyRegulationsState extends ConsumerWidget {
+/// Premium empty state for missing extracted facts.
+/// NOTE: This is only shown when there are no extracted regulation facts,
+/// NOT when portal links are missing. Portal links are primary content.
+class _EmptyRegulationsState extends StatelessWidget {
   const _EmptyRegulationsState({
     required this.stateName,
     required this.category,
@@ -1208,38 +1209,35 @@ class _EmptyRegulationsState extends ConsumerWidget {
   final RegulationCategory category;
   
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Check if user is admin (AsyncValue from FutureProvider)
-    final isAdminAsync = ref.watch(isAdminProvider);
-    final isAdmin = isAdminAsync.valueOrNull ?? false;
-    
+  Widget build(BuildContext context) {
+    // No admin buttons here - admins access via Settings > Admin
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Icon
             Container(
-              width: 80,
-              height: 80,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
                 color: AppColors.info.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
               ),
               child: const Icon(
-                Icons.description_outlined,
-                size: 40,
+                Icons.article_outlined,
+                size: 32,
                 color: AppColors.info,
               ),
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.lg),
             
-            // Title
+            // Title - clarify this is about extracted data, not portal links
             Text(
-              'No Approved Regulations Yet',
+              'No Extracted Data Yet',
               style: const TextStyle(
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
               ),
@@ -1247,64 +1245,44 @@ class _EmptyRegulationsState extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.sm),
             
-            // Description
+            // Description - portal links are primary, this is secondary
             Text(
-              'We don\'t have ${category.label.toLowerCase()} regulations for $stateName yet. '
-              'Regulations are reviewed and approved by our team to ensure accuracy.',
+              'Detailed ${category.label.toLowerCase()} season dates and bag limits '
+              'haven\'t been extracted for $stateName yet.\n\n'
+              'Use the official agency links above to view current regulations.',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 color: AppColors.textSecondary,
                 height: 1.4,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.lg),
             
-            // Admin action
-            if (isAdmin) ...[
-              // Automation hint for admins
-              Container(
-                margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                  border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.info),
-                    const SizedBox(width: AppSpacing.sm),
-                    Flexible(
-                      child: Text(
-                        'Automation checks sources weekly. High-confidence updates auto-approve.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.info,
-                        ),
+            // Hint about verification
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.verified_outlined, size: 16, color: AppColors.textTertiary),
+                  const SizedBox(width: AppSpacing.sm),
+                  Flexible(
+                    child: Text(
+                      'Data is verified before publishing',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              AppButtonPrimary(
-                label: 'Open Admin',
-                icon: Icons.admin_panel_settings_outlined,
-                onPressed: () => context.push('/admin/regulations'),
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
-            
-            // Always show "Request regs" hint
-            Text(
-              'Know the official source? Let us know in Settings → Feedback.',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textTertiary,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
