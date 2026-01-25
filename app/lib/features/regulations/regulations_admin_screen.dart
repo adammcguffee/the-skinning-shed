@@ -34,6 +34,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   // Auto-repair state
   bool _isRepairing = false;
   RepairResult? _lastRepairResult;
+  
+  // Discovery repair state
+  bool _isDiscoveryRepairing = false;
+  DiscoveryRepairResult? _lastDiscoveryResult;
+  bool _showRepairReport = false;
+  List<RepairReportEntry>? _repairReportEntries;
 
   @override
   void initState() {
@@ -255,6 +261,250 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         );
       }
     }
+  }
+
+  /// Repair broken links by crawling official domains.
+  Future<void> _discoveryRepairBrokenLinks() async {
+    setState(() {
+      _isDiscoveryRepairing = true;
+      _lastDiscoveryResult = null;
+    });
+
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.repairBrokenLinksViaDiscovery();
+      
+      if (mounted) {
+        setState(() {
+          _isDiscoveryRepairing = false;
+          _lastDiscoveryResult = result;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Discovery complete: ${result.fixed} fixed, ${result.stillBroken} still broken.',
+            ),
+            backgroundColor: result.fixed > 0 ? AppColors.success : AppColors.warning,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        
+        // Reload stats to reflect changes
+        _loadStats();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDiscoveryRepairing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  /// View the repair report in a dialog.
+  Future<void> _viewRepairReport() async {
+    final runId = _lastDiscoveryResult?.runId;
+    if (runId == null) return;
+
+    setState(() => _showRepairReport = true);
+
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final entries = await service.fetchRepairReport(runId: runId);
+      
+      if (mounted) {
+        setState(() {
+          _repairReportEntries = entries;
+        });
+        
+        _showRepairReportDialog(entries);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _showRepairReport = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading report: $e')),
+        );
+      }
+    }
+  }
+
+  void _showRepairReportDialog(List<RepairReportEntry> entries) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: AppColors.surface,
+        child: Container(
+          width: 600,
+          constraints: const BoxConstraints(maxHeight: 500),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.article_outlined, color: AppColors.accent),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Repair Report',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Summary
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildReportStat(
+                      'Total',
+                      entries.length.toString(),
+                      AppColors.textPrimary,
+                    ),
+                    _buildReportStat(
+                      'Fixed',
+                      entries.where((e) => e.isFixed).length.toString(),
+                      AppColors.success,
+                    ),
+                    _buildReportStat(
+                      'No Match',
+                      entries.where((e) => !e.isFixed).length.toString(),
+                      AppColors.warning,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Entries list
+              Expanded(
+                child: ListView.builder(
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: entry.isFixed 
+                              ? AppColors.success.withValues(alpha: 0.3)
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: entry.isFixed 
+                                      ? AppColors.success.withValues(alpha: 0.1)
+                                      : AppColors.warning.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  entry.stateCode,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: entry.isFixed ? AppColors.success : AppColors.warning,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                entry.fieldLabel,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                entry.isFixed ? Icons.check_circle : Icons.help_outline,
+                                size: 16,
+                                color: entry.isFixed ? AppColors.success : AppColors.warning,
+                              ),
+                            ],
+                          ),
+                          if (entry.newUrl != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'New: ${entry.newUrl}',
+                              style: TextStyle(fontSize: 11, color: AppColors.success),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          if (entry.message != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              entry.message!,
+                              style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                            ),
+                          ],
+                          Text(
+                            'Crawled ${entry.pagesCrawled} pages, ${entry.candidatesFound} candidates',
+                            style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) {
+      setState(() => _showRepairReport = false);
+    });
+  }
+
+  Widget _buildReportStat(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _resetData() async {
@@ -772,6 +1022,134 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                             ),
                           ),
                       ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+            
+            // Discovery Repair section
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            Text(
+              'Official Discovery Repair',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Crawls official state domains to find replacement URLs for broken links.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_isDiscoveryRepairing)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Crawling official domains... (this may take a minute)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _discoveryRepairBrokenLinks,
+                  icon: const Icon(Icons.travel_explore_rounded),
+                  label: const Text('Repair via Official Discovery'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.info,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              if (_lastDiscoveryResult != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _lastDiscoveryResult!.fixed > 0 
+                          ? AppColors.success.withValues(alpha: 0.3)
+                          : AppColors.border,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _lastDiscoveryResult!.fixed > 0 
+                                ? Icons.check_circle_outline 
+                                : Icons.info_outline,
+                            size: 16,
+                            color: _lastDiscoveryResult!.fixed > 0 
+                                ? AppColors.success 
+                                : AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Discovery: ${_lastDiscoveryResult!.fixed} fixed, ${_lastDiscoveryResult!.stillBroken} still broken',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _lastDiscoveryResult!.fixed > 0 
+                                  ? AppColors.success 
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_lastDiscoveryResult!.results.where((r) => r.isFixed).isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ...(_lastDiscoveryResult!.results.where((r) => r.isFixed).take(3).map((r) => Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '${r.state} ${r.field}: Found replacement',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ))),
+                      ],
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: _viewRepairReport,
+                        icon: Icon(Icons.article_outlined, size: 16, color: AppColors.accent),
+                        label: Text(
+                          'View Full Report',
+                          style: TextStyle(fontSize: 12, color: AppColors.accent),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                        ),
+                      ),
                     ],
                   ),
                 ),

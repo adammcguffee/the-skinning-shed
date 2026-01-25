@@ -1527,6 +1527,55 @@ class RegulationsService {
         })
         .eq('state_code', stateCode);
   }
+
+  /// Repair broken links by crawling official domains to discover replacements.
+  /// This is a longer-running operation that crawls official sites.
+  Future<DiscoveryRepairResult> repairBrokenLinksViaDiscovery() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-repair-discover',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      if (response.status == 401) throw Exception('Please log in again');
+      if (response.status == 403) throw Exception('Admin access required');
+      throw Exception(error);
+    }
+
+    final data = response.data as Map<String, dynamic>;
+    return DiscoveryRepairResult.fromJson(data);
+  }
+
+  /// Fetch repair report entries (latest repairs).
+  Future<List<RepairReportEntry>> fetchRepairReport({
+    String? runId,
+    int limit = 100,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+
+    var query = client
+        .from('reg_link_repairs')
+        .select('*')
+        .order('repaired_at', ascending: false)
+        .limit(limit);
+
+    if (runId != null) {
+      query = query.eq('run_id', runId);
+    }
+
+    final response = await query;
+    return (response as List)
+        .map((r) => RepairReportEntry.fromJson(r as Map<String, dynamic>))
+        .toList();
+  }
 }
 
 /// Result of auto-repair operation.
@@ -1593,6 +1642,127 @@ class RepairDetail {
       default:
         return action;
     }
+  }
+}
+
+/// Result of discovery-based repair operation.
+class DiscoveryRepairResult {
+  const DiscoveryRepairResult({
+    required this.runId,
+    required this.processed,
+    required this.fixed,
+    required this.stillBroken,
+    required this.results,
+  });
+
+  final String runId;
+  final int processed;
+  final int fixed;
+  final int stillBroken;
+  final List<DiscoveryRepairItem> results;
+
+  factory DiscoveryRepairResult.fromJson(Map<String, dynamic> json) {
+    final resultsList = (json['results'] as List? ?? [])
+        .map((r) => DiscoveryRepairItem.fromJson(r as Map<String, dynamic>))
+        .toList();
+    return DiscoveryRepairResult(
+      runId: json['run_id'] as String? ?? '',
+      processed: json['processed'] as int? ?? 0,
+      fixed: json['fixed'] as int? ?? 0,
+      stillBroken: json['still_broken'] as int? ?? 0,
+      results: resultsList,
+    );
+  }
+}
+
+/// Single item from discovery repair.
+class DiscoveryRepairItem {
+  const DiscoveryRepairItem({
+    required this.state,
+    required this.field,
+    required this.status,
+    this.oldUrl,
+    this.newUrl,
+    this.message,
+  });
+
+  final String state;
+  final String field;
+  final String status; // fixed, no_candidate
+  final String? oldUrl;
+  final String? newUrl;
+  final String? message;
+
+  factory DiscoveryRepairItem.fromJson(Map<String, dynamic> json) {
+    return DiscoveryRepairItem(
+      state: json['state'] as String? ?? '',
+      field: json['field'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      oldUrl: json['oldUrl'] as String?,
+      newUrl: json['newUrl'] as String?,
+      message: json['message'] as String?,
+    );
+  }
+
+  bool get isFixed => status == 'fixed';
+}
+
+/// Repair report entry from database.
+class RepairReportEntry {
+  const RepairReportEntry({
+    required this.id,
+    required this.stateCode,
+    required this.field,
+    this.oldUrl,
+    this.newUrl,
+    required this.status,
+    this.message,
+    required this.pagesCrawled,
+    required this.candidatesFound,
+    required this.repairedAt,
+    this.runId,
+  });
+
+  final String id;
+  final String stateCode;
+  final String field;
+  final String? oldUrl;
+  final String? newUrl;
+  final String status;
+  final String? message;
+  final int pagesCrawled;
+  final int candidatesFound;
+  final DateTime repairedAt;
+  final String? runId;
+
+  factory RepairReportEntry.fromJson(Map<String, dynamic> json) {
+    return RepairReportEntry(
+      id: json['id'] as String,
+      stateCode: json['state_code'] as String,
+      field: json['field'] as String,
+      oldUrl: json['old_url'] as String?,
+      newUrl: json['new_url'] as String?,
+      status: json['status'] as String,
+      message: json['message'] as String?,
+      pagesCrawled: json['pages_crawled'] as int? ?? 0,
+      candidatesFound: json['candidates_found'] as int? ?? 0,
+      repairedAt: DateTime.parse(json['repaired_at'] as String),
+      runId: json['run_id'] as String?,
+    );
+  }
+
+  bool get isFixed => status == 'fixed';
+  
+  String get fieldLabel {
+    const labels = {
+      'hunting_seasons_url': 'Hunting Seasons',
+      'hunting_regs_url': 'Hunting Regs',
+      'fishing_regs_url': 'Fishing Regs',
+      'licensing_url': 'Licensing',
+      'buy_license_url': 'Buy License',
+      'records_url': 'Records',
+    };
+    return labels[field] ?? field;
   }
 }
 
