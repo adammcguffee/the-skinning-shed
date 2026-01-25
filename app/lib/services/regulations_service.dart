@@ -1171,6 +1171,62 @@ class RegulationsService {
     return StatePortalLinks.fromJson(response);
   }
   
+  /// Fetch portal links readiness for all states.
+  /// Returns a map of state_code -> StateReadiness.
+  Future<Map<String, StateReadiness>> fetchAllStatesReadiness() async {
+    final client = _supabaseService.client;
+    if (client == null) return {};
+    
+    final response = await client
+        .from('state_portal_links')
+        .select('''
+          state_code,
+          hunting_seasons_url, verified_hunting_seasons_ok,
+          hunting_regs_url, verified_hunting_regs_ok,
+          fishing_regs_url, verified_fishing_regs_ok,
+          licensing_url, verified_licensing_ok,
+          buy_license_url, verified_buy_license_ok,
+          records_url, verified_records_ok
+        ''');
+    
+    final result = <String, StateReadiness>{};
+    
+    for (final row in response as List) {
+      final stateCode = row['state_code'] as String;
+      
+      // Count total links and verified links
+      int totalLinks = 0;
+      int verifiedLinks = 0;
+      
+      final fields = [
+        ('hunting_seasons_url', 'verified_hunting_seasons_ok'),
+        ('hunting_regs_url', 'verified_hunting_regs_ok'),
+        ('fishing_regs_url', 'verified_fishing_regs_ok'),
+        ('licensing_url', 'verified_licensing_ok'),
+        ('buy_license_url', 'verified_buy_license_ok'),
+        ('records_url', 'verified_records_ok'),
+      ];
+      
+      for (final (urlField, verifiedField) in fields) {
+        final url = row[urlField] as String?;
+        if (url != null && url.isNotEmpty) {
+          totalLinks++;
+          if (row[verifiedField] == true) {
+            verifiedLinks++;
+          }
+        }
+      }
+      
+      result[stateCode] = StateReadiness(
+        stateCode: stateCode,
+        totalLinks: totalLinks,
+        verifiedLinks: verifiedLinks,
+      );
+    }
+    
+    return result;
+  }
+  
   /// Seed portal links for all states (admin only).
   Future<Map<String, int>> seedPortalLinks(List<Map<String, dynamic>> links) async {
     final client = _supabaseService.client;
@@ -1978,6 +2034,41 @@ class RepairReportEntry {
       'records_url': 'Records',
     };
     return labels[field] ?? field;
+  }
+}
+
+/// Readiness status for a state's portal links.
+class StateReadiness {
+  const StateReadiness({
+    required this.stateCode,
+    required this.totalLinks,
+    required this.verifiedLinks,
+  });
+  
+  final String stateCode;
+  final int totalLinks;
+  final int verifiedLinks;
+  
+  /// True if at least one link is verified.
+  bool get isReady => verifiedLinks > 0;
+  
+  /// True if has links but none verified.
+  bool get needsVerification => totalLinks > 0 && verifiedLinks == 0;
+  
+  /// True if no links at all.
+  bool get isUnavailable => totalLinks == 0;
+  
+  /// Status label for display.
+  String get statusLabel {
+    if (isReady) return 'Ready';
+    if (needsVerification) return 'Needs Verify';
+    return 'Unavailable';
+  }
+  
+  /// Detail label (e.g., "3/5 verified").
+  String get detailLabel {
+    if (totalLinks == 0) return 'No links';
+    return '$verifiedLinks/$totalLinks verified';
   }
 }
 

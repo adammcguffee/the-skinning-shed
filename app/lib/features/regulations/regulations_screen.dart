@@ -21,22 +21,22 @@ class RegulationsScreen extends ConsumerStatefulWidget {
 class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
   String? _selectedStateCode;
   bool _isLoadingStates = true;
-  Set<String> _statesWithData = {};
+  Map<String, StateReadiness> _statesReadiness = {};
   String _searchQuery = '';
   
   @override
   void initState() {
     super.initState();
-    _loadStatesWithData();
+    _loadStatesReadiness();
   }
   
-  Future<void> _loadStatesWithData() async {
+  Future<void> _loadStatesReadiness() async {
     try {
       final service = ref.read(regulationsServiceProvider);
-      final states = await service.fetchStatesWithRegulations();
+      final readiness = await service.fetchAllStatesReadiness();
       if (mounted) {
         setState(() {
-          _statesWithData = states.toSet();
+          _statesReadiness = readiness;
           _isLoadingStates = false;
         });
       }
@@ -218,17 +218,17 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: AppSpacing.sm,
         mainAxisSpacing: AppSpacing.sm,
-        childAspectRatio: 1.2,
+        childAspectRatio: 1.1,
       ),
       itemCount: states.length,
       itemBuilder: (context, index) {
         final state = states[index];
-        final hasData = _statesWithData.contains(state.code);
+        final readiness = _statesReadiness[state.code];
         
         return _StateCard(
           stateCode: state.code,
           stateName: state.name,
-          hasData: hasData,
+          readiness: readiness,
           isSelected: _selectedStateCode == state.code,
           onTap: () => _onStateSelected(state.code),
         );
@@ -241,14 +241,14 @@ class _StateCard extends StatefulWidget {
   const _StateCard({
     required this.stateCode,
     required this.stateName,
-    required this.hasData,
+    required this.readiness,
     required this.isSelected,
     required this.onTap,
   });
 
   final String stateCode;
   final String stateName;
-  final bool hasData;
+  final StateReadiness? readiness;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -262,29 +262,42 @@ class _StateCardState extends State<_StateCard> {
   @override
   Widget build(BuildContext context) {
     final showHighlight = widget.isSelected || _isHovered;
-    final hasData = widget.hasData;
+    final readiness = widget.readiness;
+    final isReady = readiness?.isReady ?? false;
+    final needsVerify = readiness?.needsVerification ?? false;
+    final hasAnyLinks = readiness != null && readiness.totalLinks > 0;
+    
+    // Determine status color
+    Color statusColor;
+    if (isReady) {
+      statusColor = AppColors.success;
+    } else if (needsVerify) {
+      statusColor = AppColors.warning;
+    } else {
+      statusColor = AppColors.textTertiary;
+    }
     
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: hasData ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: hasData ? widget.onTap : null,
+        onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: hasData
+            color: isReady
                 ? (showHighlight
                     ? AppColors.accent.withValues(alpha: 0.15)
                     : AppColors.surface)
-                : AppColors.surface.withValues(alpha: 0.5),
+                : AppColors.surface.withValues(alpha: hasAnyLinks ? 0.8 : 0.5),
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             border: Border.all(
-              color: showHighlight && hasData
+              color: showHighlight && isReady
                   ? AppColors.accent.withValues(alpha: 0.4)
                   : AppColors.borderSubtle,
             ),
-            boxShadow: showHighlight && hasData
+            boxShadow: showHighlight && isReady
                 ? [
                     BoxShadow(
                       color: AppColors.accent.withValues(alpha: 0.15),
@@ -294,45 +307,64 @@ class _StateCardState extends State<_StateCard> {
                   ]
                 : null,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                widget.stateCode,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: hasData
-                      ? (showHighlight ? AppColors.accent : AppColors.textPrimary)
-                      : AppColors.textTertiary,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  widget.stateCode,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: isReady
+                        ? (showHighlight ? AppColors.accent : AppColors.textPrimary)
+                        : hasAnyLinks ? AppColors.textSecondary : AppColors.textTertiary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                widget.stateName,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w500,
-                  color: hasData ? AppColors.textSecondary : AppColors.textTertiary,
+                const SizedBox(height: 1),
+                Text(
+                  widget.stateName,
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w500,
+                    color: isReady ? AppColors.textSecondary : AppColors.textTertiary,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (!hasData)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
+                const SizedBox(height: 4),
+                // Status pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                  ),
                   child: Text(
-                    'Coming Soon',
+                    readiness?.statusLabel ?? 'Unavailable',
                     style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textTertiary,
-                      fontStyle: FontStyle.italic,
+                      fontSize: 7,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
                     ),
                   ),
                 ),
-            ],
+                // Verified count (if any links)
+                if (hasAnyLinks && isReady)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${readiness!.verifiedLinks} link${readiness.verifiedLinks == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        fontSize: 7,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
