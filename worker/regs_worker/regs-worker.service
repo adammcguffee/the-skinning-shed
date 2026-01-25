@@ -1,6 +1,9 @@
 [Unit]
 Description=The Skinning Shed Regulations Worker
 After=network.target
+# Require network to be online before starting
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
@@ -14,9 +17,18 @@ KillSignal=SIGTERM
 KillMode=mixed
 SendSIGKILL=yes
 
-# Restart settings
+# CRITICAL: Always restart on any exit (crash, error, or clean exit)
 Restart=always
-RestartSec=3
+RestartSec=2
+
+# Watchdog: systemd kills service if it doesn't notify within this time
+# Worker logs heartbeat every 30s; if no logs for 90s, something is wrong
+# Note: Requires sd_notify support in app (not implemented yet)
+# WatchdogSec=90
+
+# Limit restart attempts to prevent rapid restart loops
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 # Logging
 StandardOutput=journal
@@ -29,6 +41,9 @@ EnvironmentFile=/opt/regs_worker/.env
 # Resource limits
 LimitNOFILE=65535
 MemoryMax=2G
+
+# Process priority (nice)
+Nice=5
 
 [Install]
 WantedBy=multi-user.target

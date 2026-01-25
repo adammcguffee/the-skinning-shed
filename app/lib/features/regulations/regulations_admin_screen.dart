@@ -44,16 +44,37 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   AdminRunStatus? _activeExtractionRun;
   bool _isDiscoveryStopping = false;
   bool _isExtractionStopping = false;
+  
+  // Worker health state
+  WorkerHealthStatus? _workerHealth;
+  DateTime? _lastWorkerHealthCheck;
 
   @override
   void initState() {
     super.initState();
     _loadStats();
+    _checkWorkerHealth();
     _checkForExistingRun();
     _checkForExistingRepairRun();
     _checkForActiveJobQueueRuns();
   }
   
+  /// Check worker health status.
+  Future<void> _checkWorkerHealth() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final health = await service.getWorkerHealth();
+      if (mounted) {
+        setState(() {
+          _workerHealth = health;
+          _lastWorkerHealthCheck = DateTime.now();
+        });
+      }
+    } catch (e) {
+      debugPrint('[RegsAdmin] Error checking worker health: $e');
+    }
+  }
+
   /// Check for active job queue runs on page load (for resume).
   Future<void> _checkForActiveJobQueueRuns() async {
     try {
@@ -2335,6 +2356,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             color: AppColors.textSecondary,
           ),
         ),
+        const SizedBox(height: 8),
+        // Worker health indicator
+        _buildWorkerHealthIndicator(),
         const SizedBox(height: 12),
         
         if (_activeDiscoveryRun != null && _activeDiscoveryRun!.isRunning) ...[
@@ -2976,6 +3000,100 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     if (diff.inDays < 7) return '${diff.inDays}d ago';
     
     return '${date.month}/${date.day}/${date.year}';
+  }
+
+  /// Build worker health indicator widget.
+  Widget _buildWorkerHealthIndicator() {
+    final health = _workerHealth;
+    
+    return GestureDetector(
+      onTap: _checkWorkerHealth,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: health == null
+              ? AppColors.surface
+              : health.isHealthy
+                  ? AppColors.success.withValues(alpha: 0.1)
+                  : health.secondsSinceHeartbeat < 120
+                      ? AppColors.warning.withValues(alpha: 0.1)
+                      : AppColors.error.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: health == null
+                ? AppColors.border
+                : health.isHealthy
+                    ? AppColors.success.withValues(alpha: 0.3)
+                    : health.secondsSinceHeartbeat < 120
+                        ? AppColors.warning.withValues(alpha: 0.3)
+                        : AppColors.error.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              health == null
+                  ? Icons.help_outline
+                  : health.isHealthy
+                      ? Icons.check_circle_outline
+                      : health.secondsSinceHeartbeat < 120
+                          ? Icons.warning_amber_rounded
+                          : Icons.error_outline,
+              size: 14,
+              color: health == null
+                  ? AppColors.textTertiary
+                  : health.isHealthy
+                      ? AppColors.success
+                      : health.secondsSinceHeartbeat < 120
+                          ? AppColors.warning
+                          : AppColors.error,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              health == null
+                  ? 'Worker: checking...'
+                  : 'Worker: ${health.statusLabel}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: health == null
+                    ? AppColors.textTertiary
+                    : health.isHealthy
+                        ? AppColors.success
+                        : health.secondsSinceHeartbeat < 120
+                            ? AppColors.warning
+                            : AppColors.error,
+              ),
+            ),
+            if (health != null && health.activeJobs > 0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${health.activeJobs} active',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(width: 4),
+            Icon(
+              Icons.refresh,
+              size: 12,
+              color: AppColors.textTertiary,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

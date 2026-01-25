@@ -154,3 +154,29 @@ export async function upsertExtractedRegulations(data: {
     onConflict: 'state_code,species_group,region_key,season_year_label',
   });
 }
+
+/**
+ * Record worker heartbeat to Supabase for UI visibility.
+ * Uses upsert to regs_worker_heartbeats table.
+ */
+export async function recordWorkerHeartbeat(
+  workerId: string,
+  stats: {
+    active_jobs: number;
+    total_claimed: number;
+    total_completed: number;
+  }
+): Promise<void> {
+  const client = getSupabaseClient();
+
+  await client.from('regs_worker_heartbeats').upsert(
+    {
+      worker_id: workerId,
+      active_jobs: stats.active_jobs,
+      total_claimed: stats.total_claimed,
+      total_completed: stats.total_completed,
+      last_heartbeat: new Date().toISOString(),
+    },
+    { onConflict: 'worker_id' }
+  );
+}

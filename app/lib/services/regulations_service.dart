@@ -3570,6 +3570,66 @@ extension RegulationsServiceJobQueue on RegulationsService {
     }
     return resultList[0] as Map<String, dynamic>;
   }
+
+  /// Get worker health status.
+  Future<WorkerHealthStatus?> getWorkerHealth() async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    try {
+      final result = await client.rpc('regs_get_worker_health');
+      final resultList = result as List<dynamic>?;
+      if (resultList == null || resultList.isEmpty) {
+        return null;
+      }
+      final row = resultList[0] as Map<String, dynamic>;
+      return WorkerHealthStatus(
+        workerId: row['worker_id'] as String? ?? 'unknown',
+        activeJobs: row['active_jobs'] as int? ?? 0,
+        totalClaimed: row['total_claimed'] as int? ?? 0,
+        totalCompleted: row['total_completed'] as int? ?? 0,
+        lastHeartbeat: row['last_heartbeat'] != null 
+            ? DateTime.tryParse(row['last_heartbeat'] as String)
+            : null,
+        secondsSinceHeartbeat: row['seconds_since_heartbeat'] as int? ?? 999,
+        isHealthy: row['is_healthy'] as bool? ?? false,
+      );
+    } catch (e) {
+      print('[RegulationsService] Error getting worker health: $e');
+      return null;
+    }
+  }
+}
+
+/// Worker health status.
+class WorkerHealthStatus {
+  final String workerId;
+  final int activeJobs;
+  final int totalClaimed;
+  final int totalCompleted;
+  final DateTime? lastHeartbeat;
+  final int secondsSinceHeartbeat;
+  final bool isHealthy;
+
+  WorkerHealthStatus({
+    required this.workerId,
+    required this.activeJobs,
+    required this.totalClaimed,
+    required this.totalCompleted,
+    this.lastHeartbeat,
+    required this.secondsSinceHeartbeat,
+    required this.isHealthy,
+  });
+
+  String get statusLabel {
+    if (isHealthy) {
+      return 'Healthy (${secondsSinceHeartbeat}s ago)';
+    } else if (secondsSinceHeartbeat < 120) {
+      return 'Stale (${secondsSinceHeartbeat}s ago)';
+    } else {
+      return 'Offline (${secondsSinceHeartbeat}s ago)';
+    }
+  }
 }
 
 /// Provider for regulations service.
