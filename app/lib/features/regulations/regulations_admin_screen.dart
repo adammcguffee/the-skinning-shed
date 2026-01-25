@@ -596,7 +596,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
     return '$short...';
   }
-  }
 
   Future<void> _resetData() async {
     final controller = TextEditingController();
