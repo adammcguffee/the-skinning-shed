@@ -154,6 +154,23 @@ git push origin main
 
 ## Supabase Operations
 
+### Edge Function Secrets
+
+Some Edge Functions require additional secrets. Set these via Supabase Dashboard or CLI:
+
+| Secret | Required For | Description |
+|--------|-------------|-------------|
+| `OPENAI_API_KEY` | `regs-repair-gpt` | OpenAI API key for GPT-assisted portal link classification |
+
+**Setting secrets via CLI:**
+```bash
+npx supabase secrets set OPENAI_API_KEY=sk-...
+```
+
+**Setting via Dashboard:**
+1. Go to Project Settings > Edge Functions
+2. Add secret key/value pairs
+
 ### Check Logs
 
 ```powershell

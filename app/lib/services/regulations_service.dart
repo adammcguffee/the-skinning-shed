@@ -1607,7 +1607,7 @@ class RegulationsService {
     return RepairRunStatus.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// Continue a repair run (processes next batch).
+  /// Continue a repair run (processes next batch using GPT classification).
   Future<RepairRunStatus> continueRepairRun(String runId) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
@@ -1615,8 +1615,9 @@ class RegulationsService {
     final session = _supabaseService.currentSession;
     if (session == null) throw Exception('Not authenticated');
 
+    // Use GPT-assisted repair function for intelligent URL classification
     final response = await client.functions.invoke(
-      'regs-repair-continue',
+      'regs-repair-gpt',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
       body: {'run_id': runId},
     );
