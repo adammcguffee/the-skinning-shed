@@ -2,163 +2,210 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shed/app/theme/app_colors.dart';
 
-/// 🌲 PREMIUM CAMO BACKGROUND OVERLAY
+/// 🌿 PREMIUM HUNTING CAMO BACKGROUND
 /// 
-/// Adds a subtle, almost-transparent camo texture to break up flat dark areas.
-/// Uses procedural generation for performance (no image loading).
+/// Creates a subtle switchgrass/swamp-bottom hunting camo texture.
+/// IMPORTANT: Camo is placed BEHIND content, not over it.
 /// 
-/// Usage:
-/// - Wrap outer scaffold areas, nav rail, hero zone
-/// - Do NOT put behind dense text content
-class CamoBackground extends StatelessWidget {
-  const CamoBackground({
+/// Usage areas:
+/// - Outer scaffold margins (strong at edges, fades to center)
+/// - Nav rail background (very subtle)
+/// - Hero background BEHIND the wordmark
+/// 
+/// DO NOT use:
+/// - Over wordmark/logo
+/// - Behind dense text content areas
+
+/// 🎨 HUNTING CAMO PATTERN
+/// 
+/// Switchgrass/swamp-bottom style:
+/// - Vertical grass-like strokes
+/// - Organic branch/reed shapes
+/// - Muted earth tones with forest greens
+enum CamoPattern {
+  /// Vertical grass strokes + organic shapes (switchgrass/marsh)
+  hunting,
+  
+  /// Simplified subtle pattern for nav rail
+  subtle,
+}
+
+/// 🖼️ SCAFFOLD CAMO BACKGROUND
+/// 
+/// Wraps scaffold with camo visible in outer margins.
+/// Center content stays clean via radial gradient masking.
+/// Child content sits ABOVE the camo (not covered by it).
+class ScaffoldCamoBackground extends StatelessWidget {
+  const ScaffoldCamoBackground({
     super.key,
     required this.child,
-    this.opacity = 0.05,
-    this.fadeCenter = true,
-    this.pattern = CamoPattern.organic,
+    this.baseGradient,
+    this.camoOpacity = 0.08,
   });
 
   final Widget child;
-  
-  /// Base opacity for the camo texture (0.03-0.10 recommended).
-  final double opacity;
-  
-  /// If true, fades the camo toward the center using a radial gradient mask.
-  /// Keeps the center content area clean.
-  final bool fadeCenter;
-  
-  /// The camo pattern style to use.
-  final CamoPattern pattern;
+  final Gradient? baseGradient;
+  final double camoOpacity;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Child first (base content)
-        child,
+        // Layer 1: Base gradient background
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: baseGradient ?? AppColors.backgroundGradient,
+            ),
+          ),
+        ),
         
-        // Camo overlay
+        // Layer 2: Camo texture (behind content)
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
               child: CustomPaint(
-                painter: _CamoPainter(
-                  opacity: opacity,
-                  pattern: pattern,
+                painter: _HuntingCamoPainter(
+                  opacity: camoOpacity,
+                  pattern: CamoPattern.hunting,
                 ),
-                child: fadeCenter
-                    ? Container(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            colors: [
-                              Colors.black.withValues(alpha: 0.95), // Fade center
-                              Colors.black.withValues(alpha: 0.0),  // Keep edges
-                            ],
-                            radius: 1.2,
-                          ),
-                        ),
-                      )
-                    : null,
               ),
             ),
           ),
         ),
+        
+        // Layer 3: Radial mask to fade camo toward center
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 1.0,
+                  colors: [
+                    AppColors.background.withValues(alpha: 0.95), // Hide center
+                    AppColors.background.withValues(alpha: 0.7),  // Medium fade
+                    Colors.transparent,  // Show full camo at edges
+                  ],
+                  stops: const [0.0, 0.4, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        // Layer 4: Content (sits above camo)
+        child,
       ],
     );
   }
 }
 
-/// 🎨 HERO CAMO - Slightly stronger for the banner area
+/// 🎨 HERO CAMO BACKGROUND
+/// 
+/// For the banner/header area. Camo visible BEHIND the wordmark.
+/// Wordmark sits above and remains crisp.
 class HeroCamoBackground extends StatelessWidget {
   const HeroCamoBackground({
     super.key,
     required this.child,
+    this.camoOpacity = 0.10,
   });
 
   final Widget child;
+  final double camoOpacity;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        child,
+        // Layer 1: Camo texture (behind everything)
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
               child: CustomPaint(
-                painter: _CamoPainter(
-                  opacity: 0.07,
-                  pattern: CamoPattern.organic,
-                ),
-                // Fade toward bottom to not distract from logo
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.0),
-                        Colors.black.withValues(alpha: 0.8),
-                      ],
-                    ),
-                  ),
+                painter: _HuntingCamoPainter(
+                  opacity: camoOpacity,
+                  pattern: CamoPattern.hunting,
                 ),
               ),
             ),
           ),
         ),
+        
+        // Layer 2: Gradient mask (stronger at bottom to not distract from logo)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,  // Show camo at top
+                    AppColors.background.withValues(alpha: 0.5),  // Fade
+                    AppColors.background.withValues(alpha: 0.85), // Mostly hidden at bottom
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        // Layer 3: Content (logo/wordmark sits ABOVE camo)
+        child,
       ],
     );
   }
 }
 
-/// 📌 NAV RAIL CAMO - Very subtle for the navigation area
+/// 📌 NAV RAIL CAMO BACKGROUND
+/// 
+/// Very subtle camo for the navigation rail.
 class NavRailCamoBackground extends StatelessWidget {
   const NavRailCamoBackground({
     super.key,
     required this.child,
+    this.camoOpacity = 0.06,
   });
 
   final Widget child;
+  final double camoOpacity;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        child,
+        // Layer 1: Camo texture (behind nav items)
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
               child: CustomPaint(
-                painter: _CamoPainter(
-                  opacity: 0.04,
+                painter: _HuntingCamoPainter(
+                  opacity: camoOpacity,
                   pattern: CamoPattern.subtle,
                 ),
               ),
             ),
           ),
         ),
+        
+        // Layer 2: Content (nav items sit above camo)
+        child,
       ],
     );
   }
 }
 
-/// Camo pattern types
-enum CamoPattern {
-  /// Organic, natural-looking blobs (classic woodland)
-  organic,
-  
-  /// Very subtle, smaller patterns for tight spaces
-  subtle,
-}
-
-/// 🎨 PROCEDURAL CAMO PAINTER
+/// 🎨 HUNTING CAMO PAINTER
 /// 
-/// Generates a camo-like pattern using overlapping irregular shapes.
-/// Performant: uses cached random seeds for consistency.
-class _CamoPainter extends CustomPainter {
-  _CamoPainter({
+/// Procedurally generates a switchgrass/swamp-bottom hunting pattern.
+/// - Vertical grass strokes
+/// - Organic branch/leaf shapes
+/// - Earth tones (browns, tans) mixed with forest greens
+class _HuntingCamoPainter extends CustomPainter {
+  _HuntingCamoPainter({
     required this.opacity,
     required this.pattern,
   });
@@ -166,56 +213,138 @@ class _CamoPainter extends CustomPainter {
   final double opacity;
   final CamoPattern pattern;
   
-  // Camo colors (dark forest greens + browns)
+  // Hunting camo colors (switchgrass/swamp-bottom palette)
   static const _colors = [
-    Color(0xFF0D1A14), // Very dark green
-    Color(0xFF142820), // Dark forest green
-    Color(0xFF1A322A), // Medium dark green
-    Color(0xFF0F1512), // Near black
+    Color(0xFF0D1A14), // Very dark green (shadow)
+    Color(0xFF1A2820), // Dark forest green
+    Color(0xFF25362A), // Medium dark green
+    Color(0xFF1C1C14), // Dark brown/mud
+    Color(0xFF2A2A1E), // Olive brown
     Color(0xFF1E2B22), // Dark olive
-    Color(0xFF15231C), // Deep green
+    Color(0xFF32301E), // Tan shadow
+    Color(0xFF14201A), // Deep swamp green
   ];
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     
-    final random = math.Random(42); // Fixed seed for consistent pattern
+    final random = math.Random(42); // Fixed seed for consistency
     
-    final blobCount = pattern == CamoPattern.subtle ? 60 : 80;
-    final minSize = pattern == CamoPattern.subtle ? 20.0 : 40.0;
-    final maxSize = pattern == CamoPattern.subtle ? 80.0 : 180.0;
+    // Draw vertical grass strokes first (switchgrass effect)
+    _drawGrassStrokes(canvas, size, random);
     
-    for (int i = 0; i < blobCount; i++) {
+    // Draw organic blob shapes (branch/leaf patterns)
+    _drawOrganicPatches(canvas, size, random);
+    
+    if (pattern == CamoPattern.hunting) {
+      // Add more detail for full hunting pattern
+      _drawReeds(canvas, size, random);
+    }
+  }
+  
+  /// Draw vertical grass-like strokes
+  void _drawGrassStrokes(Canvas canvas, Size size, math.Random random) {
+    final strokeCount = pattern == CamoPattern.subtle ? 40 : 80;
+    
+    for (int i = 0; i < strokeCount; i++) {
       final color = _colors[random.nextInt(_colors.length)];
       final paint = Paint()
-        ..color = color.withValues(alpha: opacity * (0.5 + random.nextDouble() * 0.5))
+        ..color = color.withValues(alpha: opacity * (0.3 + random.nextDouble() * 0.4))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5 + random.nextDouble() * 3
+        ..strokeCap = StrokeCap.round;
+      
+      // Random start position
+      final x = random.nextDouble() * size.width;
+      final startY = random.nextDouble() * size.height;
+      final length = 30 + random.nextDouble() * 80;
+      
+      // Draw slightly curved vertical stroke
+      final path = Path();
+      path.moveTo(x, startY);
+      
+      // Add slight curves to simulate grass bend
+      final midX = x + (random.nextDouble() - 0.5) * 15;
+      final endX = x + (random.nextDouble() - 0.5) * 8;
+      
+      path.quadraticBezierTo(
+        midX,
+        startY + length * 0.5,
+        endX,
+        startY + length,
+      );
+      
+      canvas.drawPath(path, paint);
+    }
+  }
+  
+  /// Draw organic blob patches (camouflage patches)
+  void _drawOrganicPatches(Canvas canvas, Size size, math.Random random) {
+    final patchCount = pattern == CamoPattern.subtle ? 25 : 50;
+    
+    for (int i = 0; i < patchCount; i++) {
+      final color = _colors[random.nextInt(_colors.length)];
+      final paint = Paint()
+        ..color = color.withValues(alpha: opacity * (0.4 + random.nextDouble() * 0.4))
         ..style = PaintingStyle.fill;
       
-      // Random position
       final x = random.nextDouble() * size.width;
       final y = random.nextDouble() * size.height;
+      final blobSize = 30 + random.nextDouble() * 70;
       
-      // Random size
-      final blobSize = minSize + random.nextDouble() * (maxSize - minSize);
-      
-      // Draw organic blob using bezier curves
       _drawOrganicBlob(canvas, paint, x, y, blobSize, random);
     }
+  }
+  
+  /// Draw reed/branch-like elements
+  void _drawReeds(Canvas canvas, Size size, math.Random random) {
+    final reedCount = 30;
     
-    // Add some smaller detail blobs
-    final detailCount = pattern == CamoPattern.subtle ? 30 : 50;
-    for (int i = 0; i < detailCount; i++) {
+    for (int i = 0; i < reedCount; i++) {
       final color = _colors[random.nextInt(_colors.length)];
       final paint = Paint()
-        ..color = color.withValues(alpha: opacity * 0.7)
-        ..style = PaintingStyle.fill;
+        ..color = color.withValues(alpha: opacity * 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8 + random.nextDouble() * 1.5
+        ..strokeCap = StrokeCap.round;
       
       final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final blobSize = 15.0 + random.nextDouble() * 40.0;
+      final startY = random.nextDouble() * size.height;
       
-      _drawOrganicBlob(canvas, paint, x, y, blobSize, random);
+      final path = Path();
+      path.moveTo(x, startY);
+      
+      // Create a multi-segment reed
+      double currentY = startY;
+      double currentX = x;
+      
+      for (int j = 0; j < 3 + random.nextInt(3); j++) {
+        final segmentLength = 15 + random.nextDouble() * 25;
+        final xOffset = (random.nextDouble() - 0.5) * 12;
+        
+        currentX += xOffset;
+        currentY += segmentLength;
+        
+        path.lineTo(currentX, currentY);
+        
+        // Occasionally add a small leaf/branch
+        if (random.nextDouble() > 0.6) {
+          final leafAngle = random.nextBool() ? 0.7 : -0.7;
+          final leafLen = 8 + random.nextDouble() * 12;
+          
+          final leafX = currentX + leafLen * math.cos(leafAngle);
+          final leafY = currentY - leafLen * math.sin(leafAngle);
+          
+          canvas.drawLine(
+            Offset(currentX, currentY),
+            Offset(leafX, leafY),
+            paint,
+          );
+        }
+      }
+      
+      canvas.drawPath(path, paint);
     }
   }
 
@@ -228,12 +357,12 @@ class _CamoPainter extends CustomPainter {
     math.Random random,
   ) {
     final path = Path();
-    final points = 6 + random.nextInt(4); // 6-9 points
+    final points = 5 + random.nextInt(4); // 5-8 points
     final angleStep = (2 * math.pi) / points;
     
-    // Generate irregular control points
+    // Generate irregular radii
     final radii = List.generate(points, (_) {
-      return size * (0.4 + random.nextDouble() * 0.6);
+      return size * (0.3 + random.nextDouble() * 0.7);
     });
     
     // Start point
@@ -242,19 +371,17 @@ class _CamoPainter extends CustomPainter {
     final startY = cy + radii[0] * math.sin(startAngle);
     path.moveTo(startX, startY);
     
-    // Create smooth blob using quadratic bezier curves
+    // Create smooth blob
     for (int i = 0; i < points; i++) {
       final nextI = (i + 1) % points;
       final angle1 = startAngle + angleStep * i;
       final angle2 = startAngle + angleStep * nextI;
       
-      // Destination point
       final x2 = cx + radii[nextI] * math.cos(angle2);
       final y2 = cy + radii[nextI] * math.sin(angle2);
       
-      // Control point (pulls the curve out or in)
       final midAngle = (angle1 + angle2) / 2;
-      final ctrlRadius = (radii[i] + radii[nextI]) / 2 * (0.8 + random.nextDouble() * 0.4);
+      final ctrlRadius = (radii[i] + radii[nextI]) / 2 * (0.7 + random.nextDouble() * 0.5);
       final ctrlX = cx + ctrlRadius * math.cos(midAngle);
       final ctrlY = cy + ctrlRadius * math.sin(midAngle);
       
@@ -266,70 +393,10 @@ class _CamoPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CamoPainter oldDelegate) {
+  bool shouldRepaint(_HuntingCamoPainter oldDelegate) {
     return opacity != oldDelegate.opacity || pattern != oldDelegate.pattern;
   }
 }
 
-/// 🖼️ OUTER SCAFFOLD CAMO WRAPPER
-/// 
-/// Wraps the entire scaffold body with camo on the outer areas only.
-/// The center content area stays clean via gradient masking.
-class ScaffoldCamoBackground extends StatelessWidget {
-  const ScaffoldCamoBackground({
-    super.key,
-    required this.child,
-    this.baseGradient,
-  });
-
-  final Widget child;
-  final Gradient? baseGradient;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Base gradient background
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: baseGradient ?? AppColors.backgroundGradient,
-            ),
-          ),
-        ),
-        
-        // Camo texture overlay
-        Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _CamoPainter(
-                  opacity: 0.045,
-                  pattern: CamoPattern.organic,
-                ),
-                // Fade toward center to keep content area clean
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.center,
-                      radius: 0.9,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.92), // Hide in center
-                        Colors.black.withValues(alpha: 0.5),  // Medium fade
-                        Colors.black.withValues(alpha: 0.0),  // Full camo at edges
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // Content
-        child,
-      ],
-    );
-  }
-}
+// Legacy aliases for compatibility
+typedef CamoBackground = ScaffoldCamoBackground;
