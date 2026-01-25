@@ -19,18 +19,31 @@ const workerConcurrency = config.workerConcurrency;
 const openaiConcurrency = config.openaiMaxConcurrency;
 const pollInterval = config.jobPollIntervalMs;
 
+// Graceful shutdown state
 let shuttingDown = false;
 let activeJobs = 0;
+let shutdownPromiseResolve: (() => void) | null = null;
+
+// Max time to wait for active jobs to finish (150s, well under systemd's 180s timeout)
+const SHUTDOWN_TIMEOUT_MS = 150_000;
 
 // Graceful shutdown handlers
 process.on('SIGTERM', () => {
-  console.log('[Worker] Received SIGTERM, shutting down gracefully...');
+  console.log('[Worker] Received SIGTERM, initiating graceful shutdown...');
+  console.log(`[Worker] Active jobs: ${activeJobs}, will wait up to ${SHUTDOWN_TIMEOUT_MS / 1000}s for completion`);
   shuttingDown = true;
+  if (shutdownPromiseResolve) {
+    shutdownPromiseResolve();
+  }
 });
 
 process.on('SIGINT', () => {
-  console.log('[Worker] Received SIGINT, shutting down gracefully...');
+  console.log('[Worker] Received SIGINT, initiating graceful shutdown...');
+  console.log(`[Worker] Active jobs: ${activeJobs}, will wait up to ${SHUTDOWN_TIMEOUT_MS / 1000}s for completion`);
   shuttingDown = true;
+  if (shutdownPromiseResolve) {
+    shutdownPromiseResolve();
+  }
 });
 
 /**
@@ -128,9 +141,15 @@ async function workerLoop(): Promise<void> {
   console.log(`[Worker] Starting worker ${workerId}`);
   console.log(`[Worker] Concurrency: ${workerConcurrency} jobs, ${openaiConcurrency} OpenAI calls`);
   console.log(`[Worker] Poll interval: ${pollInterval}ms`);
+  console.log(`[Worker] Shutdown timeout: ${SHUTDOWN_TIMEOUT_MS / 1000}s`);
 
   const openaiPool = new PromisePool(openaiConcurrency);
   const jobSlots: Array<Promise<void>> = [];
+
+  // Create a promise that resolves on shutdown signal
+  const shutdownSignal = new Promise<void>((resolve) => {
+    shutdownPromiseResolve = resolve;
+  });
 
   while (!shuttingDown) {
     // Clean up completed slots
@@ -145,6 +164,9 @@ async function workerLoop(): Promise<void> {
         activeJobs--;
       }
     }
+
+    // Don't claim new jobs if shutting down
+    if (shuttingDown) break;
 
     // Claim jobs to fill slots
     while (jobSlots.length < workerConcurrency && !shuttingDown) {
@@ -162,19 +184,40 @@ async function workerLoop(): Promise<void> {
       jobSlots.push(jobPromise);
     }
 
-    // Wait before next poll
+    // Wait before next poll, but also listen for shutdown signal
     if (!shuttingDown) {
-      await sleep(pollInterval);
+      await Promise.race([
+        sleep(pollInterval),
+        shutdownSignal,
+      ]);
     }
   }
 
-  // Wait for active jobs to finish
+  // Wait for active jobs to finish with timeout
   if (jobSlots.length > 0) {
-    console.log(`[Worker] Waiting for ${jobSlots.length} active jobs to finish...`);
-    await Promise.all(jobSlots);
+    console.log(`[Worker] Shutdown initiated, waiting for ${jobSlots.length} active jobs to finish (max ${SHUTDOWN_TIMEOUT_MS / 1000}s)...`);
+    
+    const shutdownStart = Date.now();
+    
+    // Create a timeout promise
+    const timeoutPromise = sleep(SHUTDOWN_TIMEOUT_MS).then(() => 'timeout');
+    const jobsPromise = Promise.all(jobSlots).then(() => 'done');
+    
+    const result = await Promise.race([jobsPromise, timeoutPromise]);
+    
+    const elapsed = Date.now() - shutdownStart;
+    
+    if (result === 'timeout') {
+      console.warn(`[Worker] Shutdown timeout reached after ${elapsed}ms, ${jobSlots.length} jobs may not have completed`);
+    } else {
+      console.log(`[Worker] All ${jobSlots.length} active jobs completed in ${elapsed}ms`);
+    }
+  } else {
+    console.log('[Worker] No active jobs, shutting down immediately');
   }
 
-  console.log('[Worker] Shutdown complete');
+  console.log('[Worker] Shutdown complete, exiting...');
+  process.exit(0);
 }
 
 /**

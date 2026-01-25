@@ -7,8 +7,18 @@ Type=simple
 User=root
 WorkingDirectory=/opt/regs_worker
 ExecStart=/usr/bin/node /opt/regs_worker/dist/index.js
+
+# Graceful shutdown settings
+TimeoutStopSec=180
+KillSignal=SIGTERM
+KillMode=mixed
+SendSIGKILL=yes
+
+# Restart settings
 Restart=always
-RestartSec=10
+RestartSec=3
+
+# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=regs-worker

@@ -123,14 +123,30 @@ export async function processDiscoveryJob(
     };
   }
 
+  // If no candidates found, store the official root as a fallback misc link
   if (crawlResult.pages.length === 0) {
-    await logJobEvent(job.id, 'warn', `No candidate pages found for ${stateCode}`);
-    const output = createEmptyOutput(stateCode, 'Crawl found no relevant pages');
-    await saveDiscoveryResult(stateCode, output);
+    await logJobEvent(job.id, 'info', `No candidate pages found for ${stateCode}, storing official root as fallback`);
+    
+    // Create fallback output with official root as misc_related
+    const fallbackOutput: DiscoveryOutput = {
+      state_code: stateCode,
+      hunting: { url: null, pdf_url: null, confidence: 0, evidence: [] },
+      fishing: { url: null, pdf_url: null, confidence: 0, evidence: [] },
+      misc_related: [{
+        url: root.official_root_url,
+        label: 'Official root (manual navigation)',
+        confidence: 0.3,
+        evidence_snippet: 'Root page had no parseable regs links - manual navigation required',
+      }],
+      notes: 'NO_PAGES_FOUND: stored official root as misc link for manual navigation',
+    };
+    
+    await saveDiscoveryResult(stateCode, fallbackOutput);
+    
+    // Mark as SUCCESS (not skipped) since we stored the official root
     return { 
-      success: false, 
-      skipReason: 'NO_PAGES_FOUND',
-      output,
+      success: true,  // Changed from false - we stored something useful
+      output: fallbackOutput,
       stats: {
         pagesVisited: crawlResult.stats.pagesVisited,
         pagesFetched: crawlResult.stats.pagesFetched,

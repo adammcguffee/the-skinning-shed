@@ -219,6 +219,21 @@ export async function crawlOfficialDomain(
     }
   }
 
+  // If we have very few candidates, try sitemap.xml as fallback
+  if (pages.length < 3 && !stats.earlyStop) {
+    const sitemapPages = await trySitemapFallback(rootUrl, officialDomain, allKeywords);
+    if (sitemapPages.length > 0) {
+      console.log(`[Crawler] Added ${sitemapPages.length} candidates from sitemap.xml`);
+      // Add sitemap candidates that aren't already in pages
+      const existingUrls = new Set(pages.map(p => p.url));
+      for (const sp of sitemapPages) {
+        if (!existingUrls.has(sp.url)) {
+          pages.push(sp);
+        }
+      }
+    }
+  }
+
   // Sort pages by score (highest first)
   pages.sort((a, b) => b.score - a.score);
 
@@ -230,6 +245,91 @@ export async function crawlOfficialDomain(
     blocked: false,
   };
 }
+
+/**
+ * Try to extract candidates from sitemap.xml as a fallback.
+ */
+async function trySitemapFallback(
+  rootUrl: string,
+  officialDomain: string,
+  keywords: string[]
+): Promise<CrawlPage[]> {
+  const pages: CrawlPage[] = [];
+  
+  try {
+    const parsed = new URL(rootUrl);
+    const sitemapUrl = `${parsed.protocol}//${parsed.host}/sitemap.xml`;
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout for sitemap
+    
+    const response = await fetch(sitemapUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/xml, text/xml, */*',
+      },
+    });
+    
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      return pages;
+    }
+    
+    const xml = await response.text();
+    
+    // Extract URLs from sitemap
+    const urlRegex = /<loc>([^<]+)<\/loc>/gi;
+    let match;
+    const candidates: Array<{ url: string; score: number }> = [];
+    
+    while ((match = urlRegex.exec(xml)) !== null) {
+      const url = match[1].trim();
+      
+      // Only keep URLs on official domain
+      if (!isWithinDomain(url, officialDomain)) continue;
+      
+      // Score by regs keywords in URL
+      const lowerUrl = url.toLowerCase();
+      let score = 0;
+      
+      // High-value patterns in URL
+      if (lowerUrl.includes('regulation')) score += 3;
+      if (lowerUrl.includes('hunting')) score += 2;
+      if (lowerUrl.includes('fishing')) score += 2;
+      if (lowerUrl.includes('season')) score += 2;
+      if (lowerUrl.includes('guide') || lowerUrl.includes('digest')) score += 2;
+      if (lowerUrl.includes('rules')) score += 1;
+      if (lowerUrl.endsWith('.pdf')) score += 1;
+      if (lowerUrl.includes('deer') || lowerUrl.includes('turkey')) score += 1;
+      
+      if (score > 0) {
+        candidates.push({ url, score });
+      }
+    }
+    
+    // Sort by score and take top 30
+    candidates.sort((a, b) => b.score - a.score);
+    const topCandidates = candidates.slice(0, 30);
+    
+    for (const candidate of topCandidates) {
+      const isPdf = candidate.url.toLowerCase().endsWith('.pdf');
+      pages.push({
+        url: candidate.url,
+        title: isPdf ? 'PDF from sitemap' : 'Page from sitemap',
+        snippet: `Found in sitemap.xml - ${candidate.url}`,
+        depth: 0,
+        score: candidate.score * 0.1, // Lower scores since we haven't verified content
+        keywords: [],
+      });
+    }
+  } catch (err) {
+    // Sitemap fetch failed, that's OK
+    console.log(`[Crawler] Sitemap fallback failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+  
+  return pages;
 
 /**
  * Fetch a page with retry on transient failures.
@@ -456,13 +556,11 @@ function extractTitle(html: string): string {
 }
 
 function extractText(html: string): string {
-  // Remove script and style tags
+  // Remove script and style tags but KEEP nav/header/footer for text extraction
+  // (they often contain useful menu link text)
   let text = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -495,25 +593,54 @@ function extractBestSnippet(text: string, keywords: string[]): string {
 
 function extractLinks(html: string, baseUrl: string): string[] {
   const links: string[] = [];
-  const regex = /href=["']([^"']+)["']/gi;
+  
+  // Standard href links
+  const hrefRegex = /href=["']([^"']+)["']/gi;
   let match;
-
-  while ((match = regex.exec(html)) !== null) {
-    try {
-      const href = match[1];
-      // Skip fragments, javascript, and mailto
-      if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) {
-        continue;
-      }
-      
-      const absoluteUrl = new URL(href, baseUrl).toString();
-      links.push(absoluteUrl);
-    } catch {
-      continue;
-    }
+  while ((match = hrefRegex.exec(html)) !== null) {
+    addLinkIfValid(match[1], baseUrl, links);
+  }
+  
+  // data-href attributes (common in modern sites)
+  const dataHrefRegex = /data-href=["']([^"']+)["']/gi;
+  while ((match = dataHrefRegex.exec(html)) !== null) {
+    addLinkIfValid(match[1], baseUrl, links);
+  }
+  
+  // data-url attributes
+  const dataUrlRegex = /data-url=["']([^"']+)["']/gi;
+  while ((match = dataUrlRegex.exec(html)) !== null) {
+    addLinkIfValid(match[1], baseUrl, links);
+  }
+  
+  // onclick with location.href (best effort)
+  const onclickRegex = /onclick=["'][^"']*(?:location\.href|window\.location)\s*=\s*["']([^"']+)["']/gi;
+  while ((match = onclickRegex.exec(html)) !== null) {
+    addLinkIfValid(match[1], baseUrl, links);
+  }
+  
+  // <a> tags with href in content (catches some dynamic patterns)
+  const srcRegex = /src=["']([^"']+\.pdf)["']/gi;
+  while ((match = srcRegex.exec(html)) !== null) {
+    addLinkIfValid(match[1], baseUrl, links);
   }
 
   return [...new Set(links)]; // Dedupe
+}
+
+function addLinkIfValid(href: string, baseUrl: string, links: string[]): void {
+  try {
+    // Skip fragments, javascript, and mailto
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || 
+        href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('data:')) {
+      return;
+    }
+    
+    const absoluteUrl = new URL(href, baseUrl).toString();
+    links.push(absoluteUrl);
+  } catch {
+    // Invalid URL, skip
+  }
 }
 
 function decodeHtmlEntities(text: string): string {
