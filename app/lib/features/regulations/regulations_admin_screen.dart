@@ -585,6 +585,18 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       ],
     );
   }
+  
+  /// Truncate skip reason for display.
+  String _truncateReason(String reason) {
+    if (reason.length <= 25) return reason;
+    // Truncate and clean up
+    var short = reason.substring(0, 25);
+    if (short.contains(':')) {
+      short = short.split(':').first;
+    }
+    return '$short...';
+  }
+  }
 
   Future<void> _resetData() async {
     final controller = TextEditingController();
@@ -1181,7 +1193,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                           style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                         ),
                         Text(
-                          '${_repairRun!.processedFields} / ${_repairRun!.totalFields}',
+                          _repairRun!.progressText,
                           style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                         ),
                       ],
@@ -1199,8 +1211,36 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                     if (_repairRun!.lastStateCode != null) ...[
                       const SizedBox(height: 8),
                       Text(
-                        'Current: ${_repairRun!.lastStateCode} • ${_repairRun!.lastFieldLabel}',
+                        'Current: ${_repairRun!.lastStateCode}',
                         style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                      ),
+                    ],
+                    // Show skip reasons distribution
+                    if (_repairRun!.skipReasons != null && _repairRun!.skipReasons!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Skip reasons:',
+                        style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: _repairRun!.skipReasons!.entries.map((e) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${_truncateReason(e.key)}: ${e.value}',
+                              style: TextStyle(fontSize: 9, color: AppColors.textSecondary),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ],
                     const SizedBox(height: 12),

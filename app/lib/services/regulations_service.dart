@@ -1907,6 +1907,9 @@ class RepairRunStatus {
     this.lastField,
     required this.done,
     required this.resumed,
+    this.totalStates,
+    this.processedStates,
+    this.skipReasons,
   });
 
   final String runId;
@@ -1920,13 +1923,25 @@ class RepairRunStatus {
   final String? lastField;
   final bool done;
   final bool resumed;
+  final int? totalStates;
+  final int? processedStates;
+  final Map<String, int>? skipReasons;
 
   factory RepairRunStatus.fromJson(Map<String, dynamic> json) {
+    Map<String, int>? skipReasons;
+    if (json['skip_reasons'] != null) {
+      skipReasons = (json['skip_reasons'] as Map<String, dynamic>)
+          .map((k, v) => MapEntry(k, v as int));
+    }
+    
     return RepairRunStatus(
       runId: json['run_id'] as String,
       status: json['status'] as String,
       totalFields: json['total_fields'] as int? ?? 0,
       processedFields: json['processed_fields'] as int? ?? 0,
+      totalStates: json['total_states'] as int?,
+      processedStates: json['processed_states'] as int?,
+      skipReasons: skipReasons,
       fixedCount: json['fixed_count'] as int? ?? 0,
       skippedCount: json['skipped_count'] as int? ?? 0,
       errorCount: json['error_count'] as int? ?? 0,
@@ -1937,10 +1952,25 @@ class RepairRunStatus {
     );
   }
 
-  double get progress => totalFields > 0 ? processedFields / totalFields : 0.0;
+  /// Progress based on states (preferred) or fields.
+  double get progress {
+    if (totalStates != null && totalStates! > 0) {
+      return (processedStates ?? 0) / totalStates!;
+    }
+    return totalFields > 0 ? processedFields / totalFields : 0.0;
+  }
+  
   int get progressPercent => (progress * 100).round().clamp(0, 100);
   bool get isRunning => status == 'running';
   bool get isComplete => status == 'done';
+  
+  /// Progress text showing states/total.
+  String get progressText {
+    if (totalStates != null && totalStates! > 0) {
+      return '${processedStates ?? 0} / $totalStates states';
+    }
+    return '$processedFields / $totalFields fields';
+  }
   
   String get lastFieldLabel {
     const labels = {
