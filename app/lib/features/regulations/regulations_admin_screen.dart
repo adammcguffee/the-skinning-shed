@@ -413,10 +413,11 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   // ============================================================
 
   /// Start a new extraction run.
-  Future<void> _startExtractionRun() async {
+  Future<void> _startExtractionRun({String tier = 'basic'}) async {
     try {
+      _extractionTier = tier;
       final service = ref.read(regulationsServiceProvider);
-      final run = await service.startExtractionRun();
+      final run = await service.startExtractionRun(tier: tier);
       
       if (mounted) {
         setState(() => _extractionRun = run);
@@ -437,7 +438,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
 
     while (mounted && _extractionRun != null && !_isExtractionCanceling) {
       try {
-        final status = await service.continueExtractionRun(runId);
+        final status = await service.continueExtractionRun(runId, tier: _extractionTier);
         
         if (!mounted) break;
         
@@ -488,11 +489,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   // GPT-GUIDED DISCOVERY METHODS
   // ============================================================
 
+  // Track tier for ongoing runs
+  String _discoveryTier = 'basic';
+  String _extractionTier = 'basic';
+
   /// Start a new GPT-guided discovery run.
-  Future<void> _startDiscoveryRun() async {
+  Future<void> _startDiscoveryRun({String tier = 'basic'}) async {
     try {
+      _discoveryTier = tier;
       final service = ref.read(regulationsServiceProvider);
-      final run = await service.startDiscoveryRun();
+      final run = await service.startDiscoveryRun(tier: tier);
       
       if (mounted) {
         setState(() => _discoveryRun = run);
@@ -513,7 +519,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
 
     while (mounted && _discoveryRun != null && !_isDiscoveryCanceling) {
       try {
-        final status = await service.continueDiscoveryRun(runId);
+        final status = await service.continueDiscoveryRun(runId, tier: _discoveryTier);
         
         if (!mounted) break;
         
@@ -1741,15 +1747,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${_extractionRun!.deerPublished} deer • ${_extractionRun!.turkeyPublished} turkey published',
+                      _extractionRun!.summaryLabel,
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    if (_extractionRun!.lastStateCode != null)
+                    if (_extractionRun!.tierUsed != null || _extractionRun!.lastStateCode != null)
                       Text(
-                        'Last: ${_extractionRun!.lastStateCode}',
+                        '${_extractionRun!.tierUsed?.toUpperCase() ?? ''} ${_extractionRun!.lastStateCode != null ? '• Last: ${_extractionRun!.lastStateCode}' : ''}',
                         style: TextStyle(
                           fontSize: 11,
                           color: AppColors.textTertiary,
@@ -1790,7 +1796,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${_extractionRun!.deerPublished} deer, ${_extractionRun!.turkeyPublished} turkey extracted (${_extractionRun!.skippedCount} skipped)',
+                      _extractionRun!.summaryLabel,
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textPrimary,
@@ -1803,19 +1809,42 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             const SizedBox(height: 12),
           ],
           
-          // Start button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _startExtractionRun,
-              icon: const Icon(Icons.auto_awesome_rounded),
-              label: const Text('Extract Facts Now'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+          // Start buttons row
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _startExtractionRun(tier: 'basic'),
+                  icon: const Icon(Icons.auto_awesome_rounded),
+                  label: const Text('Extract Facts Now'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              SizedBox(
+                height: 44,
+                child: OutlinedButton.icon(
+                  onPressed: () => _startExtractionRun(tier: 'pro'),
+                  icon: Icon(Icons.bolt, size: 16, color: AppColors.accent),
+                  label: Text(
+                    'PRO',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ],
@@ -1936,19 +1965,42 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             const SizedBox(height: 12),
           ],
           
-          // Start button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _startDiscoveryRun,
-              icon: const Icon(Icons.travel_explore_rounded),
-              label: const Text('Run GPT Discovery'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+          // Start buttons row
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _startDiscoveryRun(tier: 'basic'),
+                  icon: const Icon(Icons.travel_explore_rounded),
+                  label: const Text('Run GPT Discovery'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              SizedBox(
+                height: 44,
+                child: OutlinedButton.icon(
+                  onPressed: () => _startDiscoveryRun(tier: 'pro'),
+                  icon: Icon(Icons.bolt, size: 16, color: AppColors.accent),
+                  label: Text(
+                    'PRO',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ],

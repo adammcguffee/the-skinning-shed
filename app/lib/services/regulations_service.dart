@@ -1450,7 +1450,8 @@ class RegulationsService {
   }
 
   /// Start a new extraction run.
-  Future<ExtractionRunStatus> startExtractionRun() async {
+  /// [tier] can be 'basic' (default) or 'pro' for stronger model.
+  Future<ExtractionRunStatus> startExtractionRun({String tier = 'basic'}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1460,6 +1461,7 @@ class RegulationsService {
     final response = await client.functions.invoke(
       'regs-extract-start',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'tier': tier},
     );
 
     if (response.status != 200) {
@@ -1471,7 +1473,8 @@ class RegulationsService {
   }
 
   /// Continue an extraction run (process next batch).
-  Future<ExtractionRunStatus> continueExtractionRun(String runId) async {
+  /// [tier] can be 'basic' (default) or 'pro' for stronger model.
+  Future<ExtractionRunStatus> continueExtractionRun(String runId, {String tier = 'basic'}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1481,7 +1484,7 @@ class RegulationsService {
     final response = await client.functions.invoke(
       'regs-extract-facts',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'run_id': runId},
+      body: {'run_id': runId, 'tier': tier},
     );
 
     if (response.status != 200) {
@@ -1512,9 +1515,12 @@ class RegulationsService {
       processedStates: response['processed_states'] as int? ?? 0,
       deerPublished: response['deer_published'] as int? ?? 0,
       turkeyPublished: response['turkey_published'] as int? ?? 0,
+      needsReviewCount: response['needs_review_count'] as int? ?? 0,
       skippedCount: response['skipped_count'] as int? ?? 0,
       errorCount: response['error_count'] as int? ?? 0,
       lastStateCode: response['last_state_code'] as String?,
+      modelUsed: response['model_used'] as String?,
+      tierUsed: response['tier_used'] as String?,
       done: response['status'] != 'running',
     );
   }
@@ -1540,9 +1546,12 @@ class RegulationsService {
       processedStates: response['processed_states'] as int? ?? 0,
       deerPublished: response['deer_published'] as int? ?? 0,
       turkeyPublished: response['turkey_published'] as int? ?? 0,
+      needsReviewCount: response['needs_review_count'] as int? ?? 0,
       skippedCount: response['skipped_count'] as int? ?? 0,
       errorCount: response['error_count'] as int? ?? 0,
       lastStateCode: response['last_state_code'] as String?,
+      modelUsed: response['model_used'] as String?,
+      tierUsed: response['tier_used'] as String?,
       done: response['status'] != 'running',
     );
   }
@@ -1552,7 +1561,8 @@ class RegulationsService {
   // ============================================================
 
   /// Start a new GPT-guided discovery run.
-  Future<DiscoveryRunStatus> startDiscoveryRun() async {
+  /// [tier] can be 'basic' (default) or 'pro' for stronger model.
+  Future<DiscoveryRunStatus> startDiscoveryRun({String tier = 'basic'}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1562,6 +1572,7 @@ class RegulationsService {
     final response = await client.functions.invoke(
       'regs-discover-start',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'tier': tier},
     );
 
     if (response.status != 200) {
@@ -1573,7 +1584,8 @@ class RegulationsService {
   }
 
   /// Continue a GPT-guided discovery run (process next state).
-  Future<DiscoveryRunStatus> continueDiscoveryRun(String runId) async {
+  /// [tier] can be 'basic' (default) or 'pro' for stronger model.
+  Future<DiscoveryRunStatus> continueDiscoveryRun(String runId, {String tier = 'basic'}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1583,7 +1595,7 @@ class RegulationsService {
     final response = await client.functions.invoke(
       'regs-discover-gpt',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'run_id': runId},
+      body: {'run_id': runId, 'tier': tier},
     );
 
     if (response.status != 200) {
@@ -2672,9 +2684,12 @@ class ExtractionRunStatus {
     required this.processedStates,
     required this.deerPublished,
     required this.turkeyPublished,
+    required this.needsReviewCount,
     required this.skippedCount,
     required this.errorCount,
     this.lastStateCode,
+    this.modelUsed,
+    this.tierUsed,
     required this.done,
   });
   
@@ -2684,9 +2699,12 @@ class ExtractionRunStatus {
   final int processedStates;
   final int deerPublished;
   final int turkeyPublished;
+  final int needsReviewCount;
   final int skippedCount;
   final int errorCount;
   final String? lastStateCode;
+  final String? modelUsed;
+  final String? tierUsed;
   final bool done;
   
   bool get isRunning => status == 'running';
@@ -2694,6 +2712,15 @@ class ExtractionRunStatus {
   double get progress => totalStates > 0 ? processedStates / totalStates : 0.0;
   
   String get progressLabel => '$processedStates/$totalStates states';
+  
+  String get summaryLabel {
+    final parts = <String>[];
+    if (deerPublished > 0) parts.add('$deerPublished deer');
+    if (turkeyPublished > 0) parts.add('$turkeyPublished turkey');
+    if (needsReviewCount > 0) parts.add('$needsReviewCount needs review');
+    if (skippedCount > 0) parts.add('$skippedCount skipped');
+    return parts.isEmpty ? 'Processing...' : parts.join(', ');
+  }
   
   factory ExtractionRunStatus.fromJson(Map<String, dynamic> json) {
     return ExtractionRunStatus(
@@ -2703,9 +2730,12 @@ class ExtractionRunStatus {
       processedStates: json['processed_states'] as int? ?? 0,
       deerPublished: json['deer_published'] as int? ?? 0,
       turkeyPublished: json['turkey_published'] as int? ?? 0,
+      needsReviewCount: json['needs_review_count'] as int? ?? 0,
       skippedCount: json['skipped_count'] as int? ?? 0,
       errorCount: json['error_count'] as int? ?? 0,
       lastStateCode: json['last_state_code'] as String?,
+      modelUsed: json['model_used'] as String?,
+      tierUsed: json['tier_used'] as String?,
       done: json['done'] as bool? ?? false,
     );
   }
@@ -2723,6 +2753,8 @@ class DiscoveryRunStatus {
     required this.fixedCount,
     required this.skippedCount,
     this.lastStateCode,
+    this.modelUsed,
+    this.tierUsed,
     required this.done,
   });
   
@@ -2735,6 +2767,8 @@ class DiscoveryRunStatus {
   final int fixedCount;
   final int skippedCount;
   final String? lastStateCode;
+  final String? modelUsed;
+  final String? tierUsed;
   final bool done;
   
   bool get isRunning => status == 'running';
@@ -2756,6 +2790,8 @@ class DiscoveryRunStatus {
       fixedCount: json['fixed_count'] as int? ?? 0,
       skippedCount: json['skipped_count'] as int? ?? 0,
       lastStateCode: json['last_state_code'] as String?,
+      modelUsed: json['model_used'] as String?,
+      tierUsed: json['tier_used'] as String?,
       done: json['done'] as bool? ?? false,
     );
   }
