@@ -111,8 +111,8 @@ class NavRailCamoBackground extends StatelessWidget {
 /// - Vertical grass strokes
 /// - Organic branch/leaf shapes
 /// - Earth tones (browns, tans) mixed with forest greens
-class _HuntingCamoPainter extends CustomPainter {
-  _HuntingCamoPainter({
+class HuntingCamoPainter extends CustomPainter {
+  HuntingCamoPainter({
     required this.opacity,
     required this.pattern,
   });
@@ -304,7 +304,7 @@ class _HuntingCamoPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HuntingCamoPainter oldDelegate) {
+  bool shouldRepaint(HuntingCamoPainter oldDelegate) {
     return opacity != oldDelegate.opacity || pattern != oldDelegate.pattern;
   }
 }

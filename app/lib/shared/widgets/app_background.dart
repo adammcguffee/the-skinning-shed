@@ -47,7 +47,7 @@ class AppBackground extends ConsumerWidget {
           child: IgnorePointer(
             child: RepaintBoundary(
               child: CustomPaint(
-                painter: _HuntingCamoPainter(
+                painter: HuntingCamoPainter(
                   opacity: opacity,
                   pattern: variant == BackgroundVariant.sidebar
                       ? CamoPattern.subtle
