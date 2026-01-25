@@ -2986,15 +2986,65 @@ extension RegulationsServiceJobQueue on RegulationsService {
     return getJobQueueRunStatus();
   }
 
-  /// Reset data with different levels.
-  /// [type] can be:
-  /// - 'verification': Only clears verification flags
-  /// - 'extracted': Clears discovery + extraction data, keeps official roots
-  /// - 'full': Clears everything except official roots
+  /// Full reset: delete all portal links and reseed from official roots.
+  /// This is the most thorough reset - clears everything except official roots.
+  Future<Map<String, dynamic>> resetFull({required String confirmCode}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-reset-full',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'confirm_code': confirmCode},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Full reset failed: $error');
+    }
+
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Reset verification only: clears verification flags and status codes.
+  /// Keeps all URLs intact.
+  Future<Map<String, dynamic>> resetVerification({required String confirmCode}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-reset-verify',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'confirm_code': confirmCode},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Verification reset failed: $error');
+    }
+
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Legacy reset method (deprecated - use resetFull or resetVerification).
   Future<Map<String, dynamic>> resetData({
     required String type,
     required String confirmCode,
   }) async {
+    // Route to appropriate new method
+    if (type == 'full') {
+      return resetFull(confirmCode: confirmCode);
+    } else if (type == 'verification') {
+      return resetVerification(confirmCode: confirmCode);
+    }
+    
+    // For 'extracted', fall back to old method
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 

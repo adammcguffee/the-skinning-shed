@@ -988,26 +988,42 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       _clearAllRunStates();
       
       final service = ref.read(regulationsServiceProvider);
-      final resetResult = await service.resetData(
-        type: result,
-        confirmCode: 'RESET',
-      );
+      Map<String, dynamic> resetResult;
+      String successMessage;
+      
+      // Use the appropriate reset function based on type
+      if (result == 'full') {
+        // Full reset: delete all portal links and reseed from official roots
+        resetResult = await service.resetFull(confirmCode: 'RESET');
+        final results = resetResult['results'] as Map<String, dynamic>?;
+        final deleted = results?['portal_rows_deleted'] ?? 0;
+        final inserted = results?['portal_rows_inserted'] ?? 0;
+        successMessage = 'Full reset complete: $deleted rows deleted, $inserted rows reseeded';
+      } else if (result == 'verification') {
+        // Verification reset: clear flags only
+        resetResult = await service.resetVerification(confirmCode: 'RESET');
+        final results = resetResult['results'] as Map<String, dynamic>?;
+        final updated = results?['portal_rows_updated'] ?? 0;
+        successMessage = 'Verification reset: $updated rows cleared';
+      } else {
+        // Extracted reset: use legacy method
+        resetResult = await service.resetData(type: result, confirmCode: 'RESET');
+        successMessage = 'Reset complete';
+      }
       
       if (mounted) {
         setState(() => _isLoading = false);
         
-        final resultData = resetResult['results'] as Map<String, dynamic>?;
-        final portalCleared = resultData?['portal_links_cleared'] ?? resultData?['portal_links_updated'] ?? 0;
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Reset complete: $portalCleared portal rows updated'),
+            content: Text(successMessage),
             backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 3),
           ),
         );
         
-        // Reload stats to show 0s
-        _loadStats();
+        // Immediately reload stats to show updated counts
+        await _loadStats();
       }
     } catch (e) {
       if (mounted) {
@@ -1022,23 +1038,23 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   String _getResetDescription(String type) {
     switch (type) {
       case 'verification':
-        return 'This will clear all verification flags and timestamps. '
-               'Discovered URLs and extracted data will NOT be deleted.';
+        return 'This will clear all verification flags, status codes, and timestamps.\n\n'
+               'All discovered URLs will remain intact.\n'
+               'Use this to re-run link verification from scratch.';
       case 'extracted':
         return 'This will clear:\n'
                '• All job queue data (runs, jobs, events)\n'
                '• All extracted regulations data\n'
-               '• All discovered portal URLs\n'
                '• All verification status\n\n'
-               'Official root URLs will be preserved.';
+               'Portal URLs and official roots will be preserved.';
       case 'full':
-        return 'This will clear EVERYTHING except official root URLs:\n'
-               '• All job queue data\n'
-               '• All extracted data\n'
+        return 'This will DELETE all portal link rows and RESEED from official roots.\n\n'
+               'All data will be cleared:\n'
                '• All discovered URLs\n'
-               '• All approved/pending regulations\n'
-               '• All locks and audit logs\n\n'
-               'Only official root URLs will remain.';
+               '• All verification status\n'
+               '• All job queue data\n'
+               '• All extracted regulations\n\n'
+               'Only the 50 state codes from official roots will remain.';
       default:
         return 'Unknown reset type';
     }
@@ -3165,8 +3181,8 @@ class _ResetOptionsDialog extends StatelessWidget {
             // Reset Verification Only
             _ResetOptionTile(
               title: 'Reset Verification Only',
-              subtitle: 'Clear verification flags and timestamps. '
-                       'Keep all discovered URLs and extracted data.',
+              subtitle: 'Clear verification flags and status codes. '
+                       'All discovered URLs remain intact.',
               icon: Icons.verified_outlined,
               color: AppColors.info,
               onTap: () => Navigator.pop(context, 'verification'),
@@ -3176,8 +3192,8 @@ class _ResetOptionsDialog extends StatelessWidget {
             // Reset Extracted Data
             _ResetOptionTile(
               title: 'Reset Extracted Data',
-              subtitle: 'Clear all job queue data, extracted regulations, '
-                       'discovered URLs, and verification. Keep official roots.',
+              subtitle: 'Clear job queue, extracted regulations, and verification. '
+                       'Keep discovered URLs and official roots.',
               icon: Icons.delete_sweep_outlined,
               color: AppColors.warning,
               onTap: () => Navigator.pop(context, 'extracted'),
@@ -3186,9 +3202,9 @@ class _ResetOptionsDialog extends StatelessWidget {
             
             // Full Reset
             _ResetOptionTile(
-              title: 'Full Reset (Keep Official Roots)',
-              subtitle: 'Clear EVERYTHING except official root URLs. '
-                       'Includes approved regulations, audit logs, and locks.',
+              title: 'Full Reset (Reseed Portal Links)',
+              subtitle: 'DELETE all portal rows and RESEED from official roots. '
+                       'Guarantees clean slate with no stale data.',
               icon: Icons.restore_outlined,
               color: AppColors.error,
               onTap: () => Navigator.pop(context, 'full'),
