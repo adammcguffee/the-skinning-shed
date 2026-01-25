@@ -1561,17 +1561,18 @@ class RegulationsService {
     final client = _supabaseService.client;
     if (client == null) return [];
 
-    var query = client
+    final baseQuery = client
         .from('reg_link_repairs')
-        .select('*')
+        .select('*');
+
+    // Apply filter first, then order and limit
+    final filteredQuery = runId != null 
+        ? baseQuery.eq('run_id', runId)
+        : baseQuery;
+
+    final response = await filteredQuery
         .order('repaired_at', ascending: false)
         .limit(limit);
-
-    if (runId != null) {
-      query = query.eq('run_id', runId);
-    }
-
-    final response = await query;
     return (response as List)
         .map((r) => RepairReportEntry.fromJson(r as Map<String, dynamic>))
         .toList();
