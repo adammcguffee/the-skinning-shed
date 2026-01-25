@@ -161,10 +161,12 @@ Some Edge Functions require additional secrets. Set these via Supabase Dashboard
 | Secret | Required For | Description |
 |--------|-------------|-------------|
 | `OPENAI_API_KEY` | `regs-repair-gpt` | OpenAI API key for GPT-assisted portal link classification |
+| `OPENAI_MODEL` | `regs-repair-gpt` | OpenAI model to use. Default is `gpt-4.1-mini` for higher accuracy. |
 
 **Setting secrets via CLI:**
 ```bash
 npx supabase secrets set OPENAI_API_KEY=sk-...
+npx supabase secrets set OPENAI_MODEL=gpt-4.1-mini
 ```
 
 **Setting via Dashboard:**
