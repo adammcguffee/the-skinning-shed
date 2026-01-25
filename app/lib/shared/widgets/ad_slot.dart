@@ -177,13 +177,52 @@ class _AdSlotState extends ConsumerState<AdSlot> {
                   return const SizedBox.shrink();
                 },
                 errorBuilder: (context, error, stackTrace) {
-                  // Image failed to load - hide the slot entirely
+                  // Image failed to load - show placeholder in debug mode
+                  if (kDebugMode) {
+                    return _buildDebugPlaceholder();
+                  }
                   return const SizedBox.shrink();
                 },
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Build debug placeholder when ad image fails to load.
+  Widget _buildDebugPlaceholder() {
+    return Container(
+      width: widget.maxWidth,
+      height: widget.maxHeight,
+      decoration: BoxDecoration(
+        color: Colors.grey.withValues(alpha: 0.2),
+        border: Border.all(color: Colors.grey, width: 1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.image_not_supported_outlined, color: Colors.grey, size: 24),
+          const SizedBox(height: 4),
+          Text(
+            'Ad Image Missing',
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Text(
+            '${widget.page}:${widget.position}',
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 8,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
       ),
     );
   }
