@@ -20,6 +20,17 @@ export const config = {
   workerConcurrency: parseInt(process.env.WORKER_CONCURRENCY || '4', 10),
   jobPollIntervalMs: parseInt(process.env.JOB_POLL_INTERVAL_MS || '2000', 10),
 
+  // Discovery crawl limits
+  discoveryMaxPagesPerState: parseInt(process.env.DISCOVERY_MAX_PAGES_PER_STATE || '25', 10),
+  discoveryMaxDepth: parseInt(process.env.DISCOVERY_MAX_DEPTH || '3', 10),
+  discoveryCandidateTopN: parseInt(process.env.DISCOVERY_CANDIDATE_TOP_N || '60', 10),
+  discoveryMinConfidence: parseFloat(process.env.DISCOVERY_MIN_CONFIDENCE || '0.70'),
+  discoveryEarlyStopThreshold: parseFloat(process.env.DISCOVERY_EARLY_STOP_THRESHOLD || '0.85'),
+
+  // Fetch retry settings
+  fetchMaxRetries: parseInt(process.env.FETCH_MAX_RETRIES || '2', 10),
+  fetchRetryDelayMs: parseInt(process.env.FETCH_RETRY_DELAY_MS || '1000', 10),
+
   // PDF limits
   pdfMaxBytes: parseInt(process.env.REGS_PDF_MAX_BYTES || '40000000', 10),
   pdfMaxTextChars: parseInt(process.env.REGS_PDF_MAX_TEXT_CHARS || '600000', 10),

@@ -25,6 +25,7 @@ export interface OpenAICallResult {
   content: string | null;
   error?: string;
   rateLimited?: boolean;
+  retryCount?: number;
 }
 
 /**
@@ -40,6 +41,7 @@ export async function callOpenAIWithRetry(
   const doCall = async (): Promise<OpenAICallResult> => {
     let lastError: Error | null = null;
     let retryAfterMs = 1000;
+    let retryCount = 0;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -54,13 +56,14 @@ export async function callOpenAIWithRetry(
         });
 
         const content = response.choices[0]?.message?.content || null;
-        return { content };
+        return { content, retryCount };
       } catch (err) {
         lastError = err as Error;
         const errorMessage = lastError.message || '';
 
-        // Check for rate limit
+        // Check for rate limit (429)
         if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit')) {
+          retryCount++;
           console.warn(`[OpenAI] Rate limited (attempt ${attempt + 1}/${maxRetries}), waiting ${retryAfterMs}ms...`);
           
           // Try to parse Retry-After header from error
@@ -77,7 +80,18 @@ export async function callOpenAIWithRetry(
         // Check for server errors (5xx)
         if (errorMessage.includes('500') || errorMessage.includes('502') || 
             errorMessage.includes('503') || errorMessage.includes('504')) {
+          retryCount++;
           console.warn(`[OpenAI] Server error (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+          await sleepWithJitter(retryAfterMs);
+          retryAfterMs = Math.min(retryAfterMs * 2, 30000);
+          continue;
+        }
+
+        // Check for timeout/network errors
+        if (errorMessage.includes('timeout') || errorMessage.includes('ECONNRESET') || 
+            errorMessage.includes('ETIMEDOUT') || errorMessage.includes('socket')) {
+          retryCount++;
+          console.warn(`[OpenAI] Network error (attempt ${attempt + 1}/${maxRetries}), retrying...`);
           await sleepWithJitter(retryAfterMs);
           retryAfterMs = Math.min(retryAfterMs * 2, 30000);
           continue;
@@ -92,6 +106,7 @@ export async function callOpenAIWithRetry(
       content: null,
       error: lastError?.message || 'Unknown error',
       rateLimited: lastError?.message?.includes('429') || false,
+      retryCount,
     };
   };
 

@@ -51,9 +51,10 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
 
     let result: {
       success: boolean;
-      result?: unknown;
+      output?: unknown;
       skipReason?: string;
       error?: string;
+      stats?: Record<string, unknown>;
     };
 
     if (job.job_type === 'discover_state') {
@@ -66,12 +67,19 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
 
     const duration = Date.now() - startTime;
 
+    // Build result JSON including stats for debugging
+    const resultJson = {
+      output: result.output,
+      stats: result.stats,
+      duration_ms: duration,
+    };
+
     if (result.success) {
       console.log(`[Worker] Job ${job.id} completed in ${duration}ms`);
-      await completeJob(job.id, 'done', { resultJson: result.result });
+      await completeJob(job.id, 'done', { resultJson });
     } else if (result.skipReason) {
       console.log(`[Worker] Job ${job.id} skipped: ${result.skipReason} (${duration}ms)`);
-      await completeJob(job.id, 'skipped', { skipReason: result.skipReason });
+      await completeJob(job.id, 'skipped', { skipReason: result.skipReason, resultJson });
     } else {
       const errorMsg = result.error || 'Unknown error';
       console.error(`[Worker] Job ${job.id} failed: ${errorMsg} (${duration}ms)`);
@@ -80,9 +88,9 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
       if (job.attempts < job.max_attempts && isRetryableError(errorMsg)) {
         console.log(`[Worker] Job ${job.id} will be retried (attempt ${job.attempts}/${job.max_attempts})`);
         // Mark as failed but allow retry - the job stays in a state where it can be reclaimed
-        await completeJob(job.id, 'failed', { errorMessage: `Retry pending: ${errorMsg}` });
+        await completeJob(job.id, 'failed', { errorMessage: `Retry pending: ${errorMsg}`, resultJson });
       } else {
-        await completeJob(job.id, 'failed', { errorMessage: errorMsg });
+        await completeJob(job.id, 'failed', { errorMessage: errorMsg, resultJson });
       }
     }
   } catch (err) {
