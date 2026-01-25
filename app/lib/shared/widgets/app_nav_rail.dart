@@ -30,7 +30,8 @@ class AppNavRail extends StatelessWidget {
     return Container(
       width: AppSpacing.navRailWidth,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        // Semi-transparent to let camo show through
+        color: AppColors.surface.withValues(alpha: 0.85),
         border: Border(
           right: BorderSide(color: AppColors.borderSubtle),
         ),
@@ -156,13 +157,13 @@ class _NavItemState extends State<_NavItem> {
               height: 48,
               decoration: BoxDecoration(
                 color: widget.isSelected
-                    ? AppColors.accent.withOpacity(0.15)
+                    ? AppColors.accent.withValues(alpha: 0.15)
                     : _isHovered
                         ? AppColors.surfaceHover
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                 border: widget.isSelected
-                    ? Border.all(color: AppColors.accent.withOpacity(0.3))
+                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.3))
                     : null,
               ),
               child: Stack(

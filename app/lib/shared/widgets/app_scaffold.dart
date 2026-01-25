@@ -7,6 +7,7 @@ import 'package:shed/services/ad_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/banner_header.dart';
+import 'package:shed/shared/widgets/camo_background.dart';
 import 'package:shed/shared/widgets/modals/create_menu_sheet.dart';
 import 'package:shed/services/messaging_service.dart';
 import 'app_nav_rail.dart';
@@ -195,70 +196,75 @@ class AppScaffold extends ConsumerWidget {
     final destinations = _buildDestinations(unreadCount);
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= AppSpacing.breakpointDesktop;
+    final isUltrawide = screenWidth >= 1600;
+    
+    // Wider content on desktop: 1100-1280 depending on screen
+    final contentMaxWidth = isUltrawide ? 1280.0 : (isDesktop ? 1100.0 : 900.0);
     
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Row(
         children: [
-          // Nav rail
-          AppNavRail(
-            selectedIndex: currentIndex,
-            onDestinationSelected: (index) => _onDestinationSelected(context, index),
-            destinations: destinations,
-            onPostTap: () => _onCreateTap(context, ref),
+          // Nav rail with subtle camo
+          NavRailCamoBackground(
+            child: AppNavRail(
+              selectedIndex: currentIndex,
+              onDestinationSelected: (index) => _onDestinationSelected(context, index),
+              destinations: destinations,
+              onPostTap: () => _onCreateTap(context, ref),
+            ),
           ),
 
           // Main content - MUST give child space via Expanded
           Expanded(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: AppColors.backgroundGradient,
-              ),
+            child: ScaffoldCamoBackground(
               child: Column(
                 children: [
-                  // Header zone - banner ONLY, perfectly centered
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 900),
-                        child: const BannerHeader.appTop(),
+                  // Header zone with camo behind hero
+                  HeroCamoBackground(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 16, right: 16),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          child: const BannerHeader.appTop(),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   // Subtle divider
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Container(
                       height: 1,
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   // Content frame with optional ad rail
                   Expanded(
                     child: Row(
                       children: [
-                        // Main content area
+                        // Main content area - WIDER on desktop
                         Expanded(
                           child: Align(
                             alignment: Alignment.topCenter,
                             child: ConstrainedBox(
                               constraints: BoxConstraints(
-                                maxWidth: isDesktop ? 900 : 1100,
+                                maxWidth: contentMaxWidth,
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
-                                  vertical: 8,
+                                  vertical: 4,
                                 ),
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.10),
+                                    color: Colors.black.withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(24),
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.06),
+                                      color: Colors.white.withValues(alpha: 0.06),
                                     ),
                                   ),
                                   child: Padding(
@@ -273,7 +279,7 @@ class AppScaffold extends ConsumerWidget {
                         // Right ad rail (desktop only)
                         if (isDesktop)
                           Padding(
-                            padding: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
+                            padding: const EdgeInsets.only(right: 24, top: 4, bottom: 8),
                             child: SizedBox(
                               width: 180,
                               child: Column(
@@ -303,30 +309,29 @@ class AppScaffold extends ConsumerWidget {
   Widget _buildNarrowLayout(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+      body: ScaffoldCamoBackground(
         child: Column(
           children: [
-            // Header zone (no ads on mobile - they're hidden by AdSlot)
+            // Header zone with camo behind hero
             SafeArea(
               bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
-                child: const BannerHeader.appTop(),
+              child: HeroCamoBackground(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 16, right: 16),
+                  child: const BannerHeader.appTop(),
+                ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             // Subtle divider
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Container(
                 height: 1,
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             // Content frame
             Expanded(
               child: Align(
@@ -336,14 +341,14 @@ class AppScaffold extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
-                      vertical: 8,
+                      vertical: 4,
                     ),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.10),
+                        color: Colors.black.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.06),
+                          color: Colors.white.withValues(alpha: 0.06),
                         ),
                       ),
                       child: Padding(
