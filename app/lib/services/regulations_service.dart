@@ -1547,6 +1547,83 @@ class RegulationsService {
     );
   }
 
+  // ============================================================
+  // GPT-GUIDED DISCOVERY
+  // ============================================================
+
+  /// Start a new GPT-guided discovery run.
+  Future<DiscoveryRunStatus> startDiscoveryRun() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-discover-start',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Failed to start discovery: $error');
+    }
+
+    return DiscoveryRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Continue a GPT-guided discovery run (process next state).
+  Future<DiscoveryRunStatus> continueDiscoveryRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-discover-gpt',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'run_id': runId},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Discovery failed: $error');
+    }
+
+    return DiscoveryRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Get the latest discovery run status (for resuming).
+  Future<DiscoveryRunStatus?> getLatestDiscoveryRunStatus() async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    // Look for discovery runs in reg_repair_runs with notes containing 'discovery'
+    final response = await client
+        .from('reg_repair_runs')
+        .select()
+        .ilike('notes', '%discovery%')
+        .order('started_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (response == null) return null;
+    
+    return DiscoveryRunStatus(
+      runId: response['id'] as String,
+      status: response['status'] as String? ?? 'unknown',
+      totalStates: response['total_states'] as int? ?? 50,
+      totalFields: response['total_fields'] as int? ?? 300,
+      processedStates: response['processed_states'] as int? ?? 0,
+      processedFields: response['processed_fields'] as int? ?? 0,
+      fixedCount: response['fixed_count'] as int? ?? 0,
+      skippedCount: response['skipped_count'] as int? ?? 0,
+      lastStateCode: response['last_state_code'] as String?,
+      done: response['status'] != 'running',
+    );
+  }
+
   /// Fetch broken links for admin dashboard.
   Future<List<Map<String, dynamic>>> fetchBrokenLinks() async {
     final client = _supabaseService.client;
@@ -2628,6 +2705,56 @@ class ExtractionRunStatus {
       turkeyPublished: json['turkey_published'] as int? ?? 0,
       skippedCount: json['skipped_count'] as int? ?? 0,
       errorCount: json['error_count'] as int? ?? 0,
+      lastStateCode: json['last_state_code'] as String?,
+      done: json['done'] as bool? ?? false,
+    );
+  }
+}
+
+/// Discovery run status (GPT-guided crawler).
+class DiscoveryRunStatus {
+  const DiscoveryRunStatus({
+    required this.runId,
+    required this.status,
+    required this.totalStates,
+    required this.totalFields,
+    required this.processedStates,
+    required this.processedFields,
+    required this.fixedCount,
+    required this.skippedCount,
+    this.lastStateCode,
+    required this.done,
+  });
+  
+  final String runId;
+  final String status;
+  final int totalStates;
+  final int totalFields;
+  final int processedStates;
+  final int processedFields;
+  final int fixedCount;
+  final int skippedCount;
+  final String? lastStateCode;
+  final bool done;
+  
+  bool get isRunning => status == 'running';
+  
+  double get progress => totalStates > 0 ? processedStates / totalStates : 0.0;
+  
+  String get progressLabel => '$processedStates/$totalStates states';
+  
+  String get fieldsLabel => '$fixedCount/$totalFields filled';
+  
+  factory DiscoveryRunStatus.fromJson(Map<String, dynamic> json) {
+    return DiscoveryRunStatus(
+      runId: json['run_id'] as String? ?? '',
+      status: json['status'] as String? ?? 'unknown',
+      totalStates: json['total_states'] as int? ?? 50,
+      totalFields: json['total_fields'] as int? ?? 300,
+      processedStates: json['processed_states'] as int? ?? 0,
+      processedFields: json['processed_fields'] as int? ?? 0,
+      fixedCount: json['fixed_count'] as int? ?? 0,
+      skippedCount: json['skipped_count'] as int? ?? 0,
       lastStateCode: json['last_state_code'] as String?,
       done: json['done'] as bool? ?? false,
     );

@@ -42,6 +42,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   // Extraction run state
   ExtractionRunStatus? _extractionRun;
   bool _isExtractionCanceling = false;
+  
+  // GPT-guided discovery run state
+  DiscoveryRunStatus? _discoveryRun;
+  bool _isDiscoveryCanceling = false;
 
   @override
   void initState() {
@@ -50,6 +54,22 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     _checkForExistingRun();
     _checkForExistingRepairRun();
     _checkForExistingExtractionRun();
+    _checkForExistingDiscoveryRun();
+  }
+  
+  /// Check for an existing running discovery on page load (for resume).
+  Future<void> _checkForExistingDiscoveryRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final latestRun = await service.getLatestDiscoveryRunStatus();
+      
+      if (latestRun != null && latestRun.isRunning && mounted) {
+        setState(() => _discoveryRun = latestRun);
+        _pollDiscoveryRun(latestRun.runId);
+      }
+    } catch (e) {
+      debugPrint('[RegsAdmin] Error checking for existing discovery run: $e');
+    }
   }
   
   /// Check for an existing running extraction on page load (for resume).
@@ -461,6 +481,83 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Extraction stopped')),
+    );
+  }
+
+  // ============================================================
+  // GPT-GUIDED DISCOVERY METHODS
+  // ============================================================
+
+  /// Start a new GPT-guided discovery run.
+  Future<void> _startDiscoveryRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final run = await service.startDiscoveryRun();
+      
+      if (mounted) {
+        setState(() => _discoveryRun = run);
+        _pollDiscoveryRun(run.runId);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting discovery: $e')),
+        );
+      }
+    }
+  }
+
+  /// Poll discovery run until done.
+  Future<void> _pollDiscoveryRun(String runId) async {
+    final service = ref.read(regulationsServiceProvider);
+
+    while (mounted && _discoveryRun != null && !_isDiscoveryCanceling) {
+      try {
+        final status = await service.continueDiscoveryRun(runId);
+        
+        if (!mounted) break;
+        
+        setState(() => _discoveryRun = status);
+
+        if (status.done) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Discovery complete: ${status.fixedCount} fields filled',
+              ),
+              backgroundColor: status.fixedCount > 0 
+                  ? AppColors.success 
+                  : AppColors.warning,
+            ),
+          );
+          _loadStats(); // Refresh stats
+          break;
+        }
+
+        // Longer delay for discovery (more intensive)
+        await Future.delayed(const Duration(milliseconds: 1000));
+        
+      } catch (e) {
+        if (mounted) {
+          setState(() => _discoveryRun = null);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  /// Cancel discovery run (just stop polling).
+  void _cancelDiscoveryRun() {
+    setState(() {
+      _isDiscoveryCanceling = true;
+      _discoveryRun = null;
+      _isDiscoveryCanceling = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Discovery stopped')),
     );
   }
 
@@ -1580,6 +1677,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             const Divider(),
             const SizedBox(height: 16),
             _buildExtractionSection(),
+            
+            // GPT-Guided Discovery section
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            _buildDiscoverySection(),
           ],
         ],
       ),
@@ -1707,6 +1810,139 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               onPressed: _startExtractionRun,
               icon: const Icon(Icons.auto_awesome_rounded),
               label: const Text('Extract Facts Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+  
+  Widget _buildDiscoverySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.travel_explore_rounded, size: 18, color: AppColors.accent),
+            const SizedBox(width: 8),
+            Text(
+              'GPT-Guided Discovery',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Smart crawler guided by GPT to find portal links. Crawls 40-80 pages per state, validates strictly.',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        if (_discoveryRun != null && _discoveryRun!.isRunning) ...[
+          // Progress bar
+          LinearProgressIndicator(
+            value: _discoveryRun!.progress,
+            backgroundColor: AppColors.border,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _discoveryRun!.progressLabel,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _discoveryRun!.fieldsLabel,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (_discoveryRun!.lastStateCode != null)
+                      Text(
+                        'Crawling: ${_discoveryRun!.lastStateCode}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _isDiscoveryCanceling ? null : _cancelDiscoveryRun,
+                icon: Icon(
+                  Icons.cancel_outlined,
+                  size: 18,
+                  color: _isDiscoveryCanceling ? AppColors.textTertiary : AppColors.error,
+                ),
+                label: Text(
+                  'Stop',
+                  style: TextStyle(
+                    color: _isDiscoveryCanceling ? AppColors.textTertiary : AppColors.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          // Results display (if completed)
+          if (_discoveryRun != null && _discoveryRun!.done) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_discoveryRun!.fixedCount} fields filled (${_discoveryRun!.skippedCount} skipped)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          
+          // Start button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _startDiscoveryRun,
+              icon: const Icon(Icons.travel_explore_rounded),
+              label: const Text('Run GPT Discovery'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
