@@ -1,6 +1,6 @@
 # The Skinning Shed - Project State
 
-> Last updated: January 24, 2026
+> Last updated: January 23, 2026
 
 ## Overview
 
@@ -14,8 +14,9 @@ Premium hunting & fishing community app built with Flutter. Dark, cinematic fore
 - **State Management**: Riverpod
 - **Routing**: GoRouter
 - **Backend**: Supabase (Auth, Database, Storage, Edge Functions, Realtime)
+- **Worker**: Node.js 20 + TypeScript (DigitalOcean droplet)
 - **Typography**: Google Fonts (Inter)
-- **APIs**: Open-Meteo (weather/historical), USNO (moon phases)
+- **APIs**: Open-Meteo (weather/historical), USNO (moon phases), OpenAI GPT-4.1
 
 ---
 
@@ -78,6 +79,71 @@ Premium hunting & fishing community app built with Flutter. Dark, cinematic fore
 - [ ] Full profile editing
 - [ ] Admin moderation dashboard
 - [ ] Offline mode / caching
+
+---
+
+## Regulations Worker System
+
+The regulations system uses a distributed architecture with a Node.js worker on a DigitalOcean droplet.
+
+### Architecture
+
+```
+Flutter App → Edge Functions (control plane) → PostgreSQL (job queue) ← Worker (droplet)
+                                                                        ↓
+                                                                   OpenAI API
+```
+
+### Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Admin UI | `app/lib/features/regulations/regulations_admin_screen.dart` | Trigger runs, view progress |
+| Edge Functions | `supabase/functions/regs-*` | Control plane (start/stop/status) |
+| Worker | `worker/regs_worker/` | Heavy processing (crawl, GPT, PDF parsing) |
+| Job Queue | `regs_admin_runs`, `regs_jobs` tables | Persistent job tracking |
+
+### Worker Features
+
+- **Discovery**: Crawls official state wildlife agency sites
+  - Breadth-first crawl with keyword scoring
+  - PDF detection and sitemap.xml fallback
+  - GPT-4.1 analysis with strict JSON output
+  - Fallback heuristics when GPT fails
+  - Stores HTML URLs, PDF URLs, and misc_related links
+
+- **Extraction**: Parses HTML/PDFs for season data
+  - Priority: HTML → PDF → misc_related
+  - Streaming PDF download (avoids memory issues)
+  - Citations with page numbers required
+  - Structured output (seasons, bag limits, unit scopes)
+
+### Key Database Columns (`state_portal_links`)
+
+```
+hunting_regs_url, hunting_regs_url_status, hunting_regs_url_verified
+fishing_regs_url, fishing_regs_url_status, fishing_regs_url_verified
+hunting_regs_pdf_url, hunting_regs_pdf_status
+fishing_regs_pdf_url, fishing_regs_pdf_status
+misc_related_urls (JSONB array)
+discovery_notes, discovery_confidence (JSONB)
+discovery_result_json (full GPT output for debugging)
+```
+
+### Worker Deployment
+
+```bash
+# On droplet (root@165.245.131.150)
+cd /opt/regs_worker
+git pull origin main
+npm run build
+systemctl restart regs-worker
+
+# View logs
+journalctl -u regs-worker -f
+```
+
+See `docs/REGS_WORKER_DEPLOY.md` for full deployment guide.
 
 ---
 
@@ -298,6 +364,9 @@ flutter build web --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY
 ## Recent Commits (Latest First)
 
 ```
+3284f18 fix: improve crawler robustness, fallback for NO_PAGES_FOUND, and graceful shutdown
+506da73 feat: support PDF regs and misc_related URLs in discovery and extraction
+... feat: harden regulations worker with strict schemas, smarter crawl, and fallback
 2959f10 feat(chat): verification polish + inbox context + pagination + realtime optimization
 4a2f3dd fix(ads): correct page ID mapping after Messages nav addition
 df12ffc feat(chat-wire): wire Swap/Land/Profile message buttons
@@ -305,20 +374,47 @@ df12ffc feat(chat-wire): wire Swap/Land/Profile message buttons
 b944e86 feat(chat-db): tables + RLS + RPC + triggers
 02c5620 feat(research): top insights readability + compare mode
 e97fc93 feat(regs): sources seed + regulations-check edge function + admin run-now
-4994491 feat(social): post detail + likes + comments + share + report
-660a7c0 fix(core): polish pass - regulations empty state + search + admin provider
 ```
 
 ---
 
 ## Notes for Next Session
 
-1. **Manual QA recommended** - Test DM flows, social interactions, regulations sync
-2. **Edge Function deployment** - Verify `regulations-check` function is deployed
-3. **Ad slots** - Add test creatives to verify ad rendering
-4. **Performance audit** - Profile app startup time, image loading
-5. **Accessibility pass** - Add semantic labels, verify contrast ratios
+### Regulations Worker - ACTIVE
+
+**Droplet**: `root@165.245.131.150` (`/opt/regs_worker`)
+
+**Current Status**: Worker deployed and running. Latest fixes:
+- NO_PAGES_FOUND now stores official root as fallback misc_related (success, not skip)
+- Improved link extraction (data-href, data-url, onclick, sitemap.xml fallback)
+- Graceful shutdown (150s timeout, proper SIGTERM handling)
+- systemd service updated (TimeoutStopSec=180, KillMode=mixed)
+
+**Deploy Latest Changes**:
+```bash
+ssh root@165.245.131.150
+cd /opt/regs_worker
+git pull origin main
+npm run build
+cp regs-worker.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl restart regs-worker
+journalctl -u regs-worker -f
+```
+
+**Next Steps**:
+1. Run discovery on a few states to verify NO_PAGES_FOUND fallback works
+2. Check that PDFs are being stored properly
+3. Test extraction with states that have PDF-only sources
+4. Verify graceful shutdown (systemctl stop, check logs for clean exit)
+
+### Other Pending Work
+
+1. **Verify logic update** - HEAD/content-type checks for HTML/PDF URLs (not yet implemented)
+2. **Manual QA** - Test DM flows, social interactions
+3. **Performance audit** - Profile app startup time, image loading
+4. **Accessibility pass** - Add semantic labels, verify contrast ratios
 
 ---
 
-*Generated: January 24, 2026*
+*Generated: January 23, 2026*

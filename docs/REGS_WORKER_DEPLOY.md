@@ -1,12 +1,21 @@
 # Regulations Worker Deployment Guide
 
+> Last updated: January 23, 2026
+
 This guide covers deploying the Regulations Worker service to a DigitalOcean droplet.
 
 ## Overview
 
 The worker service processes regulations discovery and extraction jobs:
-- **Discovery**: Crawls official state wildlife agency sites to find portal links
+- **Discovery**: Crawls official state wildlife agency sites to find portal links (HTML + PDF)
 - **Extraction**: Parses HTML/PDFs to extract structured season data using GPT
+
+## Current Deployment
+
+- **Droplet IP**: `165.245.131.150`
+- **User**: `root`
+- **Path**: `/opt/regs_worker`
+- **Service**: `regs-worker.service`
 
 ## Architecture
 
@@ -142,6 +151,23 @@ systemctl start regs-worker
 # Check status
 systemctl status regs-worker
 ```
+
+### Service Configuration
+
+The `regs-worker.service` file includes graceful shutdown settings:
+
+```ini
+TimeoutStopSec=180      # Wait 180s before SIGKILL
+KillSignal=SIGTERM      # Send SIGTERM first
+KillMode=mixed          # SIGTERM to main, SIGKILL to children if needed
+Restart=always          # Auto-restart on failure
+RestartSec=3            # 3s between restarts
+```
+
+The worker handles SIGTERM by:
+1. Stopping new job claims immediately
+2. Waiting up to 150s for active jobs to complete
+3. Exiting cleanly
 
 ### 7. View logs
 
@@ -308,4 +334,48 @@ UPDATE regs_jobs
 SET status = 'queued', locked_at = NULL, locked_by = NULL
 WHERE status = 'running'
 AND started_at < NOW() - INTERVAL '15 minutes';
+```
+
+## Recent Changes (January 2026)
+
+### v1.3 - Crawler Robustness & Graceful Shutdown
+
+- **NO_PAGES_FOUND fallback**: When crawler finds no candidate pages, stores official root URL as misc_related (marks job as success, not skipped)
+- **Improved link extraction**: Now captures data-href, data-url, onclick handlers
+- **Sitemap.xml fallback**: If <3 candidates found, tries sitemap.xml for regs-related URLs
+- **Graceful shutdown**: Proper SIGTERM handling with 150s timeout for active jobs
+- **systemd improvements**: TimeoutStopSec=180, KillMode=mixed, RestartSec=3
+
+### v1.2 - PDF Support & Fallback Selection
+
+- **PDF URLs**: Stores hunting_regs_pdf_url and fishing_regs_pdf_url
+- **misc_related_urls**: JSONB array for fallback links when HTML/PDF unsure
+- **Fallback heuristics**: When GPT fails, uses keyword matching to select best candidates
+- **Streaming PDF download**: Avoids memory issues with large PDFs
+
+### v1.1 - Strict JSON & Rate Limiting
+
+- **Strict DiscoveryOutput schema**: Required fields, evidence snippets, domain validation
+- **Rate limit handling**: Exponential backoff with jitter, Retry-After parsing
+- **PromisePool**: OpenAI concurrency limiting
+
+## Worker Files
+
+```
+worker/regs_worker/
+├── src/
+│   ├── index.ts        # Main entry, job loop, shutdown handling
+│   ├── config.ts       # Environment config
+│   ├── supabase.ts     # DB operations
+│   ├── job_claim.ts    # Atomic job claiming
+│   ├── discover.ts     # Discovery job processor
+│   ├── extract.ts      # Extraction job processor
+│   ├── crawler.ts      # Web crawler with sitemap fallback
+│   ├── openai.ts       # OpenAI wrapper with retry
+│   ├── pdf.ts          # PDF download and parsing
+│   └── limiter.ts      # PromisePool, sleep utilities
+├── package.json
+├── tsconfig.json
+├── regs-worker.service # systemd unit file
+└── env.example.txt
 ```
