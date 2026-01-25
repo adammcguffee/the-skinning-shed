@@ -33,6 +33,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   Map<RegulationCategory, List<RegulationRegion>> _regions = {};
   Map<RegulationCategory, String> _selectedRegionKeys = {};
   StatePortalLinks? _portalLinks;
+  String? _officialRootUrl;
   bool _showDebugPanel = false;
   
   static const _categories = [
@@ -82,8 +83,9 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
       final service = ref.read(regulationsServiceProvider);
       final stateCode = _normalizedStateCode;
       
-      // Load portal links first (they always work)
+      // Load portal links and official root URL
       final portalLinks = await service.fetchPortalLinks(stateCode);
+      final officialRoot = await service.getOfficialRootUrl(stateCode);
       
       // Load regions and regulations for all categories
       final results = <RegulationCategory, List<StateRegulation>>{};
@@ -115,6 +117,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
       if (mounted) {
         setState(() {
           _portalLinks = portalLinks;
+          _officialRootUrl = officialRoot;
           _regulations = results;
           _regions = regionResults;
           _isLoading = false;
@@ -410,7 +413,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // Header with Official Agency Home link
             Row(
               children: [
                 Icon(Icons.public_rounded, size: 16, color: AppColors.accent),
@@ -425,6 +428,34 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
                     ),
                   ),
                 ),
+                // Official Agency Home link (always shown if available)
+                if (_officialRootUrl != null)
+                  GestureDetector(
+                    onTap: () => _openPortalLink(_officialRootUrl!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.home_rounded, size: 12, color: AppColors.accent),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Agency Home',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
                 // Debug toggle (in debug mode only)
                 if (const bool.fromEnvironment('dart.vm.product') == false)
                   GestureDetector(

@@ -1585,7 +1585,7 @@ class RegulationsService {
   }
 
   /// Start a discovery repair run (or resume existing).
-  Future<RepairRunStatus> startRepairRun() async {
+  Future<RepairRunStatus> startRepairRun({bool fullRebuild = false}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1595,6 +1595,7 @@ class RegulationsService {
     final response = await client.functions.invoke(
       'regs-repair-start',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'full_rebuild': fullRebuild},
     );
 
     if (response.status != 200) {
@@ -1608,7 +1609,7 @@ class RegulationsService {
   }
 
   /// Continue a repair run (processes next batch using GPT classification).
-  Future<RepairRunStatus> continueRepairRun(String runId) async {
+  Future<RepairRunStatus> continueRepairRun(String runId, {bool fullRebuild = false}) async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1619,7 +1620,7 @@ class RegulationsService {
     final response = await client.functions.invoke(
       'regs-repair-gpt',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'run_id': runId},
+      body: {'run_id': runId, 'full_rebuild': fullRebuild},
     );
 
     if (response.status != 200) {
@@ -1630,6 +1631,49 @@ class RegulationsService {
     }
 
     return RepairRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Reset all portal sub-links (keeps official roots).
+  /// Requires typing "RESET" to confirm.
+  Future<void> resetPortalLinks({
+    required String confirmCode,
+    bool preserveLocks = true,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-reset-portal-links',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {
+        'confirm_code': confirmCode,
+        'preserve_locks': preserveLocks,
+      },
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      if (response.status == 401) throw Exception('Please log in again');
+      if (response.status == 403) throw Exception('Admin access required');
+      throw Exception(error);
+    }
+  }
+
+  /// Fetch official root URL for a state.
+  Future<String?> getOfficialRootUrl(String stateCode) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    final response = await client
+        .from('state_official_roots')
+        .select('official_root_url')
+        .eq('state_code', stateCode)
+        .maybeSingle();
+
+    return response?['official_root_url'] as String?;
   }
 
   /// Get latest repair run status (for resume on page load).

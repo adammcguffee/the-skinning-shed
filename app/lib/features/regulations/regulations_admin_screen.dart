@@ -300,12 +300,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
 
   /// Poll repair run until complete.
-  Future<void> _pollRepairRun(String runId) async {
+  Future<void> _pollRepairRun(String runId, {bool fullRebuild = false}) async {
     final service = ref.read(regulationsServiceProvider);
 
     while (mounted && _repairRun != null && !_isRepairCanceling) {
       try {
-        final status = await service.continueRepairRun(runId);
+        final status = await service.continueRepairRun(runId, fullRebuild: fullRebuild);
         
         if (!mounted) break;
         
@@ -1309,6 +1309,41 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 ),
               ],
             ],
+            
+            // Full Rebuild section
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            Text(
+              'Full Rebuild (Keep Official Roots)',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.warning,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Resets all portal sub-links to null, then runs GPT discovery for all 50 states. Official PDF roots are preserved.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: (_repairRun != null && _repairRun!.isRunning) ? null : _showRebuildDialog,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Rebuild Portal Links'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.warning,
+                  side: BorderSide(color: AppColors.warning),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
           ],
         ],
       ),
@@ -1323,6 +1358,61 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       context: context,
       builder: (ctx) => _RepairHistoryDialog(service: service),
     );
+  }
+  
+  /// Show rebuild confirmation dialog.
+  Future<void> _showRebuildDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _RebuildConfirmDialog(),
+    );
+    
+    if (confirmed == true && mounted) {
+      await _executeRebuild();
+    }
+  }
+  
+  /// Execute full rebuild: reset portal links then run GPT discovery.
+  Future<void> _executeRebuild() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      
+      // Step 1: Reset portal links
+      setState(() => _verifyProgress = 'Resetting portal links...');
+      await service.resetPortalLinks(confirmCode: 'RESET', preserveLocks: true);
+      
+      if (!mounted) return;
+      
+      // Step 2: Start full rebuild GPT discovery
+      setState(() => _verifyProgress = 'Starting GPT discovery for all states...');
+      final run = await service.startRepairRun(fullRebuild: true);
+      
+      if (!mounted) return;
+      setState(() {
+        _repairRun = run;
+        _verifyProgress = null;
+      });
+      
+      // Poll for progress
+      _pollRepairRun(run.runId, fullRebuild: true);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Full rebuild started. GPT is discovering portal links...'),
+          backgroundColor: AppColors.info,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _verifyProgress = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Rebuild failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildBrokenLinksSection() {
@@ -2117,6 +2207,171 @@ class _ConfidenceBadge extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: color,
         ),
+      ),
+    );
+  }
+}
+
+/// Dialog to confirm full rebuild with RESET confirmation.
+class _RebuildConfirmDialog extends StatefulWidget {
+  const _RebuildConfirmDialog();
+  
+  @override
+  State<_RebuildConfirmDialog> createState() => _RebuildConfirmDialogState();
+}
+
+class _RebuildConfirmDialogState extends State<_RebuildConfirmDialog> {
+  final _controller = TextEditingController();
+  bool _isValid = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      setState(() {
+        _isValid = _controller.text.trim().toUpperCase() == 'RESET';
+      });
+    });
+  }
+  
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Row(
+        children: [
+          Icon(Icons.warning_rounded, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Text(
+            'Rebuild Portal Links',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This action will:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildBullet('Reset ALL portal sub-links to Unavailable'),
+                  _buildBullet('Run GPT discovery for all 50 states'),
+                  _buildBullet('Keep official PDF roots intact'),
+                  _buildBullet('Preserve locked field settings'),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This may take several minutes.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Type RESET to confirm:',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'RESET',
+                hintStyle: TextStyle(color: AppColors.textTertiary),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: AppColors.warning),
+                ),
+                filled: true,
+                fillColor: AppColors.background,
+              ),
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(
+            'Cancel',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: _isValid ? () => Navigator.of(context).pop(true) : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.warning,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: AppColors.border,
+            disabledForegroundColor: AppColors.textTertiary,
+          ),
+          child: const Text('Rebuild'),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('• ', style: TextStyle(color: AppColors.warning)),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
