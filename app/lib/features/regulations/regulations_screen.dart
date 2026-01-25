@@ -283,89 +283,100 @@ class _StateCardState extends State<_StateCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            color: isReady
-                ? (showHighlight
-                    ? AppColors.accent.withValues(alpha: 0.15)
-                    : AppColors.surface)
-                : AppColors.surface.withValues(alpha: hasAnyLinks ? 0.8 : 0.5),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(
-              color: showHighlight && isReady
-                  ? AppColors.accent.withValues(alpha: 0.4)
-                  : AppColors.borderSubtle,
-            ),
-            boxShadow: showHighlight && isReady
-                ? [
-                    BoxShadow(
-                      color: AppColors.accent.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  widget.stateCode,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: isReady
-                        ? (showHighlight ? AppColors.accent : AppColors.textPrimary)
-                        : hasAnyLinks ? AppColors.textSecondary : AppColors.textTertiary,
-                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Use LayoutBuilder to safely constrain content
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                color: isReady
+                    ? (showHighlight
+                        ? AppColors.accent.withValues(alpha: 0.15)
+                        : AppColors.surface)
+                    : AppColors.surface.withValues(alpha: hasAnyLinks ? 0.8 : 0.5),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(
+                  color: showHighlight && isReady
+                      ? AppColors.accent.withValues(alpha: 0.4)
+                      : AppColors.borderSubtle,
                 ),
-                const SizedBox(height: 1),
-                Text(
-                  widget.stateName,
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w500,
-                    color: isReady ? AppColors.textSecondary : AppColors.textTertiary,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                // Status pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                  ),
-                  child: Text(
-                    readiness?.statusLabel ?? 'Unavailable',
-                    style: TextStyle(
-                      fontSize: 7,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
-                    ),
-                  ),
-                ),
-                // Verified count (if any links)
-                if (hasAnyLinks && isReady)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      '${readiness!.verifiedLinks} link${readiness.verifiedLinks == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        fontSize: 7,
-                        color: AppColors.textTertiary,
+                boxShadow: showHighlight && isReady
+                    ? [
+                        BoxShadow(
+                          color: AppColors.accent.withValues(alpha: 0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
+              ),
+              // ClipRRect prevents any internal overflow from showing
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd - 1),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // State code - primary text
+                      Flexible(
+                        flex: 0,
+                        child: Text(
+                          widget.stateCode,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: isReady
+                                ? (showHighlight ? AppColors.accent : AppColors.textPrimary)
+                                : hasAnyLinks ? AppColors.textSecondary : AppColors.textTertiary,
+                          ),
+                        ),
                       ),
-                    ),
+                      // State name - constrained
+                      Flexible(
+                        flex: 0,
+                        child: Text(
+                          widget.stateName,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w500,
+                            color: isReady ? AppColors.textSecondary : AppColors.textTertiary,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      // Status pill - constrained width
+                      Flexible(
+                        flex: 0,
+                        child: Container(
+                          constraints: BoxConstraints(maxWidth: constraints.maxWidth - 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                          ),
+                          child: Text(
+                            readiness?.statusLabel ?? 'N/A',
+                            style: TextStyle(
+                              fontSize: 7,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-              ],
-            ),
-          ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
