@@ -208,13 +208,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
 
   /// Cancel the current verification run.
   Future<void> _cancelVerification() async {
-    if (_currentRun == null) return;
+    final runId = _currentRun?.runId;
+    if (runId == null) return;
     
     setState(() => _isCanceling = true);
     
     try {
       final service = ref.read(regulationsServiceProvider);
-      await service.cancelVerificationRun(_currentRun!.runId);
+      await service.cancelVerificationRun(runId);
       
       if (mounted) {
         setState(() {
@@ -229,10 +230,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       }
     } catch (e) {
       if (mounted) {
+        // Reset canceling flag and restart polling since the run may still be active
         setState(() => _isCanceling = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error canceling: $e')),
+          SnackBar(content: Text('Cancel failed: $e')),
         );
+        // Restart polling loop since it exited when _isCanceling was set true
+        _pollVerification(runId);
       }
     }
   }
