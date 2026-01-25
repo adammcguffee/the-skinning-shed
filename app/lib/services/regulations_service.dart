@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shed/services/supabase_service.dart';
 
@@ -2794,6 +2795,195 @@ class DiscoveryRunStatus {
       tierUsed: json['tier_used'] as String?,
       done: json['done'] as bool? ?? false,
     );
+  }
+}
+
+// ============================================================
+// JOB QUEUE-BASED RUNS (Worker Service)
+// ============================================================
+
+/// Status of a job queue-based admin run.
+class AdminRunStatus {
+  const AdminRunStatus({
+    required this.runId,
+    required this.type,
+    required this.tier,
+    required this.status,
+    required this.progressDone,
+    required this.progressTotal,
+    this.lastState,
+    this.lastMessage,
+    this.errorMessage,
+    required this.jobs,
+    required this.active,
+    required this.done,
+    this.createdAt,
+    this.stoppedAt,
+  });
+  
+  final String runId;
+  final String type; // discover, extract, verify
+  final String tier; // basic, pro
+  final String status; // queued, running, stopping, stopped, completed, failed
+  final int progressDone;
+  final int progressTotal;
+  final String? lastState;
+  final String? lastMessage;
+  final String? errorMessage;
+  final Map<String, int> jobs; // queued, running, done, failed, skipped, canceled
+  final bool active;
+  final bool done;
+  final DateTime? createdAt;
+  final DateTime? stoppedAt;
+  
+  double get progress => progressTotal > 0 ? progressDone / progressTotal : 0.0;
+  bool get isRunning => active;
+  
+  String get progressLabel => '$progressDone/$progressTotal';
+  
+  String get summaryLabel {
+    final parts = <String>[];
+    if (jobs['done'] != null && jobs['done']! > 0) parts.add('${jobs['done']} done');
+    if (jobs['failed'] != null && jobs['failed']! > 0) parts.add('${jobs['failed']} failed');
+    if (jobs['skipped'] != null && jobs['skipped']! > 0) parts.add('${jobs['skipped']} skipped');
+    if (jobs['canceled'] != null && jobs['canceled']! > 0) parts.add('${jobs['canceled']} canceled');
+    return parts.isEmpty ? 'Processing...' : parts.join(', ');
+  }
+  
+  factory AdminRunStatus.fromJson(Map<String, dynamic> json) {
+    final jobsMap = <String, int>{};
+    final jobsData = json['jobs'] as Map<String, dynamic>?;
+    if (jobsData != null) {
+      for (final entry in jobsData.entries) {
+        jobsMap[entry.key] = entry.value as int? ?? 0;
+      }
+    }
+    
+    return AdminRunStatus(
+      runId: json['run_id'] as String? ?? '',
+      type: json['type'] as String? ?? 'discover',
+      tier: json['tier'] as String? ?? 'basic',
+      status: json['status'] as String? ?? 'queued',
+      progressDone: json['progress_done'] as int? ?? 0,
+      progressTotal: json['progress_total'] as int? ?? 0,
+      lastState: json['last_state'] as String?,
+      lastMessage: json['last_message'] as String?,
+      errorMessage: json['error_message'] as String?,
+      jobs: jobsMap,
+      active: json['active'] as bool? ?? false,
+      done: json['done'] as bool? ?? false,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String)
+          : null,
+      stoppedAt: json['stopped_at'] != null
+          ? DateTime.tryParse(json['stopped_at'] as String)
+          : null,
+    );
+  }
+}
+
+extension RegulationsServiceJobQueue on RegulationsService {
+  /// Start a new job queue-based discovery run.
+  /// This creates jobs that are processed by the worker service.
+  Future<AdminRunStatus> startJobQueueDiscoveryRun({String tier = 'basic'}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-run-start',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'type': 'discover', 'tier': tier},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Failed to start discovery run: $error');
+    }
+
+    return AdminRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Start a new job queue-based extraction run.
+  Future<AdminRunStatus> startJobQueueExtractionRun({String tier = 'basic'}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-run-start',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'type': 'extract', 'tier': tier},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Failed to start extraction run: $error');
+    }
+
+    return AdminRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Stop a job queue-based run.
+  Future<void> stopJobQueueRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-run-stop',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'run_id': runId},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Failed to stop run: $error');
+    }
+  }
+
+  /// Get status of a job queue-based run.
+  Future<AdminRunStatus?> getJobQueueRunStatus({String? runId}) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    final session = _supabaseService.currentSession;
+    if (session == null) return null;
+
+    try {
+      final response = await client.functions.invoke(
+        'regs-run-status',
+        headers: {'Authorization': 'Bearer ${session.accessToken}'},
+        body: runId != null ? {'run_id': runId} : {},
+      );
+
+      if (response.status != 200) {
+        return null;
+      }
+
+      final data = response.data as Map<String, dynamic>;
+      
+      // Check if no active run
+      if (data['active'] == false && data['run_id'] == null) {
+        return null;
+      }
+
+      return AdminRunStatus.fromJson(data);
+    } catch (e) {
+      debugPrint('[RegulationsService] Error getting run status: $e');
+      return null;
+    }
+  }
+
+  /// Get the latest active job queue run (for resuming on page load).
+  Future<AdminRunStatus?> getLatestActiveRun() async {
+    return getJobQueueRunStatus();
   }
 }
 

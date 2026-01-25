@@ -1,0 +1,24 @@
+[Unit]
+Description=The Skinning Shed Regulations Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/regs_worker
+ExecStart=/usr/bin/node /opt/regs_worker/dist/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=regs-worker
+
+# Environment file
+EnvironmentFile=/opt/regs_worker/.env
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target
