@@ -3591,25 +3591,67 @@ extension RegulationsServiceJobQueue on RegulationsService {
         lastHeartbeat: row['last_heartbeat'] != null 
             ? DateTime.tryParse(row['last_heartbeat'] as String)
             : null,
+        lastClaimAt: row['last_claim_at'] != null
+            ? DateTime.tryParse(row['last_claim_at'] as String)
+            : null,
+        lastProgressAt: row['last_progress_at'] != null
+            ? DateTime.tryParse(row['last_progress_at'] as String)
+            : null,
         secondsSinceHeartbeat: row['seconds_since_heartbeat'] as int? ?? 999,
+        secondsSinceClaim: row['seconds_since_claim'] as int? ?? 9999,
+        secondsSinceProgress: row['seconds_since_progress'] as int? ?? 9999,
         isHealthy: row['is_healthy'] as bool? ?? false,
+        isStalled: row['is_stalled'] as bool? ?? false,
+        isOffline: row['is_offline'] as bool? ?? true,
+        hostname: row['hostname'] as String?,
+        version: row['version'] as String?,
+        loopsCount: row['loops_count'] as int? ?? 0,
       );
     } catch (e) {
       print('[RegulationsService] Error getting worker health: $e');
       return null;
     }
   }
+
+  /// Issue a command to the worker (restart, stop, etc).
+  Future<String?> issueWorkerCommand(String command, {String? targetWorkerId}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    try {
+      final result = await client.rpc(
+        'regs_issue_worker_command',
+        params: {
+          'p_command': command,
+          'p_target_worker_id': targetWorkerId,
+        },
+      );
+      return result as String?;
+    } catch (e) {
+      print('[RegulationsService] Error issuing worker command: $e');
+      rethrow;
+    }
+  }
 }
 
-/// Worker health status.
+/// Worker health status with stall detection.
 class WorkerHealthStatus {
   final String workerId;
   final int activeJobs;
   final int totalClaimed;
   final int totalCompleted;
   final DateTime? lastHeartbeat;
+  final DateTime? lastClaimAt;
+  final DateTime? lastProgressAt;
   final int secondsSinceHeartbeat;
+  final int secondsSinceClaim;
+  final int secondsSinceProgress;
   final bool isHealthy;
+  final bool isStalled;
+  final bool isOffline;
+  final String? hostname;
+  final String? version;
+  final int loopsCount;
 
   WorkerHealthStatus({
     required this.workerId,
@@ -3617,19 +3659,68 @@ class WorkerHealthStatus {
     required this.totalClaimed,
     required this.totalCompleted,
     this.lastHeartbeat,
+    this.lastClaimAt,
+    this.lastProgressAt,
     required this.secondsSinceHeartbeat,
+    required this.secondsSinceClaim,
+    required this.secondsSinceProgress,
     required this.isHealthy,
+    required this.isStalled,
+    required this.isOffline,
+    this.hostname,
+    this.version,
+    required this.loopsCount,
   });
 
+  /// Derived state for display
+  WorkerState get state {
+    if (isOffline) return WorkerState.offline;
+    if (isStalled) return WorkerState.stalled;
+    if (isHealthy) return WorkerState.running;
+    return WorkerState.unknown;
+  }
+
   String get statusLabel {
-    if (isHealthy) {
-      return 'Healthy (${secondsSinceHeartbeat}s ago)';
-    } else if (secondsSinceHeartbeat < 120) {
-      return 'Stale (${secondsSinceHeartbeat}s ago)';
-    } else {
-      return 'Offline (${secondsSinceHeartbeat}s ago)';
+    switch (state) {
+      case WorkerState.running:
+        if (activeJobs > 0) {
+          return 'Running ($activeJobs active)';
+        }
+        return 'Running (idle)';
+      case WorkerState.stalled:
+        final mins = (secondsSinceProgress / 60).floor();
+        return 'Stalled — no progress for ${mins}m';
+      case WorkerState.offline:
+        if (secondsSinceHeartbeat > 3600) {
+          final hours = (secondsSinceHeartbeat / 3600).floor();
+          return 'Offline — last seen ${hours}h ago';
+        }
+        final mins = (secondsSinceHeartbeat / 60).floor();
+        return 'Offline — last seen ${mins}m ago';
+      case WorkerState.unknown:
+        return 'Unknown';
     }
   }
+
+  String get shortLabel {
+    switch (state) {
+      case WorkerState.running:
+        return 'Running';
+      case WorkerState.stalled:
+        return 'Stalled';
+      case WorkerState.offline:
+        return 'Offline';
+      case WorkerState.unknown:
+        return 'Unknown';
+    }
+  }
+}
+
+enum WorkerState {
+  running,
+  stalled,
+  offline,
+  unknown,
 }
 
 /// Provider for regulations service.

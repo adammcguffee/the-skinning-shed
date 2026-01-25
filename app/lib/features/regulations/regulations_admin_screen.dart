@@ -671,13 +671,20 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   /// Poll job queue discovery run until done.
   Future<void> _pollJobQueueDiscoveryRun(String runId) async {
     final service = ref.read(regulationsServiceProvider);
+    int pollCount = 0;
 
     while (mounted && _activeDiscoveryRun != null && !_isDiscoveryStopping) {
       try {
         // Wait before polling
         await Future.delayed(const Duration(seconds: 2));
+        pollCount++;
         
         if (!mounted || _activeDiscoveryRun == null) break;
+        
+        // Refresh worker health every 3 polls (~6 seconds)
+        if (pollCount % 3 == 0) {
+          _checkWorkerHealth();
+        }
         
         final status = await service.getJobQueueRunStatus(runId: runId);
         
@@ -2369,6 +2376,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
           ),
           const SizedBox(height: 12),
+          // Derived status badge based on worker health + run progress
+          _buildDerivedStatusBadge(),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -3002,98 +3012,223 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     return '${date.month}/${date.day}/${date.year}';
   }
 
-  /// Build worker health indicator widget.
+  /// Build derived status badge showing combined run+worker state.
+  Widget _buildDerivedStatusBadge() {
+    final run = _activeDiscoveryRun;
+    final health = _workerHealth;
+    
+    // Determine derived state
+    String label;
+    Color color;
+    IconData icon;
+    
+    if (run == null) {
+      return const SizedBox.shrink();
+    }
+    
+    final isCompleted = run.progressDone >= run.progressTotal && run.progressTotal > 0;
+    final wasStopped = run.status == 'stopped' || run.status == 'stopping';
+    final hasQueuedJobs = (run.jobs['queued'] ?? 0) > 0;
+    
+    if (isCompleted) {
+      label = 'Completed (${run.progressDone}/${run.progressTotal})';
+      color = AppColors.success;
+      icon = Icons.check_circle;
+    } else if (wasStopped) {
+      label = 'Stopped (${run.progressDone}/${run.progressTotal})';
+      color = AppColors.textSecondary;
+      icon = Icons.stop_circle;
+    } else if (health == null) {
+      label = 'Running (${run.progressDone}/${run.progressTotal}) — checking worker...';
+      color = AppColors.info;
+      icon = Icons.hourglass_empty;
+    } else if (health.isOffline) {
+      label = 'Worker Offline — ${health.statusLabel}';
+      color = AppColors.error;
+      icon = Icons.cloud_off;
+    } else if (health.isStalled && hasQueuedJobs) {
+      final mins = (health.secondsSinceProgress / 60).floor();
+      label = 'Stalled (${run.progressDone}/${run.progressTotal}) — no progress for ${mins}m';
+      color = AppColors.warning;
+      icon = Icons.pause_circle_filled;
+    } else {
+      // Running normally
+      final runningCount = run.jobs['running'] ?? 0;
+      if (runningCount > 0) {
+        label = 'Running (${run.progressDone}/${run.progressTotal}) — $runningCount active';
+      } else if (hasQueuedJobs) {
+        label = 'Running (${run.progressDone}/${run.progressTotal}) — claiming jobs...';
+      } else {
+        label = 'Running (${run.progressDone}/${run.progressTotal})';
+      }
+      color = AppColors.success;
+      icon = Icons.play_circle_filled;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build worker health indicator widget with enhanced status.
   Widget _buildWorkerHealthIndicator() {
     final health = _workerHealth;
     
-    return GestureDetector(
-      onTap: _checkWorkerHealth,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: health == null
-              ? AppColors.surface
-              : health.isHealthy
-                  ? AppColors.success.withValues(alpha: 0.1)
-                  : health.secondsSinceHeartbeat < 120
-                      ? AppColors.warning.withValues(alpha: 0.1)
-                      : AppColors.error.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: health == null
-                ? AppColors.border
-                : health.isHealthy
-                    ? AppColors.success.withValues(alpha: 0.3)
-                    : health.secondsSinceHeartbeat < 120
-                        ? AppColors.warning.withValues(alpha: 0.3)
-                        : AppColors.error.withValues(alpha: 0.3),
+    // Determine color based on state
+    Color stateColor;
+    IconData stateIcon;
+    if (health == null) {
+      stateColor = AppColors.textTertiary;
+      stateIcon = Icons.help_outline;
+    } else {
+      switch (health.state) {
+        case WorkerState.running:
+          stateColor = AppColors.success;
+          stateIcon = Icons.check_circle_outline;
+          break;
+        case WorkerState.stalled:
+          stateColor = AppColors.warning;
+          stateIcon = Icons.warning_amber_rounded;
+          break;
+        case WorkerState.offline:
+          stateColor = AppColors.error;
+          stateIcon = Icons.error_outline;
+          break;
+        case WorkerState.unknown:
+          stateColor = AppColors.textTertiary;
+          stateIcon = Icons.help_outline;
+          break;
+      }
+    }
+    
+    return Row(
+      children: [
+        // Main health badge (tappable to refresh)
+        Expanded(
+          child: GestureDetector(
+            onTap: _checkWorkerHealth,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: stateColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: stateColor.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(stateIcon, size: 14, color: stateColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      health == null ? 'Worker: checking...' : 'Worker: ${health.statusLabel}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: stateColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.refresh, size: 12, color: AppColors.textTertiary),
+                ],
+              ),
+            ),
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              health == null
-                  ? Icons.help_outline
-                  : health.isHealthy
-                      ? Icons.check_circle_outline
-                      : health.secondsSinceHeartbeat < 120
-                          ? Icons.warning_amber_rounded
-                          : Icons.error_outline,
-              size: 14,
-              color: health == null
-                  ? AppColors.textTertiary
-                  : health.isHealthy
-                      ? AppColors.success
-                      : health.secondsSinceHeartbeat < 120
-                          ? AppColors.warning
-                          : AppColors.error,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              health == null
-                  ? 'Worker: checking...'
-                  : 'Worker: ${health.statusLabel}',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: health == null
-                    ? AppColors.textTertiary
-                    : health.isHealthy
-                        ? AppColors.success
-                        : health.secondsSinceHeartbeat < 120
-                            ? AppColors.warning
-                            : AppColors.error,
+        // Restart button when offline or stalled
+        if (health != null && (health.isOffline || health.isStalled)) ...[
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 28,
+            child: TextButton.icon(
+              onPressed: _restartWorker,
+              icon: const Icon(Icons.restart_alt, size: 14),
+              label: const Text('Restart'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(fontSize: 12),
               ),
             ),
-            if (health != null && health.activeJobs > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${health.activeJobs} active',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.accent,
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(width: 4),
-            Icon(
-              Icons.refresh,
-              size: 12,
-              color: AppColors.textTertiary,
-            ),
-          ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Issue restart command to worker.
+  Future<void> _restartWorker() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restart Worker?'),
+        content: const Text(
+          'This will send a restart command to the worker. '
+          'The worker will exit and systemd will restart it automatically.\n\n'
+          'Active jobs will be lost and requeued.',
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Restart'),
+          ),
+        ],
       ),
     );
+
+    if (confirmed != true) return;
+
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      await service.issueWorkerCommand('restart');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Restart command sent. Worker will restart shortly.'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+        
+        // Refresh health after a delay
+        await Future.delayed(const Duration(seconds: 3));
+        _checkWorkerHealth();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 }
 

@@ -165,6 +165,11 @@ export async function recordWorkerHeartbeat(
     active_jobs: number;
     total_claimed: number;
     total_completed: number;
+    last_claim_at: Date | null;
+    last_progress_at: Date | null;
+    hostname: string;
+    version: string;
+    loops_count: number;
   }
 ): Promise<void> {
   const client = getSupabaseClient();
@@ -176,7 +181,50 @@ export async function recordWorkerHeartbeat(
       total_claimed: stats.total_claimed,
       total_completed: stats.total_completed,
       last_heartbeat: new Date().toISOString(),
+      last_claim_at: stats.last_claim_at?.toISOString() || null,
+      last_progress_at: stats.last_progress_at?.toISOString() || null,
+      hostname: stats.hostname,
+      version: stats.version,
+      loops_count: stats.loops_count,
     },
     { onConflict: 'worker_id' }
   );
+}
+
+/**
+ * Check for pending admin commands.
+ */
+export async function checkForCommands(workerId: string): Promise<Array<{
+  id: string;
+  command: string;
+  created_at: string;
+}>> {
+  const client = getSupabaseClient();
+
+  const { data, error } = await client.rpc('regs_get_pending_commands', {
+    p_worker_id: workerId,
+  });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data as Array<{ id: string; command: string; created_at: string }>;
+}
+
+/**
+ * Acknowledge a command as processed.
+ */
+export async function ackCommand(
+  commandId: string,
+  workerId: string,
+  result: string
+): Promise<void> {
+  const client = getSupabaseClient();
+
+  await client.rpc('regs_ack_command', {
+    p_command_id: commandId,
+    p_worker_id: workerId,
+    p_result: result,
+  });
 }

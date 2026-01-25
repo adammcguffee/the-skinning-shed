@@ -8,16 +8,21 @@
  * Run with: npm start (after npm run build)
  */
 import { config, validateConfig } from './config';
-import { RegsJob, getRunStatus, logJobEvent, recordWorkerHeartbeat } from './supabase';
+import { RegsJob, getRunStatus, logJobEvent, recordWorkerHeartbeat, checkForCommands, ackCommand } from './supabase';
 import { claimJob, completeJob, shouldContinueRun } from './job_claim';
 import { PromisePool, sleep } from './limiter';
 import { processDiscoveryJob } from './discover';
 import { processExtractionJob } from './extract';
+import * as os from 'os';
 
 const workerId = config.workerId;
 const workerConcurrency = config.workerConcurrency;
 const openaiConcurrency = config.openaiMaxConcurrency;
 const pollInterval = config.jobPollIntervalMs;
+
+// Version info (set during build or from git)
+const VERSION = process.env.WORKER_VERSION || 'dev';
+const HOSTNAME = os.hostname();
 
 // Graceful shutdown state
 let shuttingDown = false;
@@ -30,13 +35,18 @@ const SHUTDOWN_TIMEOUT_MS = 150_000;
 // Heartbeat and stats tracking
 let lastHeartbeatTime = 0;
 let lastIdleLogTime = 0;
+let lastClaimTime: Date | null = null;
+let lastProgressTime: Date | null = null;
 let claimedLast30s = 0;
 let totalJobsClaimed = 0;
 let totalJobsCompleted = 0;
 let loopIterations = 0;
-const HEARTBEAT_INTERVAL_MS = 30_000;
+
+// Intervals
+const HEARTBEAT_INTERVAL_MS = 15_000; // Write heartbeat every 15s
 const IDLE_LOG_INTERVAL_MS = 30_000;
 const HEALTH_CHECK_INTERVAL = 50; // Every N loops, do a health check
+const COMMAND_CHECK_INTERVAL = 5; // Every N loops, check for commands
 
 // ============================================================
 // CRASH PROTECTION - Catch unhandled errors and exit cleanly
@@ -131,10 +141,12 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
       console.log(`[Worker] Job ${job.id} completed in ${duration}ms`);
       await completeJob(job.id, 'done', { resultJson });
       totalJobsCompleted++;
+      lastProgressTime = new Date();
     } else if (result.skipReason) {
       console.log(`[Worker] Job ${job.id} skipped: ${result.skipReason} (${duration}ms)`);
       await completeJob(job.id, 'skipped', { skipReason: result.skipReason, resultJson });
       totalJobsCompleted++;
+      lastProgressTime = new Date();
     } else {
       const errorMsg = result.error || 'Unknown error';
       console.error(`[Worker] Job ${job.id} failed: ${errorMsg} (${duration}ms)`);
@@ -147,6 +159,7 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
         await completeJob(job.id, 'failed', { errorMessage: errorMsg, resultJson });
       }
       totalJobsCompleted++;
+      lastProgressTime = new Date();
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
@@ -158,6 +171,7 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
       console.error(`[Worker] Failed to log job error to DB:`, dbErr);
     }
     totalJobsCompleted++;
+    lastProgressTime = new Date();
   }
 }
 
@@ -182,9 +196,10 @@ function isRetryableError(error: string): boolean {
 }
 
 /**
- * Log heartbeat with worker stats.
+ * Write heartbeat to Supabase with stats.
+ * Non-blocking - errors logged but don't stop worker.
  */
-async function logHeartbeat(): Promise<void> {
+async function writeHeartbeat(): Promise<void> {
   const now = Date.now();
   if (now - lastHeartbeatTime < HEARTBEAT_INTERVAL_MS) return;
   
@@ -197,19 +212,57 @@ async function logHeartbeat(): Promise<void> {
     `loops=${loopIterations}`
   );
   
-  // Reset 30s counter
-  claimedLast30s = 0;
+  // Reset 30s counter periodically
+  if (now - lastHeartbeatTime >= 30_000) {
+    claimedLast30s = 0;
+  }
   lastHeartbeatTime = now;
   
-  // Record heartbeat to Supabase for UI visibility
+  // Record heartbeat to Supabase (non-blocking)
   try {
     await recordWorkerHeartbeat(workerId, {
       active_jobs: slotsActive,
       total_claimed: totalJobsClaimed,
       total_completed: totalJobsCompleted,
+      last_claim_at: lastClaimTime,
+      last_progress_at: lastProgressTime,
+      hostname: HOSTNAME,
+      version: VERSION,
+      loops_count: loopIterations,
     });
   } catch (err) {
-    console.warn('[Worker] Failed to record heartbeat to Supabase:', err);
+    console.warn('[Worker] Failed to record heartbeat:', err);
+  }
+}
+
+/**
+ * Check for admin commands (restart, stop, etc).
+ * If restart command received, exit with code 1 for systemd restart.
+ */
+async function checkCommands(): Promise<void> {
+  try {
+    const commands = await checkForCommands(workerId);
+    
+    for (const cmd of commands) {
+      console.log(`[Worker] Received command: ${cmd.command} (id=${cmd.id})`);
+      
+      if (cmd.command === 'restart') {
+        await ackCommand(cmd.id, workerId, 'restarting');
+        console.log('[Worker] Restart command received, exiting for systemd restart...');
+        process.exit(1);
+      } else if (cmd.command === 'stop') {
+        await ackCommand(cmd.id, workerId, 'stopping');
+        console.log('[Worker] Stop command received, initiating graceful shutdown...');
+        shuttingDown = true;
+        if (shutdownPromiseResolve) {
+          shutdownPromiseResolve();
+        }
+      } else {
+        await ackCommand(cmd.id, workerId, `unknown command: ${cmd.command}`);
+      }
+    }
+  } catch (err) {
+    // Don't log every time - commands are optional
   }
 }
 
@@ -251,11 +304,11 @@ function cleanupCompletedSlots(): number {
  */
 async function workerLoop(): Promise<void> {
   console.log(`[Worker] Starting worker ${workerId}`);
+  console.log(`[Worker] Hostname: ${HOSTNAME}, Version: ${VERSION}`);
   console.log(`[Worker] Concurrency: ${workerConcurrency} jobs, ${openaiConcurrency} OpenAI calls`);
   console.log(`[Worker] Poll interval: ${pollInterval}ms`);
-  console.log(`[Worker] Shutdown timeout: ${SHUTDOWN_TIMEOUT_MS / 1000}s`);
   console.log(`[Worker] Heartbeat interval: ${HEARTBEAT_INTERVAL_MS / 1000}s`);
-  console.log(`[Worker] Health check every ${HEALTH_CHECK_INTERVAL} loops`);
+  console.log(`[Worker] Shutdown timeout: ${SHUTDOWN_TIMEOUT_MS / 1000}s`);
 
   const openaiPool = new PromisePool(openaiConcurrency);
 
@@ -267,11 +320,21 @@ async function workerLoop(): Promise<void> {
   // Initial health check
   await healthCheck();
 
+  // Write initial heartbeat
+  lastClaimTime = null;
+  lastProgressTime = null;
+  await writeHeartbeat();
+
   while (!shuttingDown) {
     loopIterations++;
     
-    // Periodic heartbeat
-    await logHeartbeat();
+    // Write heartbeat regularly
+    await writeHeartbeat();
+    
+    // Check for admin commands every N loops
+    if (loopIterations % COMMAND_CHECK_INTERVAL === 0) {
+      await checkCommands();
+    }
     
     // Periodic health check
     if (loopIterations % HEALTH_CHECK_INTERVAL === 0) {
@@ -279,7 +342,6 @@ async function workerLoop(): Promise<void> {
     }
 
     // Clean up completed slots - THIS IS THE CRITICAL FIX
-    // Previously used Promise.race which was broken
     const cleaned = cleanupCompletedSlots();
     if (cleaned > 0) {
       console.log(`[Worker] Cleaned ${cleaned} completed slots, ${jobSlots.length} remaining`);
@@ -290,7 +352,7 @@ async function workerLoop(): Promise<void> {
 
     // Claim jobs to fill slots
     let claimAttempts = 0;
-    const maxClaimAttempts = workerConcurrency * 2; // Prevent infinite loop
+    const maxClaimAttempts = workerConcurrency * 2;
     
     while (jobSlots.length < workerConcurrency && !shuttingDown && claimAttempts < maxClaimAttempts) {
       claimAttempts++;
@@ -300,12 +362,11 @@ async function workerLoop(): Promise<void> {
         job = await claimJob(workerId);
       } catch (claimErr) {
         console.error('[Worker] Error claiming job (will retry):', claimErr);
-        // Don't exit - just continue the loop
         break;
       }
       
       if (!job) {
-        // No more jobs available - log idle status if no active jobs
+        // No more jobs available
         const activeCount = jobSlots.filter(s => !s.done).length;
         if (activeCount === 0 && !shuttingDown) {
           const now = Date.now();
@@ -314,10 +375,11 @@ async function workerLoop(): Promise<void> {
             lastIdleLogTime = now;
           }
         }
-        break; // No more jobs available
+        break;
       }
 
-      // Reset idle log time when we claim a job
+      // Track claim time
+      lastClaimTime = new Date();
       lastIdleLogTime = 0;
       activeJobs++;
       totalJobsClaimed++;
@@ -338,13 +400,13 @@ async function workerLoop(): Promise<void> {
           console.error(`[Worker] Unhandled error in job ${job!.id}:`, err);
         })
         .finally(() => {
-          slot.done = true; // Mark slot as done regardless of success/failure
+          slot.done = true;
         });
       
       jobSlots.push(slot);
     }
 
-    // Wait before next poll, but also listen for shutdown signal
+    // Wait before next poll
     if (!shuttingDown) {
       await Promise.race([
         sleep(pollInterval),
@@ -356,20 +418,17 @@ async function workerLoop(): Promise<void> {
   // Wait for active jobs to finish with timeout
   const activeSlots = jobSlots.filter(s => !s.done);
   if (activeSlots.length > 0) {
-    console.log(`[Worker] Shutdown initiated, waiting for ${activeSlots.length} active jobs to finish (max ${SHUTDOWN_TIMEOUT_MS / 1000}s)...`);
+    console.log(`[Worker] Shutdown initiated, waiting for ${activeSlots.length} active jobs to finish...`);
     
     const shutdownStart = Date.now();
-    
-    // Create a timeout promise
     const timeoutPromise = sleep(SHUTDOWN_TIMEOUT_MS).then(() => 'timeout');
     const jobsPromise = Promise.all(activeSlots.map(s => s.promise)).then(() => 'done');
     
     const result = await Promise.race([jobsPromise, timeoutPromise]);
-    
     const elapsed = Date.now() - shutdownStart;
     
     if (result === 'timeout') {
-      console.warn(`[Worker] Shutdown timeout reached after ${elapsed}ms, ${activeSlots.length} jobs may not have completed`);
+      console.warn(`[Worker] Shutdown timeout after ${elapsed}ms, ${activeSlots.length} jobs may not have completed`);
     } else {
       console.log(`[Worker] All ${activeSlots.length} active jobs completed in ${elapsed}ms`);
     }
@@ -389,6 +448,8 @@ async function main(): Promise<void> {
   console.log('The Skinning Shed - Regulations Worker');
   console.log(`Started at: ${new Date().toISOString()}`);
   console.log(`Worker ID: ${workerId}`);
+  console.log(`Hostname: ${HOSTNAME}`);
+  console.log(`Version: ${VERSION}`);
   console.log(`Node version: ${process.version}`);
   console.log('='.repeat(60));
 
