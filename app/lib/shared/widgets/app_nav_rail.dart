@@ -230,9 +230,9 @@ class _PostButtonState extends State<_PostButton> {
 
   @override
   Widget build(BuildContext context) {
-    // Constrain button width to fit within nav rail (88 - 16 padding = 72)
+    // Constrain button width to fit within nav rail (100 - 16 padding = 84)
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 72),
+      constraints: const BoxConstraints(maxWidth: 84),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),

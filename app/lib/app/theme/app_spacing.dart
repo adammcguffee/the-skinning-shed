@@ -37,8 +37,8 @@ abstract final class AppSpacing {
   /// Max content width (web)
   static const double maxContentWidth = 1200.0;
 
-  /// Nav rail width (88px provides room for Create button + icon without overflow)
-  static const double navRailWidth = 88.0;
+  /// Nav rail width (100px provides room for Create button + icon + label without overflow)
+  static const double navRailWidth = 100.0;
 
   // ════════════════════════════════════════════════════════════════════════════
   // BORDER RADIUS

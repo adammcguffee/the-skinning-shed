@@ -160,6 +160,29 @@ class SettingsScreen extends ConsumerWidget {
                               subtitle: 'Review pending updates',
                               onTap: () => context.push('/admin/regulations'),
                             ),
+                            // Dev tools (admin + debug only)
+                            if (kDebugMode) ...[
+                              _SettingsToggleItem(
+                                icon: Icons.bug_report_outlined,
+                                title: 'Show Ad Slot Overlay',
+                                subtitle: 'Display ad slot boundaries',
+                                provider: showAdDebugOverlayProvider,
+                              ),
+                              _SettingsItem(
+                                icon: Icons.refresh_rounded,
+                                title: 'Clear Ad Cache',
+                                subtitle: 'Force reload all ads',
+                                onTap: () {
+                                  ref.read(adServiceProvider).clearCache();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Ad cache cleared'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ],
                         ),
                       );
@@ -169,36 +192,6 @@ class SettingsScreen extends ConsumerWidget {
                   );
                 },
               ),
-
-              // Debug section (only in debug builds)
-              if (kDebugMode)
-                SliverToBoxAdapter(
-                  child: _SettingsSection(
-                    title: 'Developer',
-                    children: [
-                      _SettingsToggleItem(
-                        icon: Icons.bug_report_outlined,
-                        title: 'Show Ad Slot Overlay',
-                        subtitle: 'Display ad slot boundaries',
-                        provider: showAdDebugOverlayProvider,
-                      ),
-                      _SettingsItem(
-                        icon: Icons.refresh_rounded,
-                        title: 'Clear Ad Cache',
-                        subtitle: 'Force reload all ads',
-                        onTap: () {
-                          ref.read(adServiceProvider).clearCache();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Ad cache cleared'),
-                              duration: Duration(seconds: 1),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
 
               // Sign out
               SliverToBoxAdapter(
