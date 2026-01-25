@@ -1,7 +1,7 @@
 /**
  * Extraction job processor.
  * Parses HTML/PDF sources to extract structured season data via GPT.
- * Uses strict JSON schema with mandatory citations.
+ * Priority: HTML > PDF > misc_related URLs.
  */
 import {
   RegsJob,
@@ -21,7 +21,10 @@ import { getModelFor, config } from './config';
 import { PromisePool } from './limiter';
 import { sleepWithJitter } from './limiter';
 
-// Strict output schema for extraction
+// ============================================================
+// Output Schema (strict JSON contract)
+// ============================================================
+
 export interface ExtractionOutput {
   state_code: string;
   species: 'deer' | 'turkey';
@@ -78,12 +81,17 @@ export interface ExtractionResult {
   error?: string;
   stats?: {
     sourceType: 'html' | 'pdf';
+    sourceUrl: string;
     contentLength: number;
     fetchDurationMs: number;
     gptDurationMs: number;
     retryCount: number;
   };
 }
+
+// ============================================================
+// Main Extraction Processor
+// ============================================================
 
 export async function processExtractionJob(
   job: RegsJob,
@@ -107,28 +115,20 @@ export async function processExtractionJob(
     return { success: false, skipReason: 'NO_SOURCE', output };
   }
 
-  // Determine source URL based on species
-  let sourceUrl: string | null = null;
-  if (species === 'deer') {
-    sourceUrl = (portalLinks.deer_seasons_url as string) || 
-                (portalLinks.hunting_regs_url as string) || 
-                (portalLinks.hunting_digest_url as string);
-  } else {
-    sourceUrl = (portalLinks.turkey_seasons_url as string) || 
-                (portalLinks.hunting_regs_url as string) || 
-                (portalLinks.hunting_digest_url as string);
-  }
-
-  if (!sourceUrl) {
+  // Find the best source URL using priority system
+  const sourceResult = findBestSource(portalLinks, species);
+  
+  if (!sourceResult.url) {
+    await logJobEvent(job.id, 'warn', `No source URL available for ${species}`);
     const output = createSkipOutput(stateCode, species, 'NO_SOURCE', 'No source URL available for this species');
     return { success: false, skipReason: 'NO_SOURCE', output };
   }
 
-  await logJobEvent(job.id, 'info', `Source URL: ${sourceUrl}`);
+  await logJobEvent(job.id, 'info', `Using ${sourceResult.type} source: ${sourceResult.url}`);
 
   // Fetch content with retry
   const fetchStartTime = Date.now();
-  const contentResult = await fetchContentWithRetry(sourceUrl, job.id, species);
+  const contentResult = await fetchContentWithRetry(sourceResult.url, job.id, species);
   const fetchDurationMs = Date.now() - fetchStartTime;
 
   if (contentResult.skipReason) {
@@ -138,7 +138,8 @@ export async function processExtractionJob(
       skipReason: contentResult.skipReason, 
       output,
       stats: {
-        sourceType: contentResult.sourceType || 'html',
+        sourceType: contentResult.sourceType,
+        sourceUrl: sourceResult.url,
         contentLength: 0,
         fetchDurationMs,
         gptDurationMs: 0,
@@ -148,8 +149,26 @@ export async function processExtractionJob(
   }
 
   if (!contentResult.content || contentResult.content.length < 100) {
-    const output = createSkipOutput(stateCode, species, 'INSUFFICIENT_CONTENT', 'Retrieved content too short');
-    return { success: false, skipReason: 'INSUFFICIENT_CONTENT', output };
+    // Try alternate sources if available
+    if (sourceResult.alternates && sourceResult.alternates.length > 0) {
+      await logJobEvent(job.id, 'info', `Primary source insufficient, trying ${sourceResult.alternates.length} alternates`);
+      
+      for (const alt of sourceResult.alternates.slice(0, 2)) {
+        const altResult = await fetchContentWithRetry(alt.url, job.id, species);
+        if (altResult.content && altResult.content.length >= 100) {
+          await logJobEvent(job.id, 'info', `Using alternate source: ${alt.url}`);
+          Object.assign(contentResult, altResult);
+          sourceResult.url = alt.url;
+          sourceResult.type = alt.type;
+          break;
+        }
+      }
+    }
+    
+    if (!contentResult.content || contentResult.content.length < 100) {
+      const output = createSkipOutput(stateCode, species, 'INSUFFICIENT_CONTENT', 'Retrieved content too short');
+      return { success: false, skipReason: 'INSUFFICIENT_CONTENT', output };
+    }
   }
 
   await logJobEvent(job.id, 'info', 
@@ -161,7 +180,7 @@ export async function processExtractionJob(
   const gptResult = await extractWithGpt(
     stateCode,
     species,
-    sourceUrl,
+    sourceResult.url,
     contentResult.content,
     contentResult.sourceType,
     tier,
@@ -171,6 +190,7 @@ export async function processExtractionJob(
 
   const stats = {
     sourceType: contentResult.sourceType,
+    sourceUrl: sourceResult.url,
     contentLength: contentResult.content.length,
     fetchDurationMs,
     gptDurationMs,
@@ -213,10 +233,14 @@ export async function processExtractionJob(
     return { success: false, skipReason: 'LOW_CONFIDENCE', output, stats };
   }
 
-  // Check citations
-  if (output.citations.length === 0) {
-    await logJobEvent(job.id, 'warn', `No citations provided`);
-    output.confidence_overall = Math.min(output.confidence_overall, 0.5);
+  // Ensure citations have the source type
+  for (const citation of output.citations) {
+    if (!citation.type) {
+      citation.type = contentResult.sourceType;
+    }
+    if (!citation.url) {
+      citation.url = sourceResult.url;
+    }
   }
 
   // Save to database
@@ -228,7 +252,7 @@ export async function processExtractionJob(
     species_group: species,
     region_key: output.unit_scope === 'statewide' ? 'STATEWIDE' : 'MIXED',
     season_year_label: seasonYearLabel,
-    source_url: sourceUrl,
+    source_url: sourceResult.url,
     confidence_score: output.confidence_overall,
     data: output,
     model_used: getModelFor(tier, 'extract'),
@@ -247,9 +271,114 @@ export async function processExtractionJob(
   return { success: true, output, stats };
 }
 
+// ============================================================
+// Source Selection
+// ============================================================
+
+interface SourceSelection {
+  url: string;
+  type: 'html' | 'pdf';
+  alternates?: Array<{ url: string; type: 'html' | 'pdf' }>;
+}
+
 /**
- * Create a skip output with the given reason.
+ * Find the best source URL for extraction.
+ * Priority: HTML > PDF > misc_related
  */
+function findBestSource(
+  portalLinks: Record<string, unknown>,
+  species: 'deer' | 'turkey'
+): { url: string | null; type: 'html' | 'pdf'; alternates?: Array<{ url: string; type: 'html' | 'pdf' }> } {
+  const alternates: Array<{ url: string; type: 'html' | 'pdf' }> = [];
+
+  // Species-specific HTML URL
+  if (species === 'deer') {
+    const htmlUrl = (portalLinks.deer_seasons_url as string) || 
+                    (portalLinks.hunting_regs_url as string);
+    if (htmlUrl) {
+      // Collect alternates
+      if (portalLinks.hunting_regs_pdf_url) {
+        alternates.push({ url: portalLinks.hunting_regs_pdf_url as string, type: 'pdf' });
+      }
+      if (portalLinks.hunting_digest_url) {
+        alternates.push({ url: portalLinks.hunting_digest_url as string, type: isPdfUrl(portalLinks.hunting_digest_url as string) ? 'pdf' : 'html' });
+      }
+      return { url: htmlUrl, type: 'html', alternates };
+    }
+  } else {
+    const htmlUrl = (portalLinks.turkey_seasons_url as string) || 
+                    (portalLinks.hunting_regs_url as string);
+    if (htmlUrl) {
+      if (portalLinks.hunting_regs_pdf_url) {
+        alternates.push({ url: portalLinks.hunting_regs_pdf_url as string, type: 'pdf' });
+      }
+      if (portalLinks.hunting_digest_url) {
+        alternates.push({ url: portalLinks.hunting_digest_url as string, type: isPdfUrl(portalLinks.hunting_digest_url as string) ? 'pdf' : 'html' });
+      }
+      return { url: htmlUrl, type: 'html', alternates };
+    }
+  }
+
+  // PDF URL as primary
+  const pdfUrl = portalLinks.hunting_regs_pdf_url as string;
+  if (pdfUrl) {
+    if (portalLinks.hunting_digest_url) {
+      alternates.push({ url: portalLinks.hunting_digest_url as string, type: isPdfUrl(portalLinks.hunting_digest_url as string) ? 'pdf' : 'html' });
+    }
+    return { url: pdfUrl, type: 'pdf', alternates };
+  }
+
+  // Hunting digest as fallback
+  const digestUrl = portalLinks.hunting_digest_url as string;
+  if (digestUrl) {
+    return { url: digestUrl, type: isPdfUrl(digestUrl) ? 'pdf' : 'html', alternates };
+  }
+
+  // Misc related URLs as last resort
+  const miscRelated = portalLinks.misc_related_urls as Array<{ url: string; label: string; confidence: number }> | null;
+  if (miscRelated && miscRelated.length > 0) {
+    // Sort by confidence, prefer regs/handbook/seasons labels
+    const sorted = [...miscRelated].sort((a, b) => {
+      const aBoost = getRegsLabelBoost(a.label);
+      const bBoost = getRegsLabelBoost(b.label);
+      return (b.confidence + bBoost) - (a.confidence + aBoost);
+    });
+
+    const best = sorted[0];
+    const type = isPdfUrl(best.url) ? 'pdf' : 'html';
+    
+    // Add other misc as alternates
+    for (let i = 1; i < Math.min(sorted.length, 3); i++) {
+      alternates.push({ 
+        url: sorted[i].url, 
+        type: isPdfUrl(sorted[i].url) ? 'pdf' : 'html' 
+      });
+    }
+    
+    return { url: best.url, type, alternates };
+  }
+
+  return { url: null, type: 'html' };
+}
+
+function getRegsLabelBoost(label: string): number {
+  const lower = label.toLowerCase();
+  if (lower.includes('handbook') || lower.includes('guide') || lower.includes('digest')) return 0.3;
+  if (lower.includes('season')) return 0.2;
+  if (lower.includes('regulation')) return 0.15;
+  if (lower.includes('bag limit')) return 0.1;
+  return 0;
+}
+
+function isPdfUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.endsWith('.pdf') || lower.includes('.pdf?') || lower.includes('/pdf/');
+}
+
+// ============================================================
+// Content Fetching
+// ============================================================
+
 function createSkipOutput(
   stateCode: string, 
   species: 'deer' | 'turkey', 
@@ -269,9 +398,6 @@ function createSkipOutput(
   };
 }
 
-/**
- * Fetch content from URL with retry on transient failures.
- */
 async function fetchContentWithRetry(
   sourceUrl: string,
   jobId: string,
@@ -288,8 +414,9 @@ async function fetchContentWithRetry(
   try {
     // Check content type
     const contentInfo = await getContentInfo(sourceUrl);
+    const isPdf = contentInfo.isPdf || isPdfUrl(sourceUrl);
 
-    if (contentInfo.isPdf) {
+    if (isPdf) {
       if (contentInfo.tooLarge) {
         return { content: null, sourceType: 'pdf', skipReason: 'PDF_TOO_LARGE', error: 'PDF exceeds size limit' };
       }
@@ -398,11 +525,11 @@ async function fetchContentWithRetry(
   }
 }
 
-/**
- * Validate extraction output.
- */
+// ============================================================
+// Validation
+// ============================================================
+
 function validateExtractionOutput(output: ExtractionOutput): { valid: boolean; reason?: string } {
-  // Check dates are valid
   for (const entry of output.season_entries) {
     if (!isValidDate(entry.start_date)) {
       return { valid: false, reason: `Invalid start date: ${entry.start_date}` };
@@ -411,14 +538,12 @@ function validateExtractionOutput(output: ExtractionOutput): { valid: boolean; r
       return { valid: false, reason: `Invalid end date: ${entry.end_date}` };
     }
     
-    // Check dates are plausible (within reasonable range)
     const startYear = parseInt(entry.start_date.split('-')[0], 10);
     const currentYear = new Date().getFullYear();
     if (startYear < currentYear - 1 || startYear > currentYear + 2) {
       return { valid: false, reason: `Date year out of range: ${entry.start_date}` };
     }
 
-    // Check end is after start
     if (entry.end_date < entry.start_date) {
       return { valid: false, reason: `End date before start date: ${entry.start_date} to ${entry.end_date}` };
     }
@@ -433,7 +558,10 @@ function isValidDate(dateStr: string): boolean {
   return !isNaN(date.getTime());
 }
 
-// GPT extraction types
+// ============================================================
+// GPT Extraction
+// ============================================================
+
 interface GptExtractionResult {
   output?: ExtractionOutput;
   error?: string;
@@ -441,9 +569,6 @@ interface GptExtractionResult {
   retryCount?: number;
 }
 
-/**
- * Extract season data using GPT with strict JSON schema.
- */
 async function extractWithGpt(
   stateCode: string,
   species: 'deer' | 'turkey',
@@ -463,20 +588,20 @@ TASK: Extract ${species.toUpperCase()} hunting season information for state ${st
 For each season, extract:
 - season_name: Name (e.g., "Archery Season", "General Firearms Season", "Early Muzzleloader")
 - weapon: Allowed weapons (bow, rifle, shotgun, muzzleloader, crossbow, etc.) or null
-- start_date: YYYY-MM-DD format (REQUIRED)
+- start_date: YYYY-MM-DD format (REQUIRED - assume year ${currentYear} or ${currentYear + 1})
 - end_date: YYYY-MM-DD format (REQUIRED)
 - bag_limit: Specific bag limit for this season or null
-- antler_restrictions: Any antler point restrictions (e.g., "3 points on one side minimum")
+- antler_restrictions: Any antler point restrictions
 - area_notes: Zone/area restrictions if not statewide
 - notes: Any special notes
 
 CRITICAL RULES:
 1. ONLY extract information that is EXPLICITLY stated in the document
 2. Do NOT guess or infer dates - if exact dates aren't shown, do NOT include that season
-3. CITATIONS ARE REQUIRED for any date you extract - include the exact text that shows the dates
-4. Dates must be in YYYY-MM-DD format (assume year ${currentYear} or ${currentYear + 1} based on season timing)
-5. If the document shows date ranges spanning multiple lines or formats, parse carefully
-6. Do NOT hallucinate - if unsure, exclude the season rather than guess
+3. CITATIONS ARE REQUIRED - include exact text quotes with page numbers for PDFs
+4. Dates must be in YYYY-MM-DD format
+5. For PDF sources, include page_number in citations when visible
+6. Do NOT hallucinate - if unsure, exclude rather than guess
 
 OUTPUT: Return ONLY valid JSON matching this exact schema:
 
@@ -506,26 +631,27 @@ OUTPUT: Return ONLY valid JSON matching this exact schema:
     {
       "url": "${sourceUrl}",
       "type": "${sourceType}",
-      "snippet": "<EXACT text from document that shows the dates/limits>",
+      "snippet": "<EXACT text from document>",
       "page_number": <number or null>
     }
   ],
   "confidence_overall": <0.0-1.0>,
   "skip_reason": null | "NO_SEASONS_FOUND" | "AMBIGUOUS" | "OUT_OF_SEASON",
-  "notes": "<explanation of what you found or why you couldn't extract>"
+  "notes": "<explanation of findings>"
 }`;
 
   const userPrompt = `Extract ${species} hunting season data from this ${sourceType.toUpperCase()} document for ${stateCode}.
 
 SOURCE: ${sourceUrl}
+TYPE: ${sourceType}
 
 DOCUMENT CONTENT:
 ${content}
 
 Remember:
 - ONLY include seasons with explicit dates
-- Include exact citation snippets for each date you extract
-- Set confidence based on how clear/complete the information is
+- Include exact citation snippets${sourceType === 'pdf' ? ' with page numbers when visible' : ''}
+- Set confidence based on clarity/completeness
 - If no usable data, return empty season_entries with skip_reason`;
 
   const result = await callOpenAIWithRetry(
@@ -552,7 +678,7 @@ Remember:
     return { error: 'Failed to parse GPT response as JSON', retryCount: result.retryCount };
   }
 
-  // Ensure required fields exist
+  // Ensure required fields
   if (!parsed.state_code) parsed.state_code = stateCode;
   if (!parsed.species) parsed.species = species;
   if (!parsed.season_entries) parsed.season_entries = [];

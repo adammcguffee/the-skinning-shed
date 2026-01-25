@@ -448,6 +448,37 @@ class VerifyRunStatus {
   bool get isCanceled => status == 'canceled';
 }
 
+/// Misc related URL for when we can't find exact regs page.
+class MiscRelatedUrl {
+  const MiscRelatedUrl({
+    required this.url,
+    required this.label,
+    this.confidence = 0.0,
+    this.evidenceSnippet,
+  });
+  
+  final String url;
+  final String label;
+  final double confidence;
+  final String? evidenceSnippet;
+  
+  factory MiscRelatedUrl.fromJson(Map<String, dynamic> json) {
+    return MiscRelatedUrl(
+      url: json['url'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      evidenceSnippet: json['evidence_snippet'] as String?,
+    );
+  }
+  
+  Map<String, dynamic> toJson() => {
+    'url': url,
+    'label': label,
+    'confidence': confidence,
+    'evidence_snippet': evidenceSnippet,
+  };
+}
+
 /// State portal links for quick access to official agency pages.
 class StatePortalLinks {
   const StatePortalLinks({
@@ -474,6 +505,16 @@ class StatePortalLinks {
     this.deerSeasonsVerified = false,
     this.turkeySeasonsVerified = false,
     this.huntingDigestVerified = false,
+    // PDF URLs for when regulations are in PDF format
+    this.huntingRegsPdfUrl,
+    this.fishingRegsPdfUrl,
+    this.huntingRegsPdfStatus,
+    this.fishingRegsPdfStatus,
+    // Misc related URLs for fallback
+    this.miscRelatedUrls,
+    // Discovery metadata
+    this.discoveryNotes,
+    this.discoveryConfidence,
   });
   
   final String stateCode;
@@ -492,6 +533,19 @@ class StatePortalLinks {
   final String? turkeySeasonsUrl;
   final String? huntingDigestUrl;
   
+  // PDF URLs (for states where regs are PDF handbooks)
+  final String? huntingRegsPdfUrl;
+  final String? fishingRegsPdfUrl;
+  final String? huntingRegsPdfStatus;
+  final String? fishingRegsPdfStatus;
+  
+  // Misc related URLs (fallback when exact page uncertain)
+  final List<MiscRelatedUrl>? miscRelatedUrls;
+  
+  // Discovery metadata
+  final String? discoveryNotes;
+  final Map<String, double>? discoveryConfidence;
+  
   // Verification status
   final bool huntingSeasonsVerified;
   final bool huntingRegsVerified;
@@ -503,16 +557,27 @@ class StatePortalLinks {
   final bool turkeySeasonsVerified;
   final bool huntingDigestVerified;
   
-  // Has URL
+  // Has URL (HTML or PDF)
   bool get hasHuntingSeasons => huntingSeasonsUrl != null && huntingSeasonsUrl!.isNotEmpty;
   bool get hasHuntingRegs => huntingRegsUrl != null && huntingRegsUrl!.isNotEmpty;
+  bool get hasHuntingRegsPdf => huntingRegsPdfUrl != null && huntingRegsPdfUrl!.isNotEmpty;
+  bool get hasAnyHuntingRegs => hasHuntingRegs || hasHuntingRegsPdf;
   bool get hasFishingRegs => fishingRegsUrl != null && fishingRegsUrl!.isNotEmpty;
+  bool get hasFishingRegsPdf => fishingRegsPdfUrl != null && fishingRegsPdfUrl!.isNotEmpty;
+  bool get hasAnyFishingRegs => hasFishingRegs || hasFishingRegsPdf;
   bool get hasLicensing => licensingUrl != null && licensingUrl!.isNotEmpty;
   bool get hasBuyLicense => buyLicenseUrl != null && buyLicenseUrl!.isNotEmpty;
   bool get hasRecords => recordsUrl != null && recordsUrl!.isNotEmpty;
   bool get hasDeerSeasons => deerSeasonsUrl != null && deerSeasonsUrl!.isNotEmpty;
   bool get hasTurkeySeasons => turkeySeasonsUrl != null && turkeySeasonsUrl!.isNotEmpty;
   bool get hasHuntingDigest => huntingDigestUrl != null && huntingDigestUrl!.isNotEmpty;
+  bool get hasMiscRelated => miscRelatedUrls != null && miscRelatedUrls!.isNotEmpty;
+  
+  // Check if we have ANY extractable source
+  bool get hasAnyExtractableSource => 
+      hasHuntingRegs || hasHuntingRegsPdf || 
+      hasFishingRegs || hasFishingRegsPdf || 
+      hasMiscRelated || hasHuntingDigest;
   
   // Available = has URL AND verified
   bool get huntingSeasonsAvailable => hasHuntingSeasons && huntingSeasonsVerified;
@@ -525,7 +590,31 @@ class StatePortalLinks {
   bool get turkeySeasonsAvailable => hasTurkeySeasons && turkeySeasonsVerified;
   bool get huntingDigestAvailable => hasHuntingDigest && huntingDigestVerified;
   
+  /// True if using PDF as primary source (no HTML available)
+  bool get usingHuntingPdf => !hasHuntingRegs && hasHuntingRegsPdf;
+  bool get usingFishingPdf => !hasFishingRegs && hasFishingRegsPdf;
+  
   factory StatePortalLinks.fromJson(Map<String, dynamic> json) {
+    // Parse misc_related_urls JSONB
+    List<MiscRelatedUrl>? miscUrls;
+    if (json['misc_related_urls'] != null) {
+      final rawList = json['misc_related_urls'] as List<dynamic>?;
+      if (rawList != null) {
+        miscUrls = rawList
+            .map((e) => MiscRelatedUrl.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    }
+    
+    // Parse discovery_confidence JSONB
+    Map<String, double>? confidence;
+    if (json['discovery_confidence'] != null) {
+      final rawMap = json['discovery_confidence'] as Map<String, dynamic>?;
+      if (rawMap != null) {
+        confidence = rawMap.map((k, v) => MapEntry(k, (v as num?)?.toDouble() ?? 0.0));
+      }
+    }
+    
     return StatePortalLinks(
       stateCode: json['state_code'] as String,
       stateName: json['state_name'] as String? ?? '',
@@ -550,6 +639,16 @@ class StatePortalLinks {
       deerSeasonsVerified: json['verified_deer_seasons_ok'] as bool? ?? false,
       turkeySeasonsVerified: json['verified_turkey_seasons_ok'] as bool? ?? false,
       huntingDigestVerified: json['verified_hunting_digest_ok'] as bool? ?? false,
+      // PDF URLs
+      huntingRegsPdfUrl: json['hunting_regs_pdf_url'] as String?,
+      fishingRegsPdfUrl: json['fishing_regs_pdf_url'] as String?,
+      huntingRegsPdfStatus: json['hunting_regs_pdf_status'] as String?,
+      fishingRegsPdfStatus: json['fishing_regs_pdf_status'] as String?,
+      // Misc related URLs
+      miscRelatedUrls: miscUrls,
+      // Discovery metadata
+      discoveryNotes: json['discovery_notes'] as String?,
+      discoveryConfidence: confidence,
     );
   }
 }
@@ -1316,17 +1415,25 @@ class RegulationsService {
           licensing_url, verified_licensing_ok,
           buy_license_url, verified_buy_license_ok,
           records_url, verified_records_ok,
+          deer_seasons_url, verified_deer_seasons_ok,
+          turkey_seasons_url, verified_turkey_seasons_ok,
+          hunting_digest_url, verified_hunting_digest_ok,
+          hunting_regs_pdf_url,
+          fishing_regs_pdf_url,
+          misc_related_urls,
           last_verified_at
         ''');
 
     final portalRowsCount = (linksResponse as List).length;
     int filledFieldsCount = 0;
     int verifiedFieldsCount = 0;
+    int pdfFieldsCount = 0;
+    int miscRelatedCount = 0;
+    int extractableStatesCount = 0;
     DateTime? lastVerified;
 
     for (final row in linksResponse) {
       // Count non-null URLs and their verification status
-      // Includes both old and new hunting slots
       final fields = [
         ('hunting_seasons_url', 'verified_hunting_seasons_ok'),
         ('hunting_regs_url', 'verified_hunting_regs_ok'),
@@ -1334,7 +1441,7 @@ class RegulationsService {
         ('licensing_url', 'verified_licensing_ok'),
         ('buy_license_url', 'verified_buy_license_ok'),
         ('records_url', 'verified_records_ok'),
-        // New species-specific slots
+        // Species-specific slots
         ('deer_seasons_url', 'verified_deer_seasons_ok'),
         ('turkey_seasons_url', 'verified_turkey_seasons_ok'),
         ('hunting_digest_url', 'verified_hunting_digest_ok'),
@@ -1349,6 +1456,30 @@ class RegulationsService {
             verifiedFieldsCount++;
           }
         }
+      }
+      
+      // Count PDF fields (not verified separately)
+      final huntingPdfUrl = row['hunting_regs_pdf_url'] as String?;
+      final fishingPdfUrl = row['fishing_regs_pdf_url'] as String?;
+      if (huntingPdfUrl != null && huntingPdfUrl.isNotEmpty) pdfFieldsCount++;
+      if (fishingPdfUrl != null && fishingPdfUrl.isNotEmpty) pdfFieldsCount++;
+      
+      // Count misc_related_urls
+      final miscRelated = row['misc_related_urls'] as List?;
+      if (miscRelated != null && miscRelated.isNotEmpty) {
+        miscRelatedCount += miscRelated.length;
+      }
+      
+      // Check if this state has any extractable source
+      final hasHuntingRegs = (row['hunting_regs_url'] as String?)?.isNotEmpty ?? false;
+      final hasHuntingPdf = huntingPdfUrl?.isNotEmpty ?? false;
+      final hasFishingRegs = (row['fishing_regs_url'] as String?)?.isNotEmpty ?? false;
+      final hasFishingPdf = fishingPdfUrl?.isNotEmpty ?? false;
+      final hasDigest = (row['hunting_digest_url'] as String?)?.isNotEmpty ?? false;
+      final hasMisc = miscRelated?.isNotEmpty ?? false;
+      
+      if (hasHuntingRegs || hasHuntingPdf || hasFishingRegs || hasFishingPdf || hasDigest || hasMisc) {
+        extractableStatesCount++;
       }
 
       // Track last verified timestamp
@@ -1380,6 +1511,9 @@ class RegulationsService {
       'portal_rows_count': portalRowsCount,
       'filled_fields_count': filledFieldsCount,
       'verified_fields_count': verifiedFieldsCount,
+      'pdf_fields_count': pdfFieldsCount,
+      'misc_related_count': miscRelatedCount,
+      'extractable_states_count': extractableStatesCount,
       'broken_count': brokenCount,
       'missing_state_codes': missingStateCodes,
       'last_verified_at': lastVerified?.toIso8601String(),

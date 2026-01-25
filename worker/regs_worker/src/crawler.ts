@@ -57,16 +57,22 @@ const DEPRIORITIZE_KEYWORDS = [
   'subscribe', 'newsletter', 'email signup',
 ];
 
-// URL patterns to skip entirely
+// URL patterns to skip entirely (but NOT pdfs - we want those!)
 const SKIP_URL_PATTERNS = [
   /\/(news|blog|events|calendar|press|media|shop|store|careers|jobs)\//i,
   /\.(jpg|jpeg|png|gif|svg|ico|css|js|woff|woff2|ttf|eot)$/i,
   /\?(utm_|fbclid|gclid|ref=)/i,
-  /\/wp-content\//i,
+  /\/wp-content\/(?!uploads)/i, // Allow wp-content/uploads for PDFs
   /\/feed\/?$/i,
   /\/comments\/?$/i,
   /\/page\/\d+\/?$/i,
   /\/(tag|category|author)\//i,
+];
+
+// PDF-related keywords (boost these PDFs)
+const PDF_REGS_KEYWORDS = [
+  'regulation', 'guide', 'handbook', 'digest', 'seasons', 'rules',
+  'hunting', 'fishing', 'wildlife', 'game', 'bag-limit', 'baglimit',
 ];
 
 /**
@@ -232,6 +238,7 @@ async function fetchPageWithRetry(url: string): Promise<{
   html: string | null;
   blocked: boolean;
   blockReason?: string;
+  isPdf?: boolean;
 }> {
   const maxRetries = config.fetchMaxRetries;
   let lastError: Error | null = null;
@@ -271,8 +278,18 @@ async function fetchPageWithRetry(url: string): Promise<{
       }
 
       const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('text/html')) {
+      
+      // Accept HTML pages and PDF documents
+      const isHtml = contentType.includes('text/html');
+      const isPdf = contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf');
+      
+      if (!isHtml && !isPdf) {
         return { html: null, blocked: false };
+      }
+
+      // For PDFs, we don't need the content - just note it's a PDF
+      if (isPdf) {
+        return { html: `<title>PDF Document</title><body>PDF file at ${url}</body>`, blocked: false, isPdf: true };
       }
 
       const html = await response.text();

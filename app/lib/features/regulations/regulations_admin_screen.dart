@@ -1349,8 +1349,30 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ],
         ),
         const SizedBox(height: 12),
-        // Row 3: Broken Links (always show)
+        // Row 3: PDF Sources + Extractable States
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                icon: Icons.picture_as_pdf_rounded,
+                label: 'PDF Sources',
+                value: '${_stats.pdfFieldsCount}',
+                color: _stats.pdfFieldsCount > 0 ? AppColors.info : AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.auto_awesome_rounded,
+                label: 'Extractable',
+                value: '${_stats.extractableStatesCount}/50',
+                color: _stats.extractableStatesCount > 0 ? AppColors.accent : AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
+        // Row 4: Broken Links
         _StatCard(
           icon: Icons.link_off_rounded,
           label: 'Broken Links',
@@ -1975,7 +1997,20 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
   
   Widget _buildExtractionSection() {
-    final hasPortalUrls = _stats.filledFieldsCount > 0;
+    final hasExtractableSources = _stats.hasExtractableSources;
+    final hasPdfSources = _stats.hasPdfSources;
+    
+    // Build helper text based on available sources
+    String helperText;
+    if (hasExtractableSources) {
+      if (hasPdfSources) {
+        helperText = 'Extract from ${_stats.extractableStatesCount} states (${_stats.pdfFieldsCount} PDFs). Parses PDFs on server.';
+      } else {
+        helperText = 'Extract from ${_stats.extractableStatesCount} states. Only publishes when confidence >= 85%.';
+      }
+    } else {
+      helperText = 'No portal URLs to extract from. Run GPT Discovery first.';
+    }
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1992,16 +2027,32 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 color: AppColors.textPrimary,
               ),
             ),
+            if (hasPdfSources) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'PDF',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.info,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          hasPortalUrls
-              ? 'Extract structured season dates & bag limits from official sources. Only publishes when confidence >= 85%.'
-              : 'No portal URLs to extract from. Run GPT Discovery first.',
+          helperText,
           style: TextStyle(
             fontSize: 13,
-            color: hasPortalUrls ? AppColors.textSecondary : AppColors.warning,
+            color: hasExtractableSources ? AppColors.textSecondary : AppColors.warning,
           ),
         ),
         const SizedBox(height: 12),
@@ -2154,11 +2205,11 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: hasPortalUrls ? () => _startExtractionRun(tier: 'basic') : null,
+                  onPressed: hasExtractableSources ? () => _startExtractionRun(tier: 'basic') : null,
                   icon: const Icon(Icons.auto_awesome_rounded),
-                  label: Text(hasPortalUrls ? 'Extract Facts Now' : 'Run Discovery First'),
+                  label: Text(hasExtractableSources ? 'Extract Facts Now' : 'Run Discovery First'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: hasPortalUrls ? AppColors.accent : AppColors.textTertiary,
+                    backgroundColor: hasExtractableSources ? AppColors.accent : AppColors.textTertiary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
@@ -2168,18 +2219,18 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               SizedBox(
                 height: 44,
                 child: OutlinedButton.icon(
-                  onPressed: hasPortalUrls ? () => _startExtractionRun(tier: 'pro') : null,
-                  icon: Icon(Icons.bolt, size: 16, color: hasPortalUrls ? AppColors.accent : AppColors.textTertiary),
+                  onPressed: hasExtractableSources ? () => _startExtractionRun(tier: 'pro') : null,
+                  icon: Icon(Icons.bolt, size: 16, color: hasExtractableSources ? AppColors.accent : AppColors.textTertiary),
                   label: Text(
                     'PRO',
                     style: TextStyle(
-                      color: hasPortalUrls ? AppColors.accent : AppColors.textTertiary,
+                      color: hasExtractableSources ? AppColors.accent : AppColors.textTertiary,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: hasPortalUrls 
+                    side: BorderSide(color: hasExtractableSources 
                         ? AppColors.accent.withValues(alpha: 0.5)
                         : AppColors.textTertiary.withValues(alpha: 0.3)),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2820,6 +2871,9 @@ class _AdminStats {
     this.portalRowsCount = 0,
     this.filledFieldsCount = 0,
     this.verifiedFieldsCount = 0,
+    this.pdfFieldsCount = 0,
+    this.miscRelatedCount = 0,
+    this.extractableStatesCount = 0,
     this.brokenCount = 0,
     this.missingStateCodes = const [],
     this.lastVerifiedAt,
@@ -2829,18 +2883,24 @@ class _AdminStats {
   final int portalRowsCount;
   final int filledFieldsCount;
   final int verifiedFieldsCount;
+  final int pdfFieldsCount;
+  final int miscRelatedCount;
+  final int extractableStatesCount;
   final int brokenCount;
   final List<String> missingStateCodes;
   final DateTime? lastVerifiedAt;
 
   /// Total possible fields (9 per state * 50 states = 450)
-  /// Old: hunting_seasons, hunting_regs, fishing_regs, licensing, buy_license, records
-  /// New: deer_seasons, turkey_seasons, hunting_digest, fishing_regs, licensing, buy_license, records
-  /// Plus legacy hunting_seasons + hunting_regs for compatibility = 9 total
   int get totalPossibleFields => rootsCount * 9;
   
   /// Whether all states have portal rows
   bool get allStatesHavePortalRows => portalRowsCount >= rootsCount;
+  
+  /// True if any extractable sources exist (HTML, PDF, or misc)
+  bool get hasExtractableSources => extractableStatesCount > 0;
+  
+  /// True if we have PDF sources
+  bool get hasPdfSources => pdfFieldsCount > 0;
 
   factory _AdminStats.fromMap(Map<String, dynamic> map) {
     return _AdminStats(
@@ -2848,6 +2908,9 @@ class _AdminStats {
       portalRowsCount: map['portal_rows_count'] ?? 0,
       filledFieldsCount: map['filled_fields_count'] ?? 0,
       verifiedFieldsCount: map['verified_fields_count'] ?? 0,
+      pdfFieldsCount: map['pdf_fields_count'] ?? 0,
+      miscRelatedCount: map['misc_related_count'] ?? 0,
+      extractableStatesCount: map['extractable_states_count'] ?? 0,
       brokenCount: map['broken_count'] ?? 0,
       missingStateCodes: (map['missing_state_codes'] as List?)
           ?.map((e) => e as String)
