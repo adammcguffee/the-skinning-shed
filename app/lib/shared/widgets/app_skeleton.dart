@@ -117,15 +117,32 @@ class AppCardSkeleton extends StatelessWidget {
                   // Subtitle
                   const AppSkeleton(width: 120, height: 14),
                   const SizedBox(height: AppSpacing.md),
-                  // Actions row
-                  Row(
-                    children: [
-                      const AppSkeleton(width: 60, height: 24),
-                      const SizedBox(width: AppSpacing.sm),
-                      const AppSkeleton(width: 60, height: 24),
-                      const Spacer(),
-                      const AppSkeleton(width: 24, height: 24),
-                    ],
+                  // Actions row - use LayoutBuilder to prevent overflow
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      // If width is too narrow, show compact version
+                      if (constraints.maxWidth < 160) {
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: AppSkeleton(height: 20),
+                            ),
+                            const SizedBox(width: 8),
+                            const AppSkeleton(width: 20, height: 20),
+                          ],
+                        );
+                      }
+                      // Normal width: show full actions
+                      return Row(
+                        children: [
+                          const AppSkeleton(width: 60, height: 24),
+                          const SizedBox(width: AppSpacing.sm),
+                          const AppSkeleton(width: 60, height: 24),
+                          const Spacer(),
+                          const AppSkeleton(width: 24, height: 24),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
