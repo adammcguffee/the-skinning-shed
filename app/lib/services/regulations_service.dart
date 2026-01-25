@@ -3311,10 +3311,11 @@ extension RegulationsServiceJobQueue on RegulationsService {
       type: 'extract',
       tier: tier,
       status: 'running',
-      statusLabel: 'Running',
       progressDone: 0,
       progressTotal: queuedCount,
-      summaryLabel: '$queuedCount jobs queued',
+      jobs: {'queued': queuedCount, 'running': 0, 'done': 0, 'failed': 0, 'skipped': 0, 'canceled': 0},
+      active: true,
+      done: false,
     );
   }
 
