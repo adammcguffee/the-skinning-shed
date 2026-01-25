@@ -48,6 +48,9 @@ const IDLE_LOG_INTERVAL_MS = 30_000;
 const HEALTH_CHECK_INTERVAL = 50; // Every N loops, do a health check
 const COMMAND_CHECK_INTERVAL = 5; // Every N loops, check for commands
 
+// Job timeout - if a job takes longer than this, skip it
+const JOB_TIMEOUT_MS = 180_000; // 3 minutes max per job
+
 // ============================================================
 // CRASH PROTECTION - Catch unhandled errors and exit cleanly
 // ============================================================
@@ -97,7 +100,27 @@ interface JobSlot {
 const jobSlots: JobSlot[] = [];
 
 /**
- * Process a single job.
+ * Timeout wrapper - rejects after ms milliseconds.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+/**
+ * Process a single job with timeout protection.
  */
 async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> {
   const startTime = Date.now();
@@ -120,12 +143,35 @@ async function processJob(job: RegsJob, openaiPool: PromisePool): Promise<void> 
       stats?: Record<string, unknown>;
     };
 
-    if (job.job_type === 'discover_state') {
-      result = await processDiscoveryJob(job, openaiPool);
-    } else if (job.job_type === 'extract_state_species') {
-      result = await processExtractionJob(job, openaiPool);
-    } else {
-      result = { success: false, error: `Unknown job type: ${job.job_type}` };
+    // Wrap job processing with timeout
+    try {
+      if (job.job_type === 'discover_state') {
+        result = await withTimeout(
+          processDiscoveryJob(job, openaiPool),
+          JOB_TIMEOUT_MS,
+          `Discovery job for ${job.state_code}`
+        );
+      } else if (job.job_type === 'extract_state_species') {
+        result = await withTimeout(
+          processExtractionJob(job, openaiPool),
+          JOB_TIMEOUT_MS,
+          `Extraction job for ${job.state_code}`
+        );
+      } else {
+        result = { success: false, error: `Unknown job type: ${job.job_type}` };
+      }
+    } catch (timeoutErr) {
+      // Job timed out - skip it so we don't block the pipeline
+      const duration = Date.now() - startTime;
+      const timeoutMsg = timeoutErr instanceof Error ? timeoutErr.message : 'Job timed out';
+      console.warn(`[Worker] Job ${job.id} TIMED OUT after ${duration}ms: ${timeoutMsg}`);
+      await completeJob(job.id, 'skipped', { 
+        skipReason: 'JOB_TIMEOUT', 
+        resultJson: { error: timeoutMsg, duration_ms: duration } 
+      });
+      totalJobsCompleted++;
+      lastProgressTime = new Date();
+      return;
     }
 
     const duration = Date.now() - startTime;
