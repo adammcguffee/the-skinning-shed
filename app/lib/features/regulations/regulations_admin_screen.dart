@@ -208,14 +208,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
 
   /// Cancel the current verification run.
   Future<void> _cancelVerification() async {
-    final runId = _currentRun?.runId;
-    if (runId == null) return;
+    if (_currentRun == null) return;
     
     setState(() => _isCanceling = true);
     
     try {
       final service = ref.read(regulationsServiceProvider);
-      await service.cancelVerificationRun(runId);
+      await service.cancelVerificationRun(_currentRun!.runId);
       
       if (mounted) {
         setState(() {
@@ -230,13 +229,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       }
     } catch (e) {
       if (mounted) {
-        // Reset canceling flag and restart polling since the run may still be active
         setState(() => _isCanceling = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cancel failed: $e')),
+          SnackBar(content: Text('Error canceling: $e')),
         );
-        // Restart polling loop since it exited when _isCanceling was set true
-        _pollVerification(runId);
       }
     }
   }
@@ -1279,17 +1275,34 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                         ],
                       ),
                       const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: _viewRepairReport,
-                        icon: Icon(Icons.article_outlined, size: 16, color: AppColors.accent),
-                        label: Text(
-                          'View Full Report',
-                          style: TextStyle(fontSize: 12, color: AppColors.accent),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                        ),
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: _viewRepairReport,
+                            icon: Icon(Icons.article_outlined, size: 16, color: AppColors.accent),
+                            label: Text(
+                              'View Full Report',
+                              style: TextStyle(fontSize: 12, color: AppColors.accent),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          TextButton.icon(
+                            onPressed: _viewRepairHistory,
+                            icon: Icon(Icons.history_rounded, size: 16, color: AppColors.textSecondary),
+                            label: Text(
+                              'Repair History',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1299,6 +1312,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ],
         ],
       ),
+    );
+  }
+  
+  /// Show repair history modal with undo functionality.
+  Future<void> _viewRepairHistory() async {
+    final service = ref.read(regulationsServiceProvider);
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => _RepairHistoryDialog(service: service),
     );
   }
 
@@ -1743,6 +1766,357 @@ class _StatCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Dialog showing repair history with undo functionality.
+class _RepairHistoryDialog extends StatefulWidget {
+  const _RepairHistoryDialog({required this.service});
+  
+  final RegulationsService service;
+  
+  @override
+  State<_RepairHistoryDialog> createState() => _RepairHistoryDialogState();
+}
+
+class _RepairHistoryDialogState extends State<_RepairHistoryDialog> {
+  bool _isLoading = true;
+  List<RepairAuditRecord> _repairs = [];
+  String? _error;
+  String? _undoingId;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadRepairs();
+  }
+  
+  Future<void> _loadRepairs() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    
+    try {
+      final repairs = await widget.service.fetchRecentRepairs(limit: 50);
+      if (mounted) {
+        setState(() {
+          _repairs = repairs;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  Future<void> _undoRepair(RepairAuditRecord repair) async {
+    setState(() => _undoingId = repair.id);
+    
+    try {
+      await widget.service.undoRepair(repair.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Undone: ${repair.stateCode} ${repair.fieldLabel}'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        _loadRepairs(); // Refresh list
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Undo failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        setState(() => _undoingId = null);
+      }
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      child: Container(
+        width: 600,
+        constraints: const BoxConstraints(maxHeight: 500),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, color: AppColors.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Repair History',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.close, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            
+            // Content
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: AppColors.error),
+                          ),
+                        )
+                      : _repairs.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No repair history yet',
+                                style: TextStyle(color: AppColors.textSecondary),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(8),
+                              itemCount: _repairs.length,
+                              itemBuilder: (ctx, idx) => _buildRepairItem(_repairs[idx]),
+                            ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildRepairItem(RepairAuditRecord repair) {
+    final isUndoing = _undoingId == repair.id;
+    
+    Color statusColor;
+    IconData statusIcon;
+    switch (repair.status) {
+      case 'fixed':
+        statusColor = AppColors.success;
+        statusIcon = Icons.check_circle;
+        break;
+      case 'undone':
+        statusColor = AppColors.warning;
+        statusIcon = Icons.undo;
+        break;
+      case 'skipped':
+        statusColor = AppColors.textTertiary;
+        statusIcon = Icons.skip_next;
+        break;
+      default:
+        statusColor = AppColors.textSecondary;
+        statusIcon = Icons.info_outline;
+    }
+    
+    return Card(
+      color: AppColors.background,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Row(
+              children: [
+                Icon(statusIcon, size: 16, color: statusColor),
+                const SizedBox(width: 8),
+                Text(
+                  '${repair.stateCode} • ${repair.fieldLabel}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    repair.status.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            // Confidence + reason
+            if (repair.confidence != null && repair.confidence! > 0) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _ConfidenceBadge(confidence: repair.confidence!),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      repair.gptReason ?? repair.message ?? '',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            
+            // URLs
+            if (repair.newUrl != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.link, size: 12, color: AppColors.textTertiary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      repair.newUrl!,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.accent,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            
+            // Validation info
+            if (repair.validationReason != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Validation: ${repair.validationReason}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: repair.validationPassed == true 
+                      ? AppColors.success 
+                      : AppColors.textTertiary,
+                ),
+              ),
+            ],
+            
+            // Undo button for fixed repairs
+            if (repair.canUndo) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: isUndoing ? null : () => _undoRepair(repair),
+                  icon: isUndoing
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(Icons.undo, size: 14),
+                  label: Text(isUndoing ? 'Undoing...' : 'Undo This Repair'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.warning,
+                    side: BorderSide(color: AppColors.warning.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+            ],
+            
+            // Timestamp
+            if (repair.repairedAt != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _formatTime(repair.repairedAt!),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
+  }
+}
+
+/// Badge showing GPT confidence level.
+class _ConfidenceBadge extends StatelessWidget {
+  const _ConfidenceBadge({required this.confidence});
+  
+  final int confidence;
+  
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    if (confidence >= 75) {
+      color = AppColors.success;
+    } else if (confidence >= 50) {
+      color = AppColors.warning;
+    } else {
+      color = AppColors.error;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        '$confidence%',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }

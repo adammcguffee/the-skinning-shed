@@ -1730,6 +1730,123 @@ class RegulationsService {
         .update({column: locked})
         .eq('state_code', stateCode);
   }
+
+  /// Fetch recent repair audit records.
+  Future<List<RepairAuditRecord>> fetchRecentRepairs({int limit = 50}) async {
+    final client = _supabaseService.client;
+    if (client == null) return [];
+
+    final response = await client
+        .from('reg_link_repairs')
+        .select('*')
+        .order('repaired_at', ascending: false)
+        .limit(limit);
+
+    return (response as List)
+        .map((r) => RepairAuditRecord.fromJson(r as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Undo a repair (roll back to old URL).
+  Future<void> undoRepair(String repairId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-repair-undo',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'repair_id': repairId},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception(error);
+    }
+  }
+}
+
+/// Audit record for a GPT-assisted repair.
+class RepairAuditRecord {
+  const RepairAuditRecord({
+    required this.id,
+    required this.stateCode,
+    required this.field,
+    required this.oldUrl,
+    this.newUrl,
+    required this.status,
+    this.message,
+    this.pagesCrawled,
+    this.candidatesFound,
+    this.confidence,
+    this.gptReason,
+    this.validationPassed,
+    this.validationReason,
+    this.requiredKeywordMatched,
+    this.negativeKeywordBlocked,
+    this.repairedAt,
+    this.runId,
+  });
+
+  final String id;
+  final String stateCode;
+  final String field;
+  final String oldUrl;
+  final String? newUrl;
+  final String status; // fixed, skipped, undone
+  final String? message;
+  final int? pagesCrawled;
+  final int? candidatesFound;
+  final int? confidence;
+  final String? gptReason;
+  final bool? validationPassed;
+  final String? validationReason;
+  final bool? requiredKeywordMatched;
+  final bool? negativeKeywordBlocked;
+  final DateTime? repairedAt;
+  final String? runId;
+
+  /// Human-readable field label.
+  String get fieldLabel {
+    const labels = {
+      'hunting_seasons_url': 'Hunting Seasons',
+      'hunting_regs_url': 'Hunting Regs',
+      'fishing_regs_url': 'Fishing Regs',
+      'licensing_url': 'Licensing',
+      'buy_license_url': 'Buy License',
+      'records_url': 'Records',
+    };
+    return labels[field] ?? field;
+  }
+
+  /// Whether this repair can be undone.
+  bool get canUndo => status == 'fixed';
+
+  factory RepairAuditRecord.fromJson(Map<String, dynamic> json) {
+    return RepairAuditRecord(
+      id: json['id'] as String,
+      stateCode: json['state_code'] as String,
+      field: json['field'] as String,
+      oldUrl: json['old_url'] as String,
+      newUrl: json['new_url'] as String?,
+      status: json['status'] as String,
+      message: json['message'] as String?,
+      pagesCrawled: json['pages_crawled'] as int?,
+      candidatesFound: json['candidates_found'] as int?,
+      confidence: json['confidence'] as int?,
+      gptReason: json['gpt_reason'] as String?,
+      validationPassed: json['validation_passed'] as bool?,
+      validationReason: json['validation_reason'] as String?,
+      requiredKeywordMatched: json['required_keyword_matched'] as bool?,
+      negativeKeywordBlocked: json['negative_keyword_blocked'] as bool?,
+      repairedAt: json['repaired_at'] != null
+          ? DateTime.tryParse(json['repaired_at'] as String)
+          : null,
+      runId: json['run_id'] as String?,
+    );
+  }
 }
 
 /// Status of a discovery repair run.
