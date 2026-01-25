@@ -1599,11 +1599,11 @@ class RegulationsService {
     final client = _supabaseService.client;
     if (client == null) return null;
 
-    // Look for discovery runs in reg_repair_runs with notes containing 'discovery'
+    // Look for discovery runs - identified by having total_fields set (> 0)
     final response = await client
         .from('reg_repair_runs')
         .select()
-        .ilike('notes', '%discovery%')
+        .gt('total_fields', 0)
         .order('started_at', ascending: false)
         .limit(1)
         .maybeSingle();
