@@ -379,3 +379,105 @@ worker/regs_worker/
 ├── regs-worker.service # systemd unit file
 └── env.example.txt
 ```
+
+## Updating the Worker
+
+To deploy a new version of the worker:
+
+```bash
+# SSH to droplet
+ssh root@165.245.131.150
+
+# Navigate to repo and pull latest
+cd /opt/regs_worker_repo
+git pull origin main
+
+# Rebuild
+cd worker/regs_worker
+npm install
+npm run build
+
+# Copy to deploy location
+cp -r dist/* /opt/regs_worker/dist/
+
+# Update systemd service file if changed
+cp regs-worker.service /etc/systemd/system/
+systemctl daemon-reload
+
+# Restart worker
+systemctl restart regs-worker
+
+# Verify running
+systemctl status regs-worker
+journalctl -u regs-worker -f
+```
+
+## Worker Hardening (v1.2)
+
+### Heartbeat Logging
+
+Worker logs heartbeat every 30 seconds:
+```
+[Worker] Heartbeat: slots=6 active=2 done=4 claimed_last_30s=3 total_claimed=15 total_completed=13 loops=45
+```
+
+This provides visibility without SSH. Heartbeats are also stored in `regs_worker_heartbeats` table for UI.
+
+### Crash Protection
+
+- `unhandledRejection` and `uncaughtException` handlers catch all errors
+- Worker exits with code 1 for systemd restart
+- No silent hangs - always logs before exit
+
+### Slot Cleanup Fix
+
+**Bug fixed**: Previous version used broken `Promise.race` logic that never cleaned up completed job slots. Worker would claim 6 jobs, complete them, then stop claiming more (slots array never shrank).
+
+**Fix**: Explicit `done` flag on each slot, checked synchronously in cleanup loop.
+
+### Systemd Settings
+
+```ini
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=300
+StartLimitBurst=10
+```
+
+Worker automatically restarts on any crash. Rate-limited to 10 restarts in 5 minutes to prevent thrashing.
+
+### Health Check
+
+Worker performs DB health check every 50 loops (~100 seconds):
+```
+[Worker] Health check OK: DB latency 45ms
+```
+
+If health check fails, it's logged but worker continues - avoids false positives from transient network issues.
+
+### UI Health Indicator
+
+Admin UI shows worker health status:
+- **Green**: Healthy (heartbeat < 60s ago)
+- **Yellow**: Stale (60-120s since heartbeat)
+- **Red**: Offline (> 120s since heartbeat)
+
+Click to refresh. Shows active job count when running.
+
+## Database RPCs
+
+### Job Queue Management
+
+| RPC | Description |
+|-----|-------------|
+| `regs_claim_job(worker_id)` | Atomic job claim with auto-unstick and auto-resume |
+| `regs_complete_job(...)` | Mark job done/failed/skipped, update run progress |
+| `regs_admin_requeue_run(run_id)` | Unstick stuck jobs, clear stale locks |
+| `regs_admin_force_restart_run(run_id)` | Requeue all non-terminal jobs |
+| `regs_get_worker_health()` | Get worker heartbeat status for UI |
+
+### Self-Healing Behavior
+
+1. **Auto-unstick**: Jobs running > 15 min are requeued on next claim
+2. **Auto-resume**: Stalled runs (queued/stopped with pending jobs) resume automatically
+3. **Lock clearing**: Terminal jobs have locks cleared to prevent false positives
