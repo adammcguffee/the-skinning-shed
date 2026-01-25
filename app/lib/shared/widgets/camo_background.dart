@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shed/app/theme/app_colors.dart';
+import 'package:shed/shared/widgets/app_background.dart';
 
 /// 🌿 PREMIUM HUNTING CAMO BACKGROUND
 /// 
@@ -23,83 +24,26 @@ enum CamoPattern {
 
 /// 🖼️ SCAFFOLD CAMO BACKGROUND
 /// 
-/// Wraps scaffold with VISIBLE camo in outer margins.
-/// Center content area is cleaner but camo still visible.
-/// Child content sits ABOVE the camo (not covered by it).
+/// Wraps scaffold with theme-aware background.
+/// Uses AppBackground for unified rendering.
 class ScaffoldCamoBackground extends StatelessWidget {
   const ScaffoldCamoBackground({
     super.key,
     required this.child,
     this.baseGradient,
-    this.camoOpacity = AppColors.kBgPatternOpacity,
+    this.camoOpacity,
   });
 
   final Widget child;
-  final Gradient? baseGradient;
-  final double camoOpacity;
+  final Gradient? baseGradient; // Deprecated - kept for compatibility
+  final double? camoOpacity; // Deprecated - kept for compatibility
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Layer 1: Base gradient background
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: baseGradient ?? AppColors.backgroundGradient,
-            ),
-          ),
-        ),
-        
-        // Layer 2: Camo texture (VISIBLE - higher opacity)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _HuntingCamoPainter(
-                  opacity: camoOpacity,
-                  pattern: CamoPattern.hunting,
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // Layer 3: Warm sage/tan gradient overlay (adds warm tones)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: AppColors.warmBackgroundGradient,
-              ),
-            ),
-          ),
-        ),
-        
-        // Layer 4: Soft radial vignette - subtle darkening at edges
-        // Allows camo and warm tones to show through, slightly darker at edges
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.center,
-                  radius: 1.3,
-                  colors: [
-                    Colors.transparent, // Full visibility in center
-                    AppColors.background.withValues(alpha: 0.2), // Subtle fade
-                    AppColors.background.withValues(alpha: 0.5), // More darkening at edges
-                  ],
-                  stops: const [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // Layer 5: Content (sits above camo - NOT affected)
-        child,
-      ],
+    // Use unified AppBackground widget
+    return AppBackground(
+      variant: BackgroundVariant.main,
+      child: child,
     );
   }
 }
@@ -107,56 +51,23 @@ class ScaffoldCamoBackground extends StatelessWidget {
 /// 🎨 HERO CAMO BACKGROUND
 /// 
 /// For the banner/header area. Camo visible BEHIND the wordmark.
-/// NO overlay between camo and wordmark - wordmark is crisp.
+/// Uses AppBackground for unified rendering.
 class HeroCamoBackground extends StatelessWidget {
   const HeroCamoBackground({
     super.key,
     required this.child,
-    this.camoOpacity = AppColors.kHeroPatternOpacity,
+    this.camoOpacity, // Deprecated - kept for compatibility
   });
 
   final Widget child;
-  final double camoOpacity;
+  final double? camoOpacity;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Layer 1: Camo texture (VISIBLE behind wordmark)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _HuntingCamoPainter(
-                  opacity: camoOpacity,
-                  pattern: CamoPattern.hunting,
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // Layer 2: Subtle warm gradient overlay (very light)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.warmSage.withValues(alpha: 0.3),
-                    AppColors.warmBrown.withValues(alpha: 0.2),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // Layer 3: Content (wordmark sits ABOVE camo, NOT faded)
-        child,
-      ],
+    // Use unified AppBackground widget
+    return AppBackground(
+      variant: BackgroundVariant.hero,
+      child: child,
     );
   }
 }
@@ -164,15 +75,16 @@ class HeroCamoBackground extends StatelessWidget {
 /// 📌 NAV RAIL CAMO BACKGROUND
 /// 
 /// Visible camo for the navigation rail with warm tones and border.
+/// Uses AppBackground for unified rendering.
 class NavRailCamoBackground extends StatelessWidget {
   const NavRailCamoBackground({
     super.key,
     required this.child,
-    this.camoOpacity = AppColors.kSidebarPatternOpacity,
+    this.camoOpacity, // Deprecated - kept for compatibility
   });
 
   final Widget child;
-  final double camoOpacity;
+  final double? camoOpacity;
 
   @override
   Widget build(BuildContext context) {
@@ -185,36 +97,9 @@ class NavRailCamoBackground extends StatelessWidget {
           ),
         ),
       ),
-      child: Stack(
-        children: [
-          // Layer 1: Camo texture (stronger than main background)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: _HuntingCamoPainter(
-                    opacity: camoOpacity,
-                    pattern: CamoPattern.subtle,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          
-          // Layer 2: Warm vertical gradient overlay (warmer tones near bottom)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppColors.navRailWarmGradient,
-                ),
-              ),
-            ),
-          ),
-          
-          // Layer 3: Content (nav items sit above camo)
-          child,
-        ],
+      child: AppBackground(
+        variant: BackgroundVariant.sidebar,
+        child: child,
       ),
     );
   }

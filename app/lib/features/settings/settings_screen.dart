@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/features/settings/background_theme_selector.dart';
 import 'package:shed/services/ad_service.dart';
 import 'package:shed/services/auth_service.dart';
 import 'package:shed/services/supabase_service.dart';
@@ -159,6 +160,14 @@ class SettingsScreen extends ConsumerWidget {
                               title: 'Regulations Admin',
                               subtitle: 'Review pending updates',
                               onTap: () => context.push('/admin/regulations'),
+                            ),
+                            _SettingsItem(
+                              icon: Icons.palette_outlined,
+                              title: 'Background Theme',
+                              subtitle: 'Change app background style',
+                              onTap: () {
+                                showBackgroundThemeSelector(context);
+                              },
                             ),
                             // Dev tools (admin + debug only)
                             if (kDebugMode) ...[
