@@ -998,13 +998,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         final results = resetResult['results'] as Map<String, dynamic>?;
         final deleted = results?['portal_rows_deleted'] ?? 0;
         final inserted = results?['portal_rows_inserted'] ?? 0;
-        successMessage = 'Full reset complete: $deleted rows deleted, $inserted rows reseeded';
+        successMessage = 'Full reset complete. Run GPT Discovery to repopulate portal links.';
       } else if (result == 'verification') {
         // Verification reset: clear flags only
         resetResult = await service.resetVerification(confirmCode: 'RESET');
         final results = resetResult['results'] as Map<String, dynamic>?;
         final updated = results?['portal_rows_updated'] ?? 0;
-        successMessage = 'Verification reset: $updated rows cleared';
+        successMessage = 'Verification reset: $updated rows cleared. Run Verify to re-check links.';
       } else {
         // Extracted reset: use legacy method
         resetResult = await service.resetData(type: result, confirmCode: 'RESET');
@@ -1276,11 +1276,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           
           const SizedBox(height: 32),
           
-          // Broken Links Section (if any)
-          if (_brokenLinks.isNotEmpty) ...[
-            _buildBrokenLinksSection(),
-            const SizedBox(height: 32),
-          ],
+          // Broken Links Section (always visible)
+          _buildBrokenLinksSection(),
+          const SizedBox(height: 32),
           
           // Danger Zone
           _buildDangerZone(),
@@ -1351,14 +1349,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ],
         ),
         const SizedBox(height: 12),
-        // Row 3: Broken
-        if (_stats.brokenCount > 0)
-          _StatCard(
-            icon: Icons.link_off_rounded,
-            label: 'Broken Links',
-            value: '${_stats.brokenCount}',
-            color: AppColors.error,
-          ),
+        // Row 3: Broken Links (always show)
+        const SizedBox(height: 12),
+        _StatCard(
+          icon: Icons.link_off_rounded,
+          label: 'Broken Links',
+          value: '${_stats.brokenCount}',
+          color: _stats.brokenCount > 0 ? AppColors.error : AppColors.success,
+        ),
         // Missing states warning
         if (_stats.missingStateCodes.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -1473,6 +1471,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
 
   Widget _buildActionsCard() {
+    // Check if there are any portal URLs to work with
+    final hasPortalUrls = _stats.filledFieldsCount > 0;
+    final hasBrokenLinks = _brokenLinks.isNotEmpty;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1483,6 +1485,21 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ====== GPT-GUIDED DISCOVERY SECTION (Always enabled - creates URLs) ======
+          _buildDiscoverySection(),
+          
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 16),
+          
+          // ====== EXTRACT FACTS SECTION ======
+          _buildExtractionSection(),
+          
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 16),
+          
+          // ====== VERIFY PORTAL LINKS SECTION ======
           Text(
             'Verify Portal Links',
             style: TextStyle(
@@ -1493,10 +1510,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'Server-side verification with timeout & retry. Safe to navigate away.',
+            hasPortalUrls
+                ? 'Server-side verification with timeout & retry. Safe to navigate away.'
+                : 'No portal URLs to verify. Run GPT Discovery first.',
             style: TextStyle(
               fontSize: 13,
-              color: AppColors.textSecondary,
+              color: hasPortalUrls ? AppColors.textSecondary : AppColors.warning,
             ),
           ),
           const SizedBox(height: 16),
@@ -1557,19 +1576,19 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _verifyAllLinks,
+                onPressed: hasPortalUrls ? _verifyAllLinks : null,
                 icon: const Icon(Icons.verified_rounded),
-                label: const Text('Verify All Links'),
+                label: Text(hasPortalUrls ? 'Verify All Links' : 'Nothing to Verify (0 URLs)'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accent,
+                  backgroundColor: hasPortalUrls ? AppColors.accent : AppColors.textTertiary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
           
-          // Auto-Fix Broken Links button (only show if there are broken links)
-          if (_brokenLinks.isNotEmpty && !_isVerifying) ...[
+          // ====== AUTO-FIX BROKEN LINKS SECTION ======
+          if (!_isVerifying) ...[
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 16),
@@ -1583,10 +1602,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              'Attempts conservative fixes: HTTP→HTTPS, trailing slash, redirect canonicalization.',
+              hasBrokenLinks
+                  ? 'Attempts conservative fixes: HTTP→HTTPS, trailing slash, redirect canonicalization.'
+                  : 'No broken links detected. Run Verify first to find broken links.',
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textSecondary,
+                color: hasBrokenLinks ? AppColors.textSecondary : AppColors.textTertiary,
               ),
             ),
             const SizedBox(height: 12),
@@ -1615,12 +1636,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: _repairBrokenLinks,
+                  onPressed: hasBrokenLinks ? _repairBrokenLinks : null,
                   icon: const Icon(Icons.auto_fix_high_rounded),
-                  label: Text('Auto-Fix ${_brokenLinks.length} Broken Links'),
+                  label: Text(hasBrokenLinks 
+                      ? 'Auto-Fix ${_brokenLinks.length} Broken Links' 
+                      : 'No Broken Links'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.warning,
-                    side: BorderSide(color: AppColors.warning.withValues(alpha: 0.5)),
+                    foregroundColor: hasBrokenLinks ? AppColors.warning : AppColors.textTertiary,
+                    side: BorderSide(color: hasBrokenLinks 
+                        ? AppColors.warning.withValues(alpha: 0.5)
+                        : AppColors.textTertiary.withValues(alpha: 0.3)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -1943,17 +1968,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               ),
             ),
             
-            // Extract Facts section
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            _buildExtractionSection(),
-            
-            // GPT-Guided Discovery section
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            _buildDiscoverySection(),
           ],
         ],
       ),
@@ -1961,6 +1975,8 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
   
   Widget _buildExtractionSection() {
+    final hasPortalUrls = _stats.filledFieldsCount > 0;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1980,10 +1996,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          'Extract structured season dates & bag limits from official sources. Only publishes when confidence >= 85%.',
+          hasPortalUrls
+              ? 'Extract structured season dates & bag limits from official sources. Only publishes when confidence >= 85%.'
+              : 'No portal URLs to extract from. Run GPT Discovery first.',
           style: TextStyle(
             fontSize: 13,
-            color: AppColors.textSecondary,
+            color: hasPortalUrls ? AppColors.textSecondary : AppColors.warning,
           ),
         ),
         const SizedBox(height: 12),
@@ -2079,11 +2097,11 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _startExtractionRun(tier: 'basic'),
+                  onPressed: hasPortalUrls ? () => _startExtractionRun(tier: 'basic') : null,
                   icon: const Icon(Icons.auto_awesome_rounded),
-                  label: const Text('Extract Facts Now'),
+                  label: Text(hasPortalUrls ? 'Extract Facts Now' : 'Run Discovery First'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
+                    backgroundColor: hasPortalUrls ? AppColors.accent : AppColors.textTertiary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
@@ -2093,18 +2111,20 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               SizedBox(
                 height: 44,
                 child: OutlinedButton.icon(
-                  onPressed: () => _startExtractionRun(tier: 'pro'),
-                  icon: Icon(Icons.bolt, size: 16, color: AppColors.accent),
+                  onPressed: hasPortalUrls ? () => _startExtractionRun(tier: 'pro') : null,
+                  icon: Icon(Icons.bolt, size: 16, color: hasPortalUrls ? AppColors.accent : AppColors.textTertiary),
                   label: Text(
                     'PRO',
                     style: TextStyle(
-                      color: AppColors.accent,
+                      color: hasPortalUrls ? AppColors.accent : AppColors.textTertiary,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
+                    side: BorderSide(color: hasPortalUrls 
+                        ? AppColors.accent.withValues(alpha: 0.5)
+                        : AppColors.textTertiary.withValues(alpha: 0.3)),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                 ),
@@ -2338,40 +2358,57 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
 
   Widget _buildBrokenLinksSection() {
+    final hasBrokenLinks = _brokenLinks.isNotEmpty;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => setState(() => _showBrokenLinks = !_showBrokenLinks),
+          onTap: hasBrokenLinks ? () => setState(() => _showBrokenLinks = !_showBrokenLinks) : null,
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
                 Icon(
-                  Icons.warning_amber_rounded,
+                  hasBrokenLinks ? Icons.warning_amber_rounded : Icons.check_circle_outline,
                   size: 18,
-                  color: AppColors.error,
+                  color: hasBrokenLinks ? AppColors.error : AppColors.success,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Broken Links (${_brokenLinks.length})',
+                  hasBrokenLinks 
+                      ? 'Broken Links (${_brokenLinks.length})'
+                      : 'No Broken Links',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.error,
+                    color: hasBrokenLinks ? AppColors.error : AppColors.success,
                   ),
                 ),
                 const Spacer(),
-                Icon(
-                  _showBrokenLinks ? Icons.expand_less : Icons.expand_more,
-                  color: AppColors.textSecondary,
-                ),
+                if (hasBrokenLinks)
+                  Icon(
+                    _showBrokenLinks ? Icons.expand_less : Icons.expand_more,
+                    color: AppColors.textSecondary,
+                  ),
               ],
             ),
           ),
         ),
-        if (_showBrokenLinks) ...[
+        if (!hasBrokenLinks) ...[
+          const SizedBox(height: 8),
+          Text(
+            _stats.filledFieldsCount > 0
+                ? 'All portal links are healthy. Run Verify to check again.'
+                : 'No portal links to check. Run GPT Discovery first.',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+        if (_showBrokenLinks && hasBrokenLinks) ...[
           const SizedBox(height: 12),
           // Group broken links by state
           ..._buildGroupedBrokenLinks(),
