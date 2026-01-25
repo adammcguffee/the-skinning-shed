@@ -34,6 +34,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   Map<RegulationCategory, List<RegulationRegion>> _regions = {};
   Map<RegulationCategory, String> _selectedRegionKeys = {};
   StatePortalLinks? _portalLinks;
+  bool _showDebugPanel = false;
   
   static const _categories = [
     RegulationCategory.deer,
@@ -41,7 +42,10 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     RegulationCategory.fishing,
   ];
   
-  USState? get _state => USStates.byCode(widget.stateCode);
+  // Normalize state code to uppercase (DB uses uppercase 2-letter codes)
+  String get _normalizedStateCode => widget.stateCode.toUpperCase();
+  
+  USState? get _state => USStates.byCode(_normalizedStateCode);
   
   RegulationCategory get _currentCategory => _categories[_tabController.index];
   
@@ -77,9 +81,10 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     
     try {
       final service = ref.read(regulationsServiceProvider);
+      final stateCode = _normalizedStateCode;
       
       // Load portal links first (they always work)
-      final portalLinks = await service.fetchPortalLinks(widget.stateCode);
+      final portalLinks = await service.fetchPortalLinks(stateCode);
       
       // Load regions and regulations for all categories
       final results = <RegulationCategory, List<StateRegulation>>{};
@@ -88,7 +93,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
       for (final category in _categories) {
         // Load available regions first
         final regions = await service.fetchRegionsForState(
-          stateCode: widget.stateCode,
+          stateCode: stateCode,
           category: category,
         );
         regionResults[category] = regions;
@@ -102,7 +107,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         
         // Load regulations for selected region
         results[category] = await service.fetchRegulations(
-          stateCode: widget.stateCode,
+          stateCode: stateCode,
           category: category,
           regionKey: regionKey,
         );
@@ -126,10 +131,29 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     }
   }
   
+  Future<void> _refreshPortalLinks() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final portalLinks = await service.fetchPortalLinks(_normalizedStateCode);
+      if (mounted) {
+        setState(() => _portalLinks = portalLinks);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Portal links refreshed')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error refreshing: $e')),
+        );
+      }
+    }
+  }
+  
   Future<void> _loadRegionsForCategory(RegulationCategory category) async {
     final service = ref.read(regulationsServiceProvider);
     final regions = await service.fetchRegionsForState(
-      stateCode: widget.stateCode,
+      stateCode: _normalizedStateCode,
       category: category,
     );
     
@@ -151,7 +175,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     // Reload regulations for new region
     final service = ref.read(regulationsServiceProvider);
     final regs = await service.fetchRegulations(
-      stateCode: widget.stateCode,
+      stateCode: _normalizedStateCode,
       category: category,
       regionKey: regionKey,
     );
@@ -179,8 +203,8 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               // Header
               _buildHeader(context, stateName),
               
-              // Portal links section (always available)
-              if (_portalLinks != null) _buildPortalLinksSection(),
+              // Portal links section (always show, even if null/loading)
+              _buildPortalLinksSection(),
               
               // Category tabs for extracted facts
               _buildCategoryTabs(),
@@ -240,13 +264,50 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               ],
             ),
           ),
+          
+          // Refresh button
+          IconButton(
+            onPressed: _refreshPortalLinks,
+            icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+            tooltip: 'Refresh portal links',
+          ),
         ],
       ),
     );
   }
   
   Widget _buildPortalLinksSection() {
-    final links = _portalLinks!;
+    final links = _portalLinks;
+    
+    // Show empty state if no portal links at all
+    if (links == null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.screenPadding,
+          0,
+          AppSpacing.screenPadding,
+          AppSpacing.md,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.link_off_rounded, size: 16, color: AppColors.textTertiary),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'No portal links available for this state',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -270,70 +331,204 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               children: [
                 Icon(Icons.public_rounded, size: 16, color: AppColors.accent),
                 const SizedBox(width: AppSpacing.sm),
-                Text(
-                  links.agencyName ?? 'Official Portal',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  child: Text(
+                    links.agencyName ?? 'Official State Portal',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
+                // Debug toggle (in debug mode only)
+                if (const bool.fromEnvironment('dart.vm.product') == false)
+                  GestureDetector(
+                    onTap: () => setState(() => _showDebugPanel = !_showDebugPanel),
+                    child: Icon(
+                      _showDebugPanel ? Icons.bug_report : Icons.bug_report_outlined,
+                      size: 16,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
             
-            // Portal buttons grid
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: [
-                if (links.hasHuntingSeasons)
-                  _PortalButton(
-                    icon: Icons.calendar_today_rounded,
-                    label: 'Seasons',
-                    url: links.huntingSeasonsUrl!,
-                    verified: links.huntingSeasonsVerified,
-                  ),
-                if (links.hasHuntingRegs)
-                  _PortalButton(
-                    icon: Icons.description_rounded,
-                    label: 'Regulations',
-                    url: links.huntingRegsUrl!,
-                    verified: links.huntingRegsVerified,
-                  ),
-                if (links.hasLicensing)
-                  _PortalButton(
-                    icon: Icons.badge_rounded,
-                    label: 'Licensing',
-                    url: links.licensingUrl!,
-                    verified: links.licensingVerified,
-                  ),
-                if (links.hasBuyLicense)
-                  _PortalButton(
-                    icon: Icons.shopping_cart_rounded,
-                    label: 'Buy License',
-                    url: links.buyLicenseUrl!,
-                    isPrimary: true,
-                    verified: links.buyLicenseVerified,
-                  ),
-                if (links.hasFishingRegs)
-                  _PortalButton(
-                    icon: Icons.phishing_rounded,
-                    label: 'Fishing',
-                    url: links.fishingRegsUrl!,
-                    verified: links.fishingRegsVerified,
-                  ),
-                if (links.hasRecords)
+            // HUNTING section
+            _buildPortalSection(
+              'HUNTING',
+              Icons.forest_rounded,
+              [
+                _PortalButton(
+                  icon: Icons.calendar_today_rounded,
+                  label: 'Season Dates',
+                  url: links.huntingSeasonsUrl,
+                  verified: links.huntingSeasonsVerified,
+                ),
+                _PortalButton(
+                  icon: Icons.description_rounded,
+                  label: 'Regulations',
+                  url: links.huntingRegsUrl,
+                  verified: links.huntingRegsVerified,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            
+            // FISHING section
+            _buildPortalSection(
+              'FISHING',
+              Icons.phishing_rounded,
+              [
+                _PortalButton(
+                  icon: Icons.description_rounded,
+                  label: 'Fishing Regs',
+                  url: links.fishingRegsUrl,
+                  verified: links.fishingRegsVerified,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            
+            // LICENSING section
+            _buildPortalSection(
+              'LICENSING',
+              Icons.badge_rounded,
+              [
+                _PortalButton(
+                  icon: Icons.info_outline_rounded,
+                  label: 'License Info',
+                  url: links.licensingUrl,
+                  verified: links.licensingVerified,
+                ),
+                _PortalButton(
+                  icon: Icons.shopping_cart_rounded,
+                  label: 'Buy License',
+                  url: links.buyLicenseUrl,
+                  verified: links.buyLicenseVerified,
+                  isPrimary: true,
+                ),
+              ],
+            ),
+            
+            // RECORDS section (optional - only show if we have data)
+            if (links.hasRecords) ...[
+              const SizedBox(height: AppSpacing.sm),
+              _buildPortalSection(
+                'RECORDS',
+                Icons.emoji_events_rounded,
+                [
                   _PortalButton(
                     icon: Icons.emoji_events_rounded,
-                    label: 'Records',
-                    url: links.recordsUrl!,
+                    label: 'Record Books',
+                    url: links.recordsUrl,
                     verified: links.recordsVerified,
                   ),
-              ],
+                ],
+              ),
+            ],
+            
+            // Debug panel
+            if (_showDebugPanel) ...[
+              const SizedBox(height: AppSpacing.md),
+              _buildDebugPanel(links),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPortalSection(String title, IconData icon, List<Widget> buttons) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 12, color: AppColors.textTertiary),
+            const SizedBox(width: 4),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textTertiary,
+                letterSpacing: 1,
+              ),
             ),
           ],
         ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: buttons,
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildDebugPanel(StatePortalLinks links) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bug_report, size: 14, color: AppColors.warning),
+              const SizedBox(width: 4),
+              Text(
+                'DEBUG: Portal Links Data',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.warning,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildDebugRow('State Code', links.stateCode),
+          _buildDebugRow('Hunting Seasons', '${links.huntingSeasonsUrl ?? "NULL"} (verified: ${links.huntingSeasonsVerified})'),
+          _buildDebugRow('Hunting Regs', '${links.huntingRegsUrl ?? "NULL"} (verified: ${links.huntingRegsVerified})'),
+          _buildDebugRow('Fishing Regs', '${links.fishingRegsUrl ?? "NULL"} (verified: ${links.fishingRegsVerified})'),
+          _buildDebugRow('Licensing', '${links.licensingUrl ?? "NULL"} (verified: ${links.licensingVerified})'),
+          _buildDebugRow('Buy License', '${links.buyLicenseUrl ?? "NULL"} (verified: ${links.buyLicenseVerified})'),
+          _buildDebugRow('Records', '${links.recordsUrl ?? "NULL"} (verified: ${links.recordsVerified})'),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildDebugRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 10, color: AppColors.textPrimary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1242,19 +1437,19 @@ class _ApprovalBadge extends StatelessWidget {
 }
 
 /// Portal button for opening external links.
-/// Shows disabled state if not verified.
+/// Shows disabled state if URL is null or not verified.
 class _PortalButton extends StatefulWidget {
   const _PortalButton({
     required this.icon,
     required this.label,
-    required this.url,
+    this.url,
     this.isPrimary = false,
     this.verified = false,
   });
   
   final IconData icon;
   final String label;
-  final String url;
+  final String? url;
   final bool isPrimary;
   final bool verified;
   
@@ -1265,9 +1460,19 @@ class _PortalButton extends StatefulWidget {
 class _PortalButtonState extends State<_PortalButton> {
   bool _isHovered = false;
   
+  // Determine if this button is available
+  bool get _isAvailable => widget.url != null && widget.url!.isNotEmpty && widget.verified;
+  
+  // Get the reason for unavailability
+  String get _unavailableReason {
+    if (widget.url == null || widget.url!.isEmpty) return 'Not Found';
+    if (!widget.verified) return 'Not Verified';
+    return '';
+  }
+  
   Future<void> _launchUrl() async {
-    if (!widget.verified) return; // Don't launch unverified links
-    final uri = Uri.parse(widget.url);
+    if (!_isAvailable || widget.url == null) return;
+    final uri = Uri.parse(widget.url!);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
@@ -1276,49 +1481,50 @@ class _PortalButtonState extends State<_PortalButton> {
   @override
   Widget build(BuildContext context) {
     final isPrimary = widget.isPrimary;
-    final isDisabled = !widget.verified;
     
-    // Disabled state styling
-    if (isDisabled) {
-      return Opacity(
-        opacity: 0.5,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceHover,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(widget.icon, size: 16, color: AppColors.textTertiary),
-              const SizedBox(width: 6),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+    // Disabled state styling for unavailable buttons
+    if (!_isAvailable) {
+      return Tooltip(
+        message: _unavailableReason,
+        child: Opacity(
+          opacity: 0.5,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceHover,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(widget.icon, size: 16, color: AppColors.textTertiary),
+                const SizedBox(width: 6),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.link_off_rounded,
+                  size: 12,
                   color: AppColors.textTertiary,
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '(Unavailable)',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
     }
     
+    // Enabled state for verified buttons with URLs
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
