@@ -3260,18 +3260,62 @@ extension RegulationsServiceJobQueue on RegulationsService {
     final session = _supabaseService.currentSession;
     if (session == null) throw Exception('Not authenticated');
 
-    final response = await client.functions.invoke(
-      'regs-run-start',
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'type': 'extract', 'tier': tier},
-    );
+    // Create or get active extraction run
+    String runId;
+    final existingRun = await client
+        .from('regs_admin_runs')
+        .select()
+        .eq('type', 'extract')
+        .inFilter('status', ['queued', 'running'])
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
 
-    if (response.status != 200) {
-      final error = response.data?['error'] ?? 'Unknown error';
-      throw Exception('Failed to start extraction run: $error');
+    if (existingRun != null) {
+      runId = existingRun['id'] as String;
+    } else {
+      // Create new run
+      final newRun = await client
+          .from('regs_admin_runs')
+          .insert({
+            'type': 'extract',
+            'tier': tier,
+            'status': 'running',
+            'progress_total': 0, // Will be updated by RPC
+          })
+          .select()
+          .single();
+      runId = newRun['id'] as String;
     }
 
-    return AdminRunStatus.fromJson(response.data as Map<String, dynamic>);
+    // Enqueue extraction jobs for all states with sources
+    final enqueueResult = await client.rpc(
+      'regs_enqueue_extraction_all_states',
+      params: {
+        'p_run_id': runId,
+        'p_tier': tier,
+      },
+    );
+
+    final queuedCount = enqueueResult as int? ?? 0;
+
+    // Get updated status
+    final status = await getJobQueueRunStatus(runId: runId);
+    if (status != null) {
+      return status;
+    }
+
+    // Fallback: build status from what we know
+    return AdminRunStatus(
+      runId: runId,
+      type: 'extract',
+      tier: tier,
+      status: 'running',
+      statusLabel: 'Running',
+      progressDone: 0,
+      progressTotal: queuedCount,
+      summaryLabel: '$queuedCount jobs queued',
+    );
   }
 
   /// Stop a job queue-based run.
@@ -3279,19 +3323,14 @@ extension RegulationsServiceJobQueue on RegulationsService {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
-    final session = _supabaseService.currentSession;
-    if (session == null) throw Exception('Not authenticated');
-
-    final response = await client.functions.invoke(
-      'regs-run-stop',
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'run_id': runId},
-    );
-
-    if (response.status != 200) {
-      final error = response.data?['error'] ?? 'Unknown error';
-      throw Exception('Failed to stop run: $error');
-    }
+    // Update run status to stopping
+    await client
+        .from('regs_admin_runs')
+        .update({
+          'status': 'stopping',
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', runId);
   }
 
   /// Get status of a job queue-based run.
