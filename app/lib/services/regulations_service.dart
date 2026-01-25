@@ -1422,6 +1422,131 @@ class RegulationsService {
     return inserted;
   }
 
+  // ============================================================
+  // EXTRACTED FACTS
+  // ============================================================
+
+  /// Fetch extracted facts for a state and species.
+  Future<ExtractedFacts?> fetchExtractedFacts({
+    required String stateCode,
+    required String speciesGroup,
+    String regionKey = 'STATEWIDE',
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    final response = await client
+        .from('state_regulations_extracted')
+        .select()
+        .eq('state_code', stateCode)
+        .eq('species_group', speciesGroup)
+        .eq('region_key', regionKey)
+        .order('extracted_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (response == null) return null;
+    return ExtractedFacts.fromJson(response);
+  }
+
+  /// Start a new extraction run.
+  Future<ExtractionRunStatus> startExtractionRun() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-extract-start',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Failed to start extraction: $error');
+    }
+
+    return ExtractionRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Continue an extraction run (process next batch).
+  Future<ExtractionRunStatus> continueExtractionRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-extract-facts',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'run_id': runId},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Extraction failed: $error');
+    }
+
+    return ExtractionRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Get extraction run status.
+  Future<ExtractionRunStatus?> getExtractionRunStatus(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    final response = await client
+        .from('reg_extraction_runs')
+        .select()
+        .eq('id', runId)
+        .maybeSingle();
+
+    if (response == null) return null;
+    
+    return ExtractionRunStatus(
+      runId: response['id'] as String,
+      status: response['status'] as String? ?? 'unknown',
+      totalStates: response['total_states'] as int? ?? 0,
+      processedStates: response['processed_states'] as int? ?? 0,
+      deerPublished: response['deer_published'] as int? ?? 0,
+      turkeyPublished: response['turkey_published'] as int? ?? 0,
+      skippedCount: response['skipped_count'] as int? ?? 0,
+      errorCount: response['error_count'] as int? ?? 0,
+      lastStateCode: response['last_state_code'] as String?,
+      done: response['status'] != 'running',
+    );
+  }
+
+  /// Get the latest extraction run status (for resuming).
+  Future<ExtractionRunStatus?> getLatestExtractionRunStatus() async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    final response = await client
+        .from('reg_extraction_runs')
+        .select()
+        .order('started_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (response == null) return null;
+    
+    return ExtractionRunStatus(
+      runId: response['id'] as String,
+      status: response['status'] as String? ?? 'unknown',
+      totalStates: response['total_states'] as int? ?? 0,
+      processedStates: response['processed_states'] as int? ?? 0,
+      deerPublished: response['deer_published'] as int? ?? 0,
+      turkeyPublished: response['turkey_published'] as int? ?? 0,
+      skippedCount: response['skipped_count'] as int? ?? 0,
+      errorCount: response['error_count'] as int? ?? 0,
+      lastStateCode: response['last_state_code'] as String?,
+      done: response['status'] != 'running',
+    );
+  }
+
   /// Fetch broken links for admin dashboard.
   Future<List<Map<String, dynamic>>> fetchBrokenLinks() async {
     final client = _supabaseService.client;
@@ -2342,6 +2467,170 @@ class StateReadiness {
   String get detailLabel {
     if (totalLinks == 0) return 'No links';
     return '$verifiedLinks/$totalLinks verified';
+  }
+}
+
+// ============================================================
+// EXTRACTED FACTS MODELS
+// ============================================================
+
+/// Season segment from extracted data.
+class ExtractedSeason {
+  const ExtractedSeason({
+    required this.name,
+    this.start,
+    this.end,
+    this.methods = const [],
+    this.notes,
+  });
+  
+  final String name;
+  final String? start;
+  final String? end;
+  final List<String> methods;
+  final String? notes;
+  
+  factory ExtractedSeason.fromJson(Map<String, dynamic> json) {
+    return ExtractedSeason(
+      name: json['name'] as String? ?? '',
+      start: json['start'] as String?,
+      end: json['end'] as String?,
+      methods: (json['methods'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      notes: json['notes'] as String?,
+    );
+  }
+}
+
+/// Bag limit from extracted data.
+class ExtractedBagLimit {
+  const ExtractedBagLimit({
+    required this.label,
+    required this.value,
+    this.notes,
+  });
+  
+  final String label;
+  final String value;
+  final String? notes;
+  
+  factory ExtractedBagLimit.fromJson(Map<String, dynamic> json) {
+    return ExtractedBagLimit(
+      label: json['label'] as String? ?? '',
+      value: json['value'] as String? ?? '',
+      notes: json['notes'] as String?,
+    );
+  }
+}
+
+/// Extracted regulation facts for a state/species.
+class ExtractedFacts {
+  const ExtractedFacts({
+    required this.id,
+    required this.stateCode,
+    required this.speciesGroup,
+    required this.regionKey,
+    required this.seasonYearLabel,
+    required this.sourceUrl,
+    required this.extractedAt,
+    required this.confidenceScore,
+    this.seasons = const [],
+    this.bagLimits = const [],
+    this.legalMethods = const [],
+    this.notes = const [],
+  });
+  
+  final String id;
+  final String stateCode;
+  final String speciesGroup;
+  final String regionKey;
+  final String seasonYearLabel;
+  final String sourceUrl;
+  final DateTime extractedAt;
+  final double confidenceScore;
+  final List<ExtractedSeason> seasons;
+  final List<ExtractedBagLimit> bagLimits;
+  final List<String> legalMethods;
+  final List<String> notes;
+  
+  /// Has useful content to display.
+  bool get hasContent => seasons.isNotEmpty || bagLimits.isNotEmpty || legalMethods.isNotEmpty;
+  
+  /// Confidence as percentage string.
+  String get confidencePercent => '${(confidenceScore * 100).toStringAsFixed(0)}%';
+  
+  factory ExtractedFacts.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] as Map<String, dynamic>? ?? {};
+    
+    return ExtractedFacts(
+      id: json['id'] as String,
+      stateCode: json['state_code'] as String,
+      speciesGroup: json['species_group'] as String,
+      regionKey: json['region_key'] as String? ?? 'STATEWIDE',
+      seasonYearLabel: json['season_year_label'] as String? ?? '',
+      sourceUrl: json['source_url'] as String? ?? '',
+      extractedAt: DateTime.tryParse(json['extracted_at'] as String? ?? '') ?? DateTime.now(),
+      confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0.0,
+      seasons: (data['seasons'] as List?)
+          ?.map((e) => ExtractedSeason.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [],
+      bagLimits: (data['bag_limits'] as List?)
+          ?.map((e) => ExtractedBagLimit.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [],
+      legalMethods: (data['legal_methods'] as List?)
+          ?.map((e) => e.toString())
+          .toList() ?? [],
+      notes: (data['notes'] as List?)
+          ?.map((e) => e.toString())
+          .toList() ?? [],
+    );
+  }
+}
+
+/// Extraction run status.
+class ExtractionRunStatus {
+  const ExtractionRunStatus({
+    required this.runId,
+    required this.status,
+    required this.totalStates,
+    required this.processedStates,
+    required this.deerPublished,
+    required this.turkeyPublished,
+    required this.skippedCount,
+    required this.errorCount,
+    this.lastStateCode,
+    required this.done,
+  });
+  
+  final String runId;
+  final String status;
+  final int totalStates;
+  final int processedStates;
+  final int deerPublished;
+  final int turkeyPublished;
+  final int skippedCount;
+  final int errorCount;
+  final String? lastStateCode;
+  final bool done;
+  
+  bool get isRunning => status == 'running';
+  
+  double get progress => totalStates > 0 ? processedStates / totalStates : 0.0;
+  
+  String get progressLabel => '$processedStates/$totalStates states';
+  
+  factory ExtractionRunStatus.fromJson(Map<String, dynamic> json) {
+    return ExtractionRunStatus(
+      runId: json['run_id'] as String? ?? '',
+      status: json['status'] as String? ?? 'unknown',
+      totalStates: json['total_states'] as int? ?? 0,
+      processedStates: json['processed_states'] as int? ?? 0,
+      deerPublished: json['deer_published'] as int? ?? 0,
+      turkeyPublished: json['turkey_published'] as int? ?? 0,
+      skippedCount: json['skipped_count'] as int? ?? 0,
+      errorCount: json['error_count'] as int? ?? 0,
+      lastStateCode: json['last_state_code'] as String?,
+      done: json['done'] as bool? ?? false,
+    );
   }
 }
 

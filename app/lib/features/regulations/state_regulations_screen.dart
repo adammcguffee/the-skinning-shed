@@ -36,6 +36,9 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   String? _officialRootUrl;
   bool _showDebugPanel = false;
   
+  // Extracted facts for deer/turkey
+  Map<RegulationCategory, ExtractedFacts?> _extractedFacts = {};
+  
   static const _categories = [
     RegulationCategory.deer,
     RegulationCategory.turkey,
@@ -114,12 +117,27 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         );
       }
       
+      // Load extracted facts for deer and turkey
+      final extractedResults = <RegulationCategory, ExtractedFacts?>{};
+      for (final category in [RegulationCategory.deer, RegulationCategory.turkey]) {
+        try {
+          extractedResults[category] = await service.fetchExtractedFacts(
+            stateCode: stateCode,
+            speciesGroup: category.value,
+          );
+        } catch (e) {
+          // Ignore errors - extracted facts are optional
+          debugPrint('Could not load extracted facts for $category: $e');
+        }
+      }
+      
       if (mounted) {
         setState(() {
           _portalLinks = portalLinks;
           _officialRootUrl = officialRoot;
           _regulations = results;
           _regions = regionResults;
+          _extractedFacts = extractedResults;
           _isLoading = false;
         });
       }
@@ -824,12 +842,16 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     final regulations = _regulations[category] ?? [];
     final stateName = _state?.name ?? widget.stateCode;
     final regions = _regions[category] ?? [];
+    final extractedFacts = _extractedFacts[category];
     final selectedRegion = regions.isNotEmpty
         ? regions.firstWhere(
             (r) => r.regionKey == (_selectedRegionKeys[category] ?? 'STATEWIDE'),
             orElse: () => regions.first,
           )
         : null;
+    
+    // If we have extracted facts but no approved regulations, show extracted facts
+    final hasExtractedContent = extractedFacts != null && extractedFacts.hasContent;
     
     if (regulations.isEmpty) {
       return Column(
@@ -838,23 +860,25 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           _buildRegionSelector(category),
           
           Expanded(
-            child: _EmptyRegulationsState(
-              stateName: stateName,
-              category: category,
-              portalLinks: _portalLinks,
-              onOpenSeasonDates: () => _openPortalLink(
-                category == RegulationCategory.fishing
-                    ? _portalLinks?.fishingRegsUrl
-                    : _portalLinks?.huntingSeasonsUrl,
-              ),
-              onOpenRegs: () => _openPortalLink(
-                category == RegulationCategory.fishing
-                    ? _portalLinks?.fishingRegsUrl
-                    : _portalLinks?.huntingRegsUrl,
-              ),
-              onShare: () => _shareStatePage(context),
-              onReportIssue: () => _reportIssue(context),
-            ),
+            child: hasExtractedContent
+                ? _buildExtractedFactsContent(extractedFacts!)
+                : _EmptyRegulationsState(
+                    stateName: stateName,
+                    category: category,
+                    portalLinks: _portalLinks,
+                    onOpenSeasonDates: () => _openPortalLink(
+                      category == RegulationCategory.fishing
+                          ? _portalLinks?.fishingRegsUrl
+                          : _portalLinks?.deerSeasonsUrl ?? _portalLinks?.huntingSeasonsUrl,
+                    ),
+                    onOpenRegs: () => _openPortalLink(
+                      category == RegulationCategory.fishing
+                          ? _portalLinks?.fishingRegsUrl
+                          : _portalLinks?.huntingDigestUrl ?? _portalLinks?.huntingRegsUrl,
+                    ),
+                    onShare: () => _shareStatePage(context),
+                    onReportIssue: () => _reportIssue(context),
+                  ),
           ),
         ],
       );
@@ -924,6 +948,149 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           ),
         ),
       ],
+    );
+  }
+  
+  /// Build extracted facts content (premium display).
+  Widget _buildExtractedFactsContent(ExtractedFacts facts) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with confidence badge
+          _buildExtractedHeader(facts),
+          const SizedBox(height: AppSpacing.lg),
+          
+          // Season segments
+          if (facts.seasons.isNotEmpty) ...[
+            _buildSectionHeader('Season Dates', Icons.calendar_today_rounded),
+            const SizedBox(height: AppSpacing.sm),
+            ...facts.seasons.map((season) => _ExtractedSeasonCard(season: season)),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          
+          // Bag limits
+          if (facts.bagLimits.isNotEmpty) ...[
+            _buildSectionHeader('Bag Limits', Icons.inventory_2_rounded),
+            const SizedBox(height: AppSpacing.sm),
+            ...facts.bagLimits.map((limit) => _ExtractedBagLimitCard(limit: limit)),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          
+          // Legal methods
+          if (facts.legalMethods.isNotEmpty) ...[
+            _buildSectionHeader('Legal Methods', Icons.gpp_good_rounded),
+            const SizedBox(height: AppSpacing.sm),
+            _LegalMethodsChips(methods: facts.legalMethods),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          
+          // Notes
+          if (facts.notes.isNotEmpty) ...[
+            _buildSectionHeader('Notes', Icons.info_outline_rounded),
+            const SizedBox(height: AppSpacing.sm),
+            ...facts.notes.map((note) => _NoteCard(note: note)),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          
+          // Source link
+          _SourceLink(url: facts.sourceUrl),
+          const SizedBox(height: AppSpacing.xl),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildExtractedHeader(ExtractedFacts facts) {
+    final stateName = _state?.name ?? widget.stateCode;
+    
+    return AppCard(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: AppColors.accentGradient,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: AppColors.textInverse,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$stateName • ${facts.speciesGroup.toUpperCase()}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      // Confidence badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.auto_awesome_rounded,
+                              size: 12,
+                              color: AppColors.accent,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Extracted ${facts.confidencePercent}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${facts.seasonYearLabel} Season',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    facts.regionKey == 'STATEWIDE' ? 'Statewide' : facts.regionKey,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
   
@@ -1325,6 +1492,205 @@ class _NoteCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// EXTRACTED FACTS CARD WIDGETS
+// ============================================================
+
+class _ExtractedSeasonCard extends StatelessWidget {
+  const _ExtractedSeasonCard({required this.season});
+  
+  final ExtractedSeason season;
+  
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    // Try to parse YYYY-MM-DD
+    final parts = dateStr.split('-');
+    if (parts.length == 3) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = int.tryParse(parts[1]) ?? 1;
+      final day = int.tryParse(parts[2]) ?? 1;
+      return '${months[month - 1]} $day, ${parts[0]}';
+    }
+    return dateStr;
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      season.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (season.methods.isNotEmpty)
+                    ...season.methods.take(3).map((method) => Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          method,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    )),
+                ],
+              ),
+              const SizedBox(height: 4),
+              if (season.start != null && season.end != null)
+                Row(
+                  children: [
+                    Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.textSecondary),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_formatDate(season.start)} – ${_formatDate(season.end)}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              if (season.notes != null && season.notes!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  season.notes!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExtractedBagLimitCard extends StatelessWidget {
+  const _ExtractedBagLimitCard({required this.limit});
+  
+  final ExtractedBagLimit limit;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              Icon(Icons.inventory_2_rounded, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      limit.label,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      limit.value,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (limit.notes != null && limit.notes!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        limit.notes!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LegalMethodsChips extends StatelessWidget {
+  const _LegalMethodsChips({required this.methods});
+  
+  final List<String> methods;
+  
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: methods.map((method) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.success.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
+                const SizedBox(width: 4),
+                Text(
+                  method,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+          )).toList(),
         ),
       ),
     );

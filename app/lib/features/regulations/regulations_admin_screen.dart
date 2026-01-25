@@ -38,6 +38,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   // Discovery repair run state (resumable)
   RepairRunStatus? _repairRun;
   bool _isRepairCanceling = false;
+  
+  // Extraction run state
+  ExtractionRunStatus? _extractionRun;
+  bool _isExtractionCanceling = false;
 
   @override
   void initState() {
@@ -45,6 +49,22 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     _loadStats();
     _checkForExistingRun();
     _checkForExistingRepairRun();
+    _checkForExistingExtractionRun();
+  }
+  
+  /// Check for an existing running extraction on page load (for resume).
+  Future<void> _checkForExistingExtractionRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final latestRun = await service.getLatestExtractionRunStatus();
+      
+      if (latestRun != null && latestRun.isRunning && mounted) {
+        setState(() => _extractionRun = latestRun);
+        _pollExtractionRun(latestRun.runId);
+      }
+    } catch (e) {
+      debugPrint('[RegsAdmin] Error checking for existing extraction run: $e');
+    }
   }
 
   /// Check for an existing running repair run on page load (for resume).
@@ -366,6 +386,82 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         );
       }
     }
+  }
+
+  // ============================================================
+  // EXTRACTION METHODS
+  // ============================================================
+
+  /// Start a new extraction run.
+  Future<void> _startExtractionRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final run = await service.startExtractionRun();
+      
+      if (mounted) {
+        setState(() => _extractionRun = run);
+        _pollExtractionRun(run.runId);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting extraction: $e')),
+        );
+      }
+    }
+  }
+
+  /// Poll extraction run until done.
+  Future<void> _pollExtractionRun(String runId) async {
+    final service = ref.read(regulationsServiceProvider);
+
+    while (mounted && _extractionRun != null && !_isExtractionCanceling) {
+      try {
+        final status = await service.continueExtractionRun(runId);
+        
+        if (!mounted) break;
+        
+        setState(() => _extractionRun = status);
+
+        if (status.done) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Extraction complete: ${status.deerPublished} deer, ${status.turkeyPublished} turkey published',
+              ),
+              backgroundColor: (status.deerPublished > 0 || status.turkeyPublished > 0) 
+                  ? AppColors.success 
+                  : AppColors.warning,
+            ),
+          );
+          break;
+        }
+
+        // Small delay between batches
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+      } catch (e) {
+        if (mounted) {
+          setState(() => _extractionRun = null);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  /// Cancel extraction run (just stop polling).
+  void _cancelExtractionRun() {
+    setState(() {
+      _isExtractionCanceling = true;
+      _extractionRun = null;
+      _isExtractionCanceling = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Extraction stopped')),
+    );
   }
 
   /// View repair report in dialog.
@@ -1478,9 +1574,148 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 ),
               ),
             ),
+            
+            // Extract Facts section
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            _buildExtractionSection(),
           ],
         ],
       ),
+    );
+  }
+  
+  Widget _buildExtractionSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.accent),
+            const SizedBox(width: 8),
+            Text(
+              'Extract Facts (Deer/Turkey)',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Extract structured season dates & bag limits from official sources. Only publishes when confidence >= 85%.',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        if (_extractionRun != null && _extractionRun!.isRunning) ...[
+          // Progress bar
+          LinearProgressIndicator(
+            value: _extractionRun!.progress,
+            backgroundColor: AppColors.border,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _extractionRun!.progressLabel,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_extractionRun!.deerPublished} deer • ${_extractionRun!.turkeyPublished} turkey published',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (_extractionRun!.lastStateCode != null)
+                      Text(
+                        'Last: ${_extractionRun!.lastStateCode}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _isExtractionCanceling ? null : _cancelExtractionRun,
+                icon: Icon(
+                  Icons.cancel_outlined,
+                  size: 18,
+                  color: _isExtractionCanceling ? AppColors.textTertiary : AppColors.error,
+                ),
+                label: Text(
+                  'Stop',
+                  style: TextStyle(
+                    color: _isExtractionCanceling ? AppColors.textTertiary : AppColors.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          // Results display (if completed)
+          if (_extractionRun != null && _extractionRun!.done) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_extractionRun!.deerPublished} deer, ${_extractionRun!.turkeyPublished} turkey extracted (${_extractionRun!.skippedCount} skipped)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          
+          // Start button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _startExtractionRun,
+              icon: const Icon(Icons.auto_awesome_rounded),
+              label: const Text('Extract Facts Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
   
