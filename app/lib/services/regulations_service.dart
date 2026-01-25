@@ -3095,12 +3095,62 @@ extension RegulationsServiceJobQueue on RegulationsService {
 
     final queuedCount = enqueueResult as int? ?? 0;
 
-    // Get updated status
+    // Get updated status - but don't fail if status fetch fails
+    // Jobs are already enqueued, so we can build status from what we know
     final status = await getJobQueueRunStatus(runId: runId);
-    if (status == null) {
-      throw Exception('Failed to get run status after enqueue');
+    if (status != null) {
+      return status;
     }
-    return status;
+
+    // Fallback: build status from run record and job counts
+    // This ensures we never fail after successfully enqueueing
+    final runRecord = await client
+        .from('regs_admin_runs')
+        .select()
+        .eq('id', runId)
+        .maybeSingle();
+
+    if (runRecord == null) {
+      throw Exception('Run not found after enqueue');
+    }
+
+    // Get job counts directly
+    final jobs = await client
+        .from('regs_jobs')
+        .select('status')
+        .eq('run_id', runId)
+        .eq('job_type', 'discover_state');
+
+    final jobsMap = <String, int>{};
+    for (final job in jobs) {
+      final jobStatus = job['status'] as String;
+      jobsMap[jobStatus] = (jobsMap[jobStatus] ?? 0) + 1;
+    }
+
+    final runStatus = runRecord['status'] as String;
+    final done = runStatus == 'completed' || runStatus == 'stopped' || runStatus == 'failed';
+    final active = runStatus == 'running' || runStatus == 'queued' || runStatus == 'stopping';
+
+    return AdminRunStatus(
+      runId: runId,
+      type: runRecord['type'] as String? ?? 'discover',
+      tier: runRecord['tier'] as String? ?? tier,
+      status: runStatus,
+      progressDone: (jobsMap['done'] ?? 0) + (jobsMap['failed'] ?? 0) + (jobsMap['skipped'] ?? 0) + (jobsMap['canceled'] ?? 0),
+      progressTotal: runRecord['progress_total'] as int? ?? 50,
+      lastState: runRecord['last_state'] as String?,
+      lastMessage: runRecord['last_message'] as String?,
+      errorMessage: runRecord['error_message'] as String?,
+      jobs: jobsMap,
+      active: active,
+      done: done,
+      createdAt: runRecord['created_at'] != null
+          ? DateTime.tryParse(runRecord['created_at'] as String)
+          : null,
+      stoppedAt: runRecord['stopped_at'] != null
+          ? DateTime.tryParse(runRecord['stopped_at'] as String)
+          : null,
+    );
   }
 
   /// Resume a discovery run by enqueueing missing states.
@@ -3146,12 +3196,60 @@ extension RegulationsServiceJobQueue on RegulationsService {
 
     final queuedCount = enqueueResult as int? ?? 0;
 
-    // Get updated status
+    // Get updated status - but don't fail if status fetch fails
     final status = await getJobQueueRunStatus(runId: runId);
-    if (status == null) {
-      throw Exception('Failed to get run status after resume');
+    if (status != null) {
+      return status;
     }
-    return status;
+
+    // Fallback: build status from run record and job counts
+    final runRecord = await client
+        .from('regs_admin_runs')
+        .select()
+        .eq('id', runId)
+        .maybeSingle();
+
+    if (runRecord == null) {
+      throw Exception('Run not found after resume');
+    }
+
+    // Get job counts directly
+    final jobs = await client
+        .from('regs_jobs')
+        .select('status')
+        .eq('run_id', runId)
+        .eq('job_type', 'discover_state');
+
+    final jobsMap = <String, int>{};
+    for (final job in jobs) {
+      final jobStatus = job['status'] as String;
+      jobsMap[jobStatus] = (jobsMap[jobStatus] ?? 0) + 1;
+    }
+
+    final resumeRunStatus = runRecord['status'] as String;
+    final done = resumeRunStatus == 'completed' || resumeRunStatus == 'stopped' || resumeRunStatus == 'failed';
+    final active = resumeRunStatus == 'running' || resumeRunStatus == 'queued' || resumeRunStatus == 'stopping';
+
+    return AdminRunStatus(
+      runId: runId,
+      type: runRecord['type'] as String? ?? 'discover',
+      tier: runRecord['tier'] as String? ?? tier,
+      status: resumeRunStatus,
+      progressDone: (jobsMap['done'] ?? 0) + (jobsMap['failed'] ?? 0) + (jobsMap['skipped'] ?? 0) + (jobsMap['canceled'] ?? 0),
+      progressTotal: runRecord['progress_total'] as int? ?? 50,
+      lastState: runRecord['last_state'] as String?,
+      lastMessage: runRecord['last_message'] as String?,
+      errorMessage: runRecord['error_message'] as String?,
+      jobs: jobsMap,
+      active: active,
+      done: done,
+      createdAt: runRecord['created_at'] != null
+          ? DateTime.tryParse(runRecord['created_at'] as String)
+          : null,
+      stoppedAt: runRecord['stopped_at'] != null
+          ? DateTime.tryParse(runRecord['stopped_at'] as String)
+          : null,
+    );
   }
 
   /// Start a new job queue-based extraction run.
@@ -3230,13 +3328,26 @@ extension RegulationsServiceJobQueue on RegulationsService {
 
       if (run == null) return null;
 
-      // Get accurate progress from RPC
-      final progressResult = await client.rpc(
+      // Get accurate progress from RPC (returns TABLE, so we get a list)
+      final progressResultList = await client.rpc(
         'regs_get_discovery_progress',
         params: {'p_run_id': actualRunId},
-      );
+      ) as List<dynamic>?;
 
-      // Get job counts by status
+      // Extract progress from first row (should always be exactly one row)
+      final progressResult = progressResultList != null && progressResultList.isNotEmpty
+          ? progressResultList[0] as Map<String, dynamic>
+          : <String, dynamic>{
+              'total_expected': 50,
+              'done_count': 0,
+              'running_count': 0,
+              'queued_count': 0,
+              'failed_count': 0,
+              'skipped_count': 0,
+              'canceled_count': 0,
+            };
+
+      // Get job counts by status (fallback if RPC fails)
       final jobs = await client
           .from('regs_jobs')
           .select('status')
@@ -3249,6 +3360,11 @@ extension RegulationsServiceJobQueue on RegulationsService {
         jobsMap[status] = (jobsMap[status] ?? 0) + 1;
       }
 
+      // Use RPC progress if available, otherwise compute from jobs
+      final doneCount = progressResult['done_count'] as int? ?? 
+          (jobsMap['done'] ?? 0) + (jobsMap['failed'] ?? 0) + (jobsMap['skipped'] ?? 0) + (jobsMap['canceled'] ?? 0);
+      final totalExpected = progressResult['total_expected'] as int? ?? 50;
+
       // Build AdminRunStatus from run + progress
       final status = run['status'] as String;
       final done = status == 'completed' || status == 'stopped' || status == 'failed';
@@ -3259,8 +3375,8 @@ extension RegulationsServiceJobQueue on RegulationsService {
         type: run['type'] as String? ?? 'discover',
         tier: run['tier'] as String? ?? 'basic',
         status: status,
-        progressDone: progressResult['done_count'] as int? ?? 0,
-        progressTotal: progressResult['total_expected'] as int? ?? 50,
+        progressDone: doneCount,
+        progressTotal: totalExpected,
         lastState: run['last_state'] as String?,
         lastMessage: run['last_message'] as String?,
         errorMessage: run['error_message'] as String?,
@@ -3276,6 +3392,58 @@ extension RegulationsServiceJobQueue on RegulationsService {
       );
     } catch (e) {
       debugPrint('[RegulationsService] Error getting run status: $e');
+      // If we have a runId, try to build status from run record directly
+      if (runId != null) {
+        try {
+          final runRecord = await client
+              .from('regs_admin_runs')
+              .select()
+              .eq('id', runId)
+              .maybeSingle();
+
+          if (runRecord != null) {
+            // Get job counts directly
+            final jobs = await client
+                .from('regs_jobs')
+                .select('status')
+                .eq('run_id', runId)
+                .eq('job_type', 'discover_state');
+
+            final jobsMap = <String, int>{};
+            for (final job in jobs) {
+              final jobStatus = job['status'] as String;
+              jobsMap[jobStatus] = (jobsMap[jobStatus] ?? 0) + 1;
+            }
+
+            final fallbackRunStatus = runRecord['status'] as String;
+            final done = fallbackRunStatus == 'completed' || fallbackRunStatus == 'stopped' || fallbackRunStatus == 'failed';
+            final active = fallbackRunStatus == 'running' || fallbackRunStatus == 'queued' || fallbackRunStatus == 'stopping';
+
+            return AdminRunStatus(
+              runId: runId,
+              type: runRecord['type'] as String? ?? 'discover',
+              tier: runRecord['tier'] as String? ?? 'basic',
+              status: fallbackRunStatus,
+              progressDone: (jobsMap['done'] ?? 0) + (jobsMap['failed'] ?? 0) + (jobsMap['skipped'] ?? 0) + (jobsMap['canceled'] ?? 0),
+              progressTotal: runRecord['progress_total'] as int? ?? 50,
+              lastState: runRecord['last_state'] as String?,
+              lastMessage: runRecord['last_message'] as String?,
+              errorMessage: runRecord['error_message'] as String?,
+              jobs: jobsMap,
+              active: active,
+              done: done,
+              createdAt: runRecord['created_at'] != null
+                  ? DateTime.tryParse(runRecord['created_at'] as String)
+                  : null,
+              stoppedAt: runRecord['stopped_at'] != null
+                  ? DateTime.tryParse(runRecord['stopped_at'] as String)
+                  : null,
+            );
+          }
+        } catch (fallbackError) {
+          debugPrint('[RegulationsService] Fallback status fetch also failed: $fallbackError');
+        }
+      }
       return null;
     }
   }
