@@ -1466,6 +1466,134 @@ class RegulationsService {
         })
         .neq('state_code', ''); // Update all rows
   }
+
+  /// Auto-repair broken links (http->https, redirect canonicalization, etc.)
+  /// Returns repair results with details.
+  Future<RepairResult> repairBrokenLinks() async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-repair-broken',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      if (response.status == 401) throw Exception('Please log in again');
+      if (response.status == 403) throw Exception('Admin access required');
+      throw Exception(error);
+    }
+
+    final data = response.data as Map<String, dynamic>;
+    return RepairResult.fromJson(data);
+  }
+
+  /// Update a single portal link URL (admin manual edit).
+  Future<void> updatePortalLinkUrl({
+    required String stateCode,
+    required String field,
+    required String newUrl,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    // Map field name to column name
+    final columnMap = {
+      'Hunting Seasons': 'hunting_seasons_url',
+      'Hunting Regs': 'hunting_regs_url',
+      'Fishing Regs': 'fishing_regs_url',
+      'Licensing': 'licensing_url',
+      'Buy License': 'buy_license_url',
+      'Records': 'records_url',
+    };
+
+    final column = columnMap[field];
+    if (column == null) throw Exception('Invalid field: $field');
+
+    // Reset verification for this field
+    final verifiedColumn = 'verified_${column.replaceAll('_url', '')}_ok';
+    final statusColumn = '${column.replaceAll('_url', '')}_status';
+
+    await client
+        .from('state_portal_links')
+        .update({
+          column: newUrl,
+          verifiedColumn: false,
+          statusColumn: null,
+        })
+        .eq('state_code', stateCode);
+  }
+}
+
+/// Result of auto-repair operation.
+class RepairResult {
+  const RepairResult({
+    required this.checked,
+    required this.repaired,
+    required this.stillBroken,
+    required this.details,
+  });
+
+  final int checked;
+  final int repaired;
+  final int stillBroken;
+  final List<RepairDetail> details;
+
+  factory RepairResult.fromJson(Map<String, dynamic> json) {
+    final detailsList = (json['details'] as List? ?? [])
+        .map((d) => RepairDetail.fromJson(d as Map<String, dynamic>))
+        .toList();
+    return RepairResult(
+      checked: json['checked'] as int? ?? 0,
+      repaired: json['repaired'] as int? ?? 0,
+      stillBroken: json['still_broken'] as int? ?? 0,
+      details: detailsList,
+    );
+  }
+}
+
+/// Detail of a single repair action.
+class RepairDetail {
+  const RepairDetail({
+    required this.state,
+    required this.field,
+    required this.action,
+    required this.from,
+    required this.to,
+  });
+
+  final String state;
+  final String field;
+  final String action;
+  final String from;
+  final String to;
+
+  factory RepairDetail.fromJson(Map<String, dynamic> json) {
+    return RepairDetail(
+      state: json['state'] as String? ?? '',
+      field: json['field'] as String? ?? '',
+      action: json['action'] as String? ?? '',
+      from: json['from'] as String? ?? '',
+      to: json['to'] as String? ?? '',
+    );
+  }
+
+  String get actionLabel {
+    switch (action) {
+      case 'http_to_https':
+        return 'HTTP → HTTPS';
+      case 'add_trailing_slash':
+        return 'Added trailing slash';
+      case 'redirect_canonicalized':
+        return 'Redirect canonicalized';
+      default:
+        return action;
+    }
+  }
 }
 
 /// Provider for regulations service.

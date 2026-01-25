@@ -30,6 +30,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   // Server-side verification state
   VerifyRunStatus? _currentRun;
   bool _isCanceling = false;
+  
+  // Auto-repair state
+  bool _isRepairing = false;
+  RepairResult? _lastRepairResult;
 
   @override
   void initState() {
@@ -208,6 +212,46 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         setState(() => _isCanceling = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error canceling: $e')),
+        );
+      }
+    }
+  }
+
+  /// Auto-fix broken links (http->https, redirect canonicalization).
+  Future<void> _repairBrokenLinks() async {
+    setState(() {
+      _isRepairing = true;
+      _lastRepairResult = null;
+    });
+
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.repairBrokenLinks();
+      
+      if (mounted) {
+        setState(() {
+          _isRepairing = false;
+          _lastRepairResult = result;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Repaired ${result.repaired} links. ${result.stillBroken} still broken.',
+            ),
+            backgroundColor: result.repaired > 0 ? AppColors.success : AppColors.warning,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        
+        // Reload stats to reflect changes
+        _loadStats();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRepairing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }
@@ -624,6 +668,116 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 ),
               ),
             ),
+          
+          // Auto-Fix Broken Links button (only show if there are broken links)
+          if (_brokenLinks.isNotEmpty && !_isVerifying) ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            Text(
+              'Auto-Fix Broken Links',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Attempts conservative fixes: HTTP→HTTPS, trailing slash, redirect canonicalization.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_isRepairing)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.warning),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Repairing broken links...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _repairBrokenLinks,
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: Text('Auto-Fix ${_brokenLinks.length} Broken Links'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.warning,
+                    side: BorderSide(color: AppColors.warning.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              if (_lastRepairResult != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Last repair: ${_lastRepairResult!.repaired} fixed, ${_lastRepairResult!.stillBroken} still broken',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _lastRepairResult!.repaired > 0 
+                              ? AppColors.success 
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                      if (_lastRepairResult!.details.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ...(_lastRepairResult!.details.take(5).map((d) => Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '${d.state} ${d.field}: ${d.actionLabel}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ))),
+                        if (_lastRepairResult!.details.length > 5)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '... and ${_lastRepairResult!.details.length - 5} more',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ],
         ],
       ),
     );
@@ -665,60 +819,229 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         ),
         if (_showBrokenLinks) ...[
           const SizedBox(height: 12),
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _brokenLinks.length,
-              separatorBuilder: (_, __) => Divider(
-                height: 1,
-                color: AppColors.border,
-              ),
-              itemBuilder: (context, index) {
-                final link = _brokenLinks[index];
-                return ListTile(
-                  dense: true,
-                  leading: Text(
-                    link.stateCode,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  title: Text(
-                    link.field,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  subtitle: Text(
-                    link.error ?? 'Unknown error',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.error,
-                    ),
-                  ),
-                  trailing: Text(
-                    'HTTP ${link.status ?? '?'}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+          // Group broken links by state
+          ..._buildGroupedBrokenLinks(),
         ],
       ],
     );
+  }
+
+  /// Build broken links grouped by state with expandable details.
+  List<Widget> _buildGroupedBrokenLinks() {
+    // Group by state
+    final grouped = <String, List<_BrokenLink>>{};
+    for (final link in _brokenLinks) {
+      grouped.putIfAbsent(link.stateCode, () => []).add(link);
+    }
+    
+    final states = grouped.keys.toList()..sort();
+    
+    return states.map((stateCode) {
+      final links = grouped[stateCode]!;
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: EdgeInsets.zero,
+          leading: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              stateCode,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.error,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          title: Text(
+            '${links.length} broken link${links.length == 1 ? '' : 's'}',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          children: links.map((link) => _buildBrokenLinkItem(link)).toList(),
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildBrokenLinkItem(_BrokenLink link) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppColors.border),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  link.field,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  link.statusLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.error,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (link.url != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              link.url!,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          if (link.error != null && link.error!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              link.error!,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.error,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () => _editBrokenLink(link),
+                icon: Icon(Icons.edit_rounded, size: 14, color: AppColors.accent),
+                label: Text(
+                  'Edit URL',
+                  style: TextStyle(fontSize: 12, color: AppColors.accent),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show dialog to manually edit a broken link URL.
+  Future<void> _editBrokenLink(_BrokenLink link) async {
+    final controller = TextEditingController(text: link.url ?? '');
+    
+    final newUrl = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(
+          'Edit ${link.field} URL',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'State: ${link.stateCode}',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'URL',
+                hintText: 'https://...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              maxLines: 3,
+              style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Enter the correct official URL. This will reset verification status.',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    
+    if (newUrl != null && newUrl.isNotEmpty && newUrl != link.url) {
+      try {
+        final service = ref.read(regulationsServiceProvider);
+        await service.updatePortalLinkUrl(
+          stateCode: link.stateCode,
+          field: link.field,
+          newUrl: newUrl,
+        );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('URL updated for ${link.stateCode} ${link.field}'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _loadStats(); // Reload to refresh broken links
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildDangerZone() {
@@ -818,12 +1141,14 @@ class _BrokenLink {
   const _BrokenLink({
     required this.stateCode,
     required this.field,
+    this.url,
     this.status,
     this.error,
   });
 
   final String stateCode;
   final String field;
+  final String? url;
   final int? status;
   final String? error;
 
@@ -831,9 +1156,19 @@ class _BrokenLink {
     return _BrokenLink(
       stateCode: map['state_code'] ?? '',
       field: map['field'] ?? '',
+      url: map['url'] as String?,
       status: map['status'],
       error: map['error'],
     );
+  }
+  
+  String get statusLabel {
+    if (status == null) return 'Timeout/Error';
+    if (status == 404) return '404 Not Found';
+    if (status == 403) return '403 Forbidden';
+    if (status == 500) return '500 Server Error';
+    if (status! >= 500) return '$status Server Error';
+    return 'HTTP $status';
   }
 }
 
