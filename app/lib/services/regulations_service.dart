@@ -3062,7 +3062,7 @@ extension RegulationsServiceJobQueue on RegulationsService {
         .from('regs_admin_runs')
         .select()
         .eq('type', 'discover')
-        .in_('status', ['queued', 'running'])
+        .inFilter('status', ['queued', 'running'])
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
@@ -3096,8 +3096,11 @@ extension RegulationsServiceJobQueue on RegulationsService {
     final queuedCount = enqueueResult as int? ?? 0;
 
     // Get updated status
-    return await getJobQueueRunStatus(runId: runId) ?? 
-        throw Exception('Failed to get run status after enqueue');
+    final status = await getJobQueueRunStatus(runId: runId);
+    if (status == null) {
+      throw Exception('Failed to get run status after enqueue');
+    }
+    return status;
   }
 
   /// Resume a discovery run by enqueueing missing states.
@@ -3113,7 +3116,7 @@ extension RegulationsServiceJobQueue on RegulationsService {
         .from('regs_admin_runs')
         .select()
         .eq('id', runId)
-        .single();
+        .maybeSingle();
 
     if (run == null) {
       throw Exception('Run not found');
@@ -3144,8 +3147,11 @@ extension RegulationsServiceJobQueue on RegulationsService {
     final queuedCount = enqueueResult as int? ?? 0;
 
     // Get updated status
-    return await getJobQueueRunStatus(runId: runId) ?? 
-        throw Exception('Failed to get run status after resume');
+    final status = await getJobQueueRunStatus(runId: runId);
+    if (status == null) {
+      throw Exception('Failed to get run status after resume');
+    }
+    return status;
   }
 
   /// Start a new job queue-based extraction run.
@@ -3206,7 +3212,7 @@ extension RegulationsServiceJobQueue on RegulationsService {
             .from('regs_admin_runs')
             .select('id')
             .eq('type', 'discover')
-            .in_('status', ['queued', 'running', 'stopping'])
+            .inFilter('status', ['queued', 'running', 'stopping'])
             .order('created_at', ascending: false)
             .limit(1)
             .maybeSingle();
@@ -3220,7 +3226,7 @@ extension RegulationsServiceJobQueue on RegulationsService {
           .from('regs_admin_runs')
           .select()
           .eq('id', actualRunId)
-          .single();
+          .maybeSingle();
 
       if (run == null) return null;
 
@@ -3228,7 +3234,7 @@ extension RegulationsServiceJobQueue on RegulationsService {
       final progressResult = await client.rpc(
         'regs_get_discovery_progress',
         params: {'p_run_id': actualRunId},
-      ).single();
+      );
 
       // Get job counts by status
       final jobs = await client
