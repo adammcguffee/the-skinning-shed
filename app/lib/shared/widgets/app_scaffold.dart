@@ -193,6 +193,8 @@ class AppScaffold extends ConsumerWidget {
   Widget _buildWideLayout(BuildContext context, WidgetRef ref) {
     final unreadCount = ref.watch(unreadCountProvider);
     final destinations = _buildDestinations(unreadCount);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= AppSpacing.breakpointDesktop;
     
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -214,15 +216,14 @@ class AppScaffold extends ConsumerWidget {
               ),
               child: Column(
                 children: [
-                  // Header zone with ad slots
+                  // Header zone - banner ONLY, perfectly centered
                   Padding(
                     padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
-                    child: AdAwareBannerHeader(
-                      page: _currentPageId,
-                      bannerWidget: const BannerHeader.appTop(),
-                      maxBannerWidth: 900,
-                      adMaxWidth: 200,
-                      adMaxHeight: 100,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 900),
+                        child: const BannerHeader.appTop(),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -235,32 +236,59 @@ class AppScaffold extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Content frame
+                  // Content frame with optional ad rail
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1100),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.06),
+                    child: Row(
+                      children: [
+                        // Main content area
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: isDesktop ? 900 : 1100,
                               ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(18),
-                              child: child,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.10),
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.06),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(18),
+                                    child: child,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        // Right ad rail (desktop only)
+                        if (isDesktop)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
+                            child: SizedBox(
+                              width: 180,
+                              child: Column(
+                                children: [
+                                  AdSlot(
+                                    page: _currentPageId,
+                                    position: AdPosition.right,
+                                    maxWidth: 180,
+                                    maxHeight: 280,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
