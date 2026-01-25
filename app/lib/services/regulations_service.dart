@@ -3056,18 +3056,96 @@ extension RegulationsServiceJobQueue on RegulationsService {
     final session = _supabaseService.currentSession;
     if (session == null) throw Exception('Not authenticated');
 
-    final response = await client.functions.invoke(
-      'regs-run-start',
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'type': 'discover', 'tier': tier},
-    );
+    // Create or get active run
+    String runId;
+    final existingRun = await client
+        .from('regs_admin_runs')
+        .select()
+        .eq('type', 'discover')
+        .in_('status', ['queued', 'running'])
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
 
-    if (response.status != 200) {
-      final error = response.data?['error'] ?? 'Unknown error';
-      throw Exception('Failed to start discovery run: $error');
+    if (existingRun != null) {
+      runId = existingRun['id'] as String;
+    } else {
+      // Create new run
+      final newRun = await client
+          .from('regs_admin_runs')
+          .insert({
+            'type': 'discover',
+            'tier': tier,
+            'status': 'running',
+            'progress_total': 50,
+          })
+          .select()
+          .single();
+      runId = newRun['id'] as String;
     }
 
-    return AdminRunStatus.fromJson(response.data as Map<String, dynamic>);
+    // Enqueue all 50 states using RPC
+    final enqueueResult = await client.rpc(
+      'regs_enqueue_discovery_all_states',
+      params: {
+        'p_run_id': runId,
+        'p_tier': tier,
+      },
+    );
+
+    final queuedCount = enqueueResult as int? ?? 0;
+
+    // Get updated status
+    return await getJobQueueRunStatus(runId: runId) ?? 
+        throw Exception('Failed to get run status after enqueue');
+  }
+
+  /// Resume a discovery run by enqueueing missing states.
+  Future<AdminRunStatus> resumeDiscoveryRun(String runId, {String tier = 'pro'}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    // Ensure run exists and is resumable
+    final run = await client
+        .from('regs_admin_runs')
+        .select()
+        .eq('id', runId)
+        .single();
+
+    if (run == null) {
+      throw Exception('Run not found');
+    }
+
+    final runStatus = run['status'] as String;
+    if (runStatus == 'completed' || runStatus == 'failed') {
+      throw Exception('Cannot resume a completed or failed run');
+    }
+
+    // Update run status to running if needed
+    if (runStatus != 'running') {
+      await client
+          .from('regs_admin_runs')
+          .update({'status': 'running'})
+          .eq('id', runId);
+    }
+
+    // Enqueue missing states (RPC handles duplicates)
+    final enqueueResult = await client.rpc(
+      'regs_enqueue_discovery_all_states',
+      params: {
+        'p_run_id': runId,
+        'p_tier': tier,
+      },
+    );
+
+    final queuedCount = enqueueResult as int? ?? 0;
+
+    // Get updated status
+    return await getJobQueueRunStatus(runId: runId) ?? 
+        throw Exception('Failed to get run status after resume');
   }
 
   /// Start a new job queue-based extraction run.
@@ -3121,24 +3199,75 @@ extension RegulationsServiceJobQueue on RegulationsService {
     if (session == null) return null;
 
     try {
-      final response = await client.functions.invoke(
-        'regs-run-status',
-        headers: {'Authorization': 'Bearer ${session.accessToken}'},
-        body: runId != null ? {'run_id': runId} : {},
+      // If no runId provided, find latest active run
+      String? actualRunId = runId;
+      if (actualRunId == null) {
+        final latestRun = await client
+            .from('regs_admin_runs')
+            .select('id')
+            .eq('type', 'discover')
+            .in_('status', ['queued', 'running', 'stopping'])
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+        
+        if (latestRun == null) return null;
+        actualRunId = latestRun['id'] as String;
+      }
+
+      // Get run details
+      final run = await client
+          .from('regs_admin_runs')
+          .select()
+          .eq('id', actualRunId)
+          .single();
+
+      if (run == null) return null;
+
+      // Get accurate progress from RPC
+      final progressResult = await client.rpc(
+        'regs_get_discovery_progress',
+        params: {'p_run_id': actualRunId},
+      ).single();
+
+      // Get job counts by status
+      final jobs = await client
+          .from('regs_jobs')
+          .select('status')
+          .eq('run_id', actualRunId)
+          .eq('job_type', 'discover_state');
+
+      final jobsMap = <String, int>{};
+      for (final job in jobs) {
+        final status = job['status'] as String;
+        jobsMap[status] = (jobsMap[status] ?? 0) + 1;
+      }
+
+      // Build AdminRunStatus from run + progress
+      final status = run['status'] as String;
+      final done = status == 'completed' || status == 'stopped' || status == 'failed';
+      final active = status == 'running' || status == 'queued' || status == 'stopping';
+
+      return AdminRunStatus(
+        runId: actualRunId,
+        type: run['type'] as String? ?? 'discover',
+        tier: run['tier'] as String? ?? 'basic',
+        status: status,
+        progressDone: progressResult['done_count'] as int? ?? 0,
+        progressTotal: progressResult['total_expected'] as int? ?? 50,
+        lastState: run['last_state'] as String?,
+        lastMessage: run['last_message'] as String?,
+        errorMessage: run['error_message'] as String?,
+        jobs: jobsMap,
+        active: active,
+        done: done,
+        createdAt: run['created_at'] != null
+            ? DateTime.tryParse(run['created_at'] as String)
+            : null,
+        stoppedAt: run['stopped_at'] != null
+            ? DateTime.tryParse(run['stopped_at'] as String)
+            : null,
       );
-
-      if (response.status != 200) {
-        return null;
-      }
-
-      final data = response.data as Map<String, dynamic>;
-      
-      // Check if no active run
-      if (data['active'] == false && data['run_id'] == null) {
-        return null;
-      }
-
-      return AdminRunStatus.fromJson(data);
     } catch (e) {
       debugPrint('[RegulationsService] Error getting run status: $e');
       return null;

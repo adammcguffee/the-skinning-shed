@@ -27,6 +27,10 @@ let shutdownPromiseResolve: (() => void) | null = null;
 // Max time to wait for active jobs to finish (150s, well under systemd's 180s timeout)
 const SHUTDOWN_TIMEOUT_MS = 150_000;
 
+// Idle logging state
+let lastIdleLogTime = 0;
+const IDLE_LOG_INTERVAL_MS = 30_000; // Log idle status at most once every 30 seconds
+
 // Graceful shutdown handlers
 process.on('SIGTERM', () => {
   console.log('[Worker] Received SIGTERM, initiating graceful shutdown...');
@@ -172,9 +176,19 @@ async function workerLoop(): Promise<void> {
     while (jobSlots.length < workerConcurrency && !shuttingDown) {
       const job = await claimJob(workerId);
       if (!job) {
+        // No more jobs available - log idle status if no active jobs
+        if (jobSlots.length === 0 && !shuttingDown) {
+          const now = Date.now();
+          if (now - lastIdleLogTime >= IDLE_LOG_INTERVAL_MS) {
+            console.log('[Worker] No queued jobs available, idle');
+            lastIdleLogTime = now;
+          }
+        }
         break; // No more jobs available
       }
 
+      // Reset idle log time when we claim a job
+      lastIdleLogTime = 0;
       activeJobs++;
       console.log(`[Worker] Claimed job ${job.id} (${activeJobs}/${workerConcurrency} active)`);
       

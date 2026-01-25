@@ -568,7 +568,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Discovery started: ${run.progressTotal} jobs queued'),
+            content: Text('Discovery started: Queued ${run.progressTotal} states'),
             backgroundColor: AppColors.info,
           ),
         );
@@ -577,6 +577,37 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error starting discovery: $e')),
+        );
+      }
+    }
+  }
+
+  /// Resume a discovery run by enqueueing missing states.
+  Future<void> _resumeDiscoveryRun() async {
+    if (_activeDiscoveryRun == null) return;
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final run = await service.resumeDiscoveryRun(
+        _activeDiscoveryRun!.runId,
+        tier: _activeDiscoveryRun!.tier == 'pro' ? 'pro' : 'basic',
+      );
+      
+      if (mounted) {
+        setState(() => _activeDiscoveryRun = run);
+        _pollJobQueueDiscoveryRun(run.runId);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Resumed discovery: Queued ${run.progressTotal} states'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error resuming discovery: $e')),
         );
       }
     }
@@ -2287,7 +2318,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${_activeDiscoveryRun!.progressDone}/${_activeDiscoveryRun!.progressTotal} states',
+                      'Done: ${_activeDiscoveryRun!.progressDone}/${_activeDiscoveryRun!.progressTotal} states',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -2295,12 +2326,24 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _activeDiscoveryRun!.summaryLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                    // Show detailed counts
+                    Builder(
+                      builder: (context) {
+                        final jobs = _activeDiscoveryRun!.jobs;
+                        final parts = <String>[];
+                        if ((jobs['queued'] ?? 0) > 0) parts.add('Queued: ${jobs['queued']}');
+                        if ((jobs['running'] ?? 0) > 0) parts.add('Running: ${jobs['running']}');
+                        if ((jobs['failed'] ?? 0) > 0) parts.add('Failed: ${jobs['failed']}');
+                        if ((jobs['skipped'] ?? 0) > 0) parts.add('Skipped: ${jobs['skipped']}');
+                        
+                        return Text(
+                          parts.isEmpty ? 'Processing...' : parts.join(' • '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        );
+                      },
                     ),
                     // Show status: either "Crawling: XX" or "Finishing..." or status label
                     Text(
@@ -2317,8 +2360,8 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   ],
                 ),
               ),
-              // Only show Stop button if there are stoppable jobs
-              if (_activeDiscoveryRun!.hasStoppableJobs)
+              // Show Stop and Resume buttons
+              if (_activeDiscoveryRun!.hasStoppableJobs) ...[
                 TextButton.icon(
                   onPressed: _isDiscoveryStopping ? null : _stopDiscoveryRun,
                   icon: Icon(
@@ -2332,7 +2375,17 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                       color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
                     ),
                   ),
-                )
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _resumeDiscoveryRun,
+                  icon: const Icon(
+                    Icons.play_arrow_rounded,
+                    size: 18,
+                  ),
+                  label: const Text('Resume'),
+                ),
+              ]
               else
                 // Show "finishing" indicator when no stoppable jobs
                 Row(
@@ -2413,6 +2466,22 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               ),
             ),
             const SizedBox(height: 12),
+            // Show Resume button if stopped but not completed
+            if (_activeDiscoveryRun!.wasStopped && !_activeDiscoveryRun!.allJobsTerminal)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _resumeDiscoveryRun,
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('Resume Discovery'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
           
           // Start buttons row
