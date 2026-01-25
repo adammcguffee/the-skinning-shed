@@ -5,7 +5,9 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/app/theme/background_theme.dart';
 import 'package:shed/services/background_theme_provider.dart';
+import 'package:shed/services/background_theme_store.dart';
 import 'package:shed/shared/widgets/app_background.dart';
+import 'package:shed/shared/widgets/pattern_overlay_painter.dart';
 
 /// Show background theme selector modal
 void showBackgroundThemeSelector(BuildContext context) {
@@ -18,13 +20,19 @@ void showBackgroundThemeSelector(BuildContext context) {
   );
 }
 
-class _BackgroundThemeSelectorSheet extends ConsumerWidget {
+class _BackgroundThemeSelectorSheet extends ConsumerStatefulWidget {
   const _BackgroundThemeSelectorSheet();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BackgroundThemeSelectorSheet> createState() => _BackgroundThemeSelectorSheetState();
+}
+
+class _BackgroundThemeSelectorSheetState extends ConsumerState<_BackgroundThemeSelectorSheet> {
+  @override
+  Widget build(BuildContext context) {
     final currentThemeId = ref.watch(backgroundThemeIdProvider);
-    final themes = BackgroundThemes.all;
+    final favoritesAsync = ref.watch(backgroundThemeFavoritesProvider);
+    final includeMinimalAsync = ref.watch(includeMinimalInRandomProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -68,28 +76,83 @@ class _BackgroundThemeSelectorSheet extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            // Theme list
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                itemCount: themes.length,
-                itemBuilder: (context, index) {
-                  final theme = themes[index];
-                  final isSelected = theme.id == currentThemeId;
+            // Random button and include minimal toggle
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final includeMinimal = includeMinimalAsync.value ?? false;
+                        final notifier = ref.read(backgroundThemeIdProvider.notifier);
+                        await notifier.setRandomTheme(includeMinimal);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      icon: const Icon(Icons.shuffle_rounded, size: 18),
+                      label: const Text('Random'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.textInverse,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  includeMinimalAsync.when(
+                    data: (includeMinimal) => Row(
+                      children: [
+                        Text(
+                          'Include minimal',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(width: 8),
+                        Switch(
+                          value: includeMinimal,
+                          onChanged: (value) async {
+                            await BackgroundThemeStore.setIncludeMinimalInRandom(value);
+                            ref.invalidate(includeMinimalInRandomProvider);
+                          },
+                          activeColor: AppColors.accent,
+                        ),
+                      ],
+                    ),
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
 
-                  return _ThemeOption(
-                    theme: theme,
-                    isSelected: isSelected,
-                    onTap: () async {
-                      final notifier = ref.read(backgroundThemeIdProvider.notifier);
-                      await notifier.setTheme(theme.id);
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                      }
+            // Theme list with sections
+            Flexible(
+              child: favoritesAsync.when(
+                data: (favorites) {
+                  final allThemes = BackgroundThemes.all;
+                  final favoriteThemes = allThemes.where((t) => favorites.contains(t.id)).toList();
+                  final otherThemes = allThemes.where((t) => !favorites.contains(t.id)).toList();
+
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                    itemCount: _calculateItemCount(favoriteThemes, otherThemes),
+                    itemBuilder: (context, index) {
+                      return _buildThemeItem(
+                        context,
+                        index,
+                        favoriteThemes,
+                        otherThemes,
+                        currentThemeId,
+                        favorites,
+                      );
                     },
                   );
                 },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (_, __) => const SizedBox.shrink(),
               ),
             ),
 
@@ -99,18 +162,139 @@ class _BackgroundThemeSelectorSheet extends ConsumerWidget {
       ),
     );
   }
+
+  int _calculateItemCount(List<BackgroundThemeSpec> favorites, List<BackgroundThemeSpec> others) {
+    int count = 0;
+    
+    // Favorites section header + themes
+    if (favorites.isNotEmpty) {
+      count += 1 + favorites.length; // Header + themes
+    }
+    
+    // Group others by category
+    final categories = BackgroundThemeCategory.values;
+    for (final category in categories) {
+      final categoryThemes = others.where((t) => t.category == category).toList();
+      if (categoryThemes.isNotEmpty) {
+        count += 1 + categoryThemes.length; // Header + themes
+      }
+    }
+    
+    return count;
+  }
+
+  Widget _buildThemeItem(
+    BuildContext context,
+    int index,
+    List<BackgroundThemeSpec> favorites,
+    List<BackgroundThemeSpec> others,
+    BackgroundThemeId currentThemeId,
+    Set<BackgroundThemeId> favoriteIds,
+  ) {
+    int currentIndex = 0;
+    
+    // Favorites section
+    if (favorites.isNotEmpty) {
+      if (index == currentIndex) {
+        return _SectionHeader(title: 'Favorites');
+      }
+      currentIndex++;
+      
+      for (final theme in favorites) {
+        if (index == currentIndex) {
+          return _ThemeOption(
+            theme: theme,
+            isSelected: theme.id == currentThemeId,
+            isFavorite: true,
+            onTap: () async {
+              final notifier = ref.read(backgroundThemeIdProvider.notifier);
+              await notifier.setTheme(theme.id);
+              if (context.mounted) {
+                Navigator.pop(context);
+              }
+            },
+            onFavoriteToggle: () async {
+              await BackgroundThemeStore.toggleFavorite(theme.id);
+              ref.invalidate(backgroundThemeFavoritesProvider);
+            },
+          );
+        }
+        currentIndex++;
+      }
+    }
+    
+    // Category sections
+    final categories = BackgroundThemeCategory.values;
+    for (final category in categories) {
+      final categoryThemes = others.where((t) => t.category == category).toList();
+      if (categoryThemes.isEmpty) continue;
+      
+      if (index == currentIndex) {
+        return _SectionHeader(title: BackgroundThemes.getCategoryName(category));
+      }
+      currentIndex++;
+      
+      for (final theme in categoryThemes) {
+        if (index == currentIndex) {
+          return _ThemeOption(
+            theme: theme,
+            isSelected: theme.id == currentThemeId,
+            isFavorite: favoriteIds.contains(theme.id),
+            onTap: () async {
+              final notifier = ref.read(backgroundThemeIdProvider.notifier);
+              await notifier.setTheme(theme.id);
+              if (context.mounted) {
+                Navigator.pop(context);
+              }
+            },
+            onFavoriteToggle: () async {
+              await BackgroundThemeStore.toggleFavorite(theme.id);
+              ref.invalidate(backgroundThemeFavoritesProvider);
+            },
+          );
+        }
+        currentIndex++;
+      }
+    }
+    
+    return const SizedBox.shrink();
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: AppSpacing.sm),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: AppColors.accent,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
 }
 
 class _ThemeOption extends StatelessWidget {
   const _ThemeOption({
     required this.theme,
     required this.isSelected,
+    required this.isFavorite,
     required this.onTap,
+    required this.onFavoriteToggle,
   });
 
   final BackgroundThemeSpec theme;
   final bool isSelected;
+  final bool isFavorite;
   final VoidCallback onTap;
+  final VoidCallback onFavoriteToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +353,17 @@ class _ThemeOption extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+
+                // Favorite button
+                IconButton(
+                  icon: Icon(
+                    isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: isFavorite ? AppColors.accent : AppColors.textTertiary,
+                    size: 24,
+                  ),
+                  onPressed: onFavoriteToggle,
+                  tooltip: isFavorite ? 'Remove from favorites' : 'Add to favorites',
                 ),
 
                 // Checkmark
@@ -234,6 +429,14 @@ class _ThemePreview extends StatelessWidget {
           ),
         ),
 
+        // Pattern overlay (if any)
+        if (theme.patternOverlay != PatternOverlayType.none)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _getPreviewPatternPainter(theme.patternOverlay, theme.patternOpacityMain * 0.6),
+            ),
+          ),
+
         // Vignette
         Positioned.fill(
           child: DecoratedBox(
@@ -254,6 +457,19 @@ class _ThemePreview extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  CustomPainter _getPreviewPatternPainter(PatternOverlayType type, double opacity) {
+    switch (type) {
+      case PatternOverlayType.antler:
+        return AntlerPatternPainter(opacity: opacity);
+      case PatternOverlayType.topo:
+        return TopoLinesPainter(opacity: opacity);
+      case PatternOverlayType.leatherBrass:
+        return LeatherTexturePainter(opacity: opacity);
+      case PatternOverlayType.none:
+        return _EmptyPreviewPainter();
+    }
   }
 }
 
@@ -292,4 +508,13 @@ class _PreviewCamoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PreviewCamoPainter oldDelegate) => opacity != oldDelegate.opacity;
+}
+
+/// Empty painter for preview
+class _EmptyPreviewPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {}
+
+  @override
+  bool shouldRepaint(_EmptyPreviewPainter oldDelegate) => false;
 }

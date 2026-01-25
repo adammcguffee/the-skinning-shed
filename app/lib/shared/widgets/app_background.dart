@@ -5,6 +5,7 @@ import 'package:shed/app/theme/background_theme.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/services/background_theme_provider.dart';
 import 'camo_background.dart';
+import 'pattern_overlay_painter.dart';
 
 /// Variant for background rendering (main scaffold vs sidebar)
 enum BackgroundVariant {
@@ -94,7 +95,19 @@ class AppBackground extends ConsumerWidget {
           ),
         ),
 
-        // Layer 6: Radial vignette (darken edges, keep center readable)
+        // Layer 6: Pattern overlay (antler, topo, leather) if specified
+        if (themeSpec.patternOverlay != PatternOverlayType.none)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _getPatternOverlayPainter(themeSpec.patternOverlay, opacity),
+                ),
+              ),
+            ),
+          ),
+
+        // Layer 7: Radial vignette (darken edges, keep center readable)
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
@@ -118,7 +131,7 @@ class AppBackground extends ConsumerWidget {
           ),
         ),
 
-        // Layer 7: Content (sits above all background layers)
+        // Layer 8: Content (sits above all background layers)
         child,
       ],
     );
@@ -204,4 +217,27 @@ class _BranchShadowPainter extends CustomPainter {
   bool shouldRepaint(_BranchShadowPainter oldDelegate) {
     return colors != oldDelegate.colors || opacity != oldDelegate.opacity;
   }
+}
+
+/// Get pattern overlay painter based on type
+CustomPainter _getPatternOverlayPainter(PatternOverlayType type, double baseOpacity) {
+  switch (type) {
+    case PatternOverlayType.antler:
+      return AntlerPatternPainter(opacity: baseOpacity);
+    case PatternOverlayType.topo:
+      return TopoLinesPainter(opacity: baseOpacity);
+    case PatternOverlayType.leatherBrass:
+      return LeatherTexturePainter(opacity: baseOpacity);
+    case PatternOverlayType.none:
+      return _EmptyPainter();
+  }
+}
+
+/// Empty painter for no overlay
+class _EmptyPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {}
+
+  @override
+  bool shouldRepaint(_EmptyPainter oldDelegate) => false;
 }
