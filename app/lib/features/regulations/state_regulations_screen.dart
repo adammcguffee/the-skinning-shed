@@ -287,23 +287,26 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
               children: [
-                if (links.hasSeasons)
+                if (links.hasHuntingSeasons)
                   _PortalButton(
                     icon: Icons.calendar_today_rounded,
                     label: 'Seasons',
-                    url: links.seasonsUrl!,
+                    url: links.huntingSeasonsUrl!,
+                    verified: links.huntingSeasonsVerified,
                   ),
-                if (links.hasRegulations)
+                if (links.hasHuntingRegs)
                   _PortalButton(
                     icon: Icons.description_rounded,
                     label: 'Regulations',
-                    url: links.regulationsUrl!,
+                    url: links.huntingRegsUrl!,
+                    verified: links.huntingRegsVerified,
                   ),
                 if (links.hasLicensing)
                   _PortalButton(
                     icon: Icons.badge_rounded,
                     label: 'Licensing',
                     url: links.licensingUrl!,
+                    verified: links.licensingVerified,
                   ),
                 if (links.hasBuyLicense)
                   _PortalButton(
@@ -311,18 +314,21 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
                     label: 'Buy License',
                     url: links.buyLicenseUrl!,
                     isPrimary: true,
+                    verified: links.buyLicenseVerified,
                   ),
-                if (links.hasFishing)
+                if (links.hasFishingRegs)
                   _PortalButton(
                     icon: Icons.phishing_rounded,
                     label: 'Fishing',
-                    url: links.fishingUrl!,
+                    url: links.fishingRegsUrl!,
+                    verified: links.fishingRegsVerified,
                   ),
                 if (links.hasRecords)
                   _PortalButton(
                     icon: Icons.emoji_events_rounded,
                     label: 'Records',
                     url: links.recordsUrl!,
+                    verified: links.recordsVerified,
                   ),
               ],
             ),
@@ -1236,18 +1242,21 @@ class _ApprovalBadge extends StatelessWidget {
 }
 
 /// Portal button for opening external links.
+/// Shows disabled state if not verified.
 class _PortalButton extends StatefulWidget {
   const _PortalButton({
     required this.icon,
     required this.label,
     required this.url,
     this.isPrimary = false,
+    this.verified = false,
   });
   
   final IconData icon;
   final String label;
   final String url;
   final bool isPrimary;
+  final bool verified;
   
   @override
   State<_PortalButton> createState() => _PortalButtonState();
@@ -1257,6 +1266,7 @@ class _PortalButtonState extends State<_PortalButton> {
   bool _isHovered = false;
   
   Future<void> _launchUrl() async {
+    if (!widget.verified) return; // Don't launch unverified links
     final uri = Uri.parse(widget.url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1266,6 +1276,48 @@ class _PortalButtonState extends State<_PortalButton> {
   @override
   Widget build(BuildContext context) {
     final isPrimary = widget.isPrimary;
+    final isDisabled = !widget.verified;
+    
+    // Disabled state styling
+    if (isDisabled) {
+      return Opacity(
+        opacity: 0.5,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceHover,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 16, color: AppColors.textTertiary),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '(Unavailable)',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),

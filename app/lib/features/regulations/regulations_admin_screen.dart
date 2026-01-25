@@ -1,20 +1,16 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
-import 'package:shed/data/us_states.dart';
 import 'package:shed/services/regulations_service.dart';
-import 'package:shed/shared/widgets/widgets.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-/// 🛡️ REGULATIONS ADMIN SCREEN - 2025 PREMIUM
+/// 🛡️ REGULATIONS ADMIN SCREEN - SIMPLIFIED 2026
 /// 
-/// Admin-only screen for reviewing and approving pending regulation updates.
-/// Includes coverage dashboard, bulk import/export, and seed sources.
+/// Clean, professional admin interface with:
+/// - Overview: Stats dashboard
+/// - Actions: Verify links
+/// - Danger Zone: Reset data
 class RegulationsAdminScreen extends ConsumerStatefulWidget {
   const RegulationsAdminScreen({super.key});
 
@@ -22,54 +18,62 @@ class RegulationsAdminScreen extends ConsumerStatefulWidget {
   ConsumerState<RegulationsAdminScreen> createState() => _RegulationsAdminScreenState();
 }
 
-class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen> {
   bool _isLoading = true;
   String? _error;
-  List<PendingRegulation> _pendingRegulations = [];
-  Map<String, Map<String, RegulationCoverage>> _coverage = {};
-  Map<String, int> _checkerStats = {'auto_approved': 0, 'pending': 0, 'manual': 0};
-  bool _isRunningChecker = false;
-  bool _showMissingOnly = false;
-  Map<String, dynamic>? _lastRunResult;
-  SourceCounts _sourceCounts = const SourceCounts();
-  Map<String, dynamic> _coverageStats = {};
+  _AdminStats _stats = const _AdminStats();
+  bool _isVerifying = false;
+  String? _verifyProgress;
+  List<_BrokenLink> _brokenLinks = [];
+  bool _showBrokenLinks = false;
   
+  // Server-side verification state
+  VerifyRunStatus? _currentRun;
+  bool _isCanceling = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadData();
+    _loadStats();
+    _checkForExistingRun();
   }
-  
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+
+  /// Check for an existing running verification on page load (for resume).
+  Future<void> _checkForExistingRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final latestRun = await service.getLatestVerifyRunStatus();
+      
+      if (latestRun != null && latestRun.isRunning && mounted) {
+        // Resume the running verification
+        setState(() {
+          _currentRun = latestRun;
+          _isVerifying = true;
+          _verifyProgress = 'Resuming verification... (${latestRun.processedStates}/${latestRun.totalStates})';
+        });
+        // Continue polling
+        _pollVerification(latestRun.runId);
+      }
+    } catch (e) {
+      debugPrint('[RegsAdmin] Error checking for existing run: $e');
+    }
   }
-  
-  Future<void> _loadData() async {
+
+  Future<void> _loadStats() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
-    
+
     try {
       final service = ref.read(regulationsServiceProvider);
-      final pending = await service.fetchPendingRegulations();
-      final coverage = await service.fetchCoverageData();
-      final stats = await service.getCheckerStats(days: 7);
-      final sourceCounts = await service.fetchSourceCounts();
-      final coverageStats = await service.fetchCoverageStats();
+      final stats = await service.fetchAdminStats();
+      final broken = await service.fetchBrokenLinks();
       
       if (mounted) {
         setState(() {
-          _pendingRegulations = pending;
-          _coverage = coverage;
-          _checkerStats = stats;
-          _sourceCounts = sourceCounts;
-          _coverageStats = coverageStats;
+          _stats = _AdminStats.fromMap(stats);
+          _brokenLinks = broken.map((b) => _BrokenLink.fromMap(b)).toList();
           _isLoading = false;
         });
       }
@@ -82,64 +86,172 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       }
     }
   }
-  
-  Future<void> _loadPendingRegulations() async {
-    final service = ref.read(regulationsServiceProvider);
-    final pending = await service.fetchPendingRegulations();
-    if (mounted) {
-      setState(() {
-        _pendingRegulations = pending;
-      });
-    }
-  }
-  
-  Future<void> _approvePending(PendingRegulation pending) async {
-    if (pending.proposedSummary == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No proposed summary to approve')),
-      );
-      return;
-    }
-    
+
+  /// Start server-side verification.
+  Future<void> _verifyAllLinks() async {
+    setState(() {
+      _isVerifying = true;
+      _verifyProgress = 'Starting verification...';
+      _currentRun = null;
+    });
+
     try {
       final service = ref.read(regulationsServiceProvider);
-      await service.approvePendingRegulation(pending.id, pending.proposedSummary!);
+      
+      // Start a new run (or resume existing)
+      final run = await service.startVerificationRun();
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Regulation approved successfully')),
-        );
-        _loadPendingRegulations();
+        setState(() {
+          _currentRun = run;
+          _verifyProgress = run.resumed 
+              ? 'Resuming... (${run.processedStates}/${run.totalStates})'
+              : 'Started verification...';
+        });
+        
+        // Begin polling
+        _pollVerification(run.runId);
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isVerifying = false;
+          _verifyProgress = null;
+          _currentRun = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
       }
     }
   }
-  
-  Future<void> _rejectPending(PendingRegulation pending) async {
-    final notesController = TextEditingController();
+
+  /// Poll the verification run until complete.
+  Future<void> _pollVerification(String runId) async {
+    final service = ref.read(regulationsServiceProvider);
+
+    while (mounted && _isVerifying && !_isCanceling) {
+      try {
+        final status = await service.continueVerificationRun(runId);
+        
+        if (!mounted) break;
+        
+        setState(() {
+          _currentRun = status;
+          _verifyProgress = status.lastStateCode != null
+              ? 'Verifying ${status.lastStateCode}... (${status.processedStates}/${status.totalStates})'
+              : 'Processing... (${status.processedStates}/${status.totalStates})';
+        });
+
+        if (status.done) {
+          // Verification complete
+          if (mounted) {
+            setState(() {
+              _isVerifying = false;
+              _verifyProgress = null;
+            });
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Verification complete: ${status.okCount} OK, ${status.brokenCount} broken',
+                ),
+                backgroundColor: status.brokenCount == 0 ? AppColors.success : AppColors.warning,
+              ),
+            );
+            _loadStats();
+          }
+          break;
+        }
+
+        // Small delay between batches to avoid hammering the server
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isVerifying = false;
+            _verifyProgress = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  /// Cancel the current verification run.
+  Future<void> _cancelVerification() async {
+    if (_currentRun == null) return;
+    
+    setState(() => _isCanceling = true);
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      await service.cancelVerificationRun(_currentRun!.runId);
+      
+      if (mounted) {
+        setState(() {
+          _isVerifying = false;
+          _verifyProgress = null;
+          _currentRun = null;
+          _isCanceling = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verification canceled')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCanceling = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error canceling: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetData() async {
+    final controller = TextEditingController();
     
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Reject Update'),
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: AppColors.error),
+            const SizedBox(width: 8),
+            const Text('Reset Regulations Data'),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Add a note explaining the rejection:'),
+            Text(
+              'This will clear all portal link verification status. '
+              'Official roots will NOT be deleted.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Type RESET to confirm:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
             const SizedBox(height: 8),
             TextField(
-              controller: notesController,
-              maxLines: 3,
+              controller: controller,
               decoration: const InputDecoration(
-                hintText: 'Optional notes...',
+                hintText: 'RESET',
                 border: OutlineInputBorder(),
               ),
+              autofocus: true,
             ),
           ],
         ),
@@ -149,29 +261,35 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () {
+              if (controller.text == 'RESET') {
+                Navigator.pop(context, true);
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
             ),
-            child: const Text('Reject'),
+            child: const Text('Reset'),
           ),
         ],
       ),
     );
-    
+
+    controller.dispose();
+
     if (confirmed == true) {
       try {
         final service = ref.read(regulationsServiceProvider);
-        await service.rejectPendingRegulation(
-          pending.id, 
-          notesController.text.isEmpty ? null : notesController.text,
-        );
+        await service.resetVerificationStatus();
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Regulation rejected')),
+            const SnackBar(
+              content: Text('Verification status reset'),
+              backgroundColor: AppColors.success,
+            ),
           );
-          _loadPendingRegulations();
+          _loadStats();
         }
       } catch (e) {
         if (mounted) {
@@ -181,307 +299,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         }
       }
     }
-    
-    notesController.dispose();
-  }
-  
-  Future<void> _runChecker() async {
-    setState(() => _isRunningChecker = true);
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final result = await service.runRegulationsChecker();
-      
-      if (mounted) {
-        setState(() => _lastRunResult = result);
-        
-        final autoApproved = result['auto_approved'] ?? 0;
-        final pending = result['pending'] ?? 0;
-        final checked = result['checked'] ?? 0;
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Check complete: $checked sources. '
-              'Auto-approved: $autoApproved, Pending: $pending'
-            ),
-            backgroundColor: autoApproved > 0 ? AppColors.success : AppColors.info,
-          ),
-        );
-        _loadData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error running checker: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isRunningChecker = false);
-      }
-    }
-  }
-  
-  Future<void> _loadCoverageStats() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final stats = await service.fetchCoverageStats();
-      if (mounted) {
-        setState(() => _coverageStats = stats);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-  
-  Future<void> _deleteJunkPending() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final deleted = await service.deleteJunkPending();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Deleted $deleted junk pending items'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        _loadData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-  
-  Future<void> _showBulkImportDialog() async {
-    final controller = TextEditingController();
-    
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Bulk Import Regulations'),
-        content: SizedBox(
-          width: 500,
-          height: 400,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Paste JSON array of regulations:',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  maxLines: null,
-                  expands: true,
-                  decoration: InputDecoration(
-                    hintText: '[\n  {"state_code": "TX", "category": "deer", ...}\n]',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: AppColors.surface,
-                  ),
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-            ),
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
-    
-    controller.dispose();
-    
-    if (result != null && result.isNotEmpty) {
-      try {
-        final parsed = jsonDecode(result) as List;
-        final regulations = parsed.map((e) => e as Map<String, dynamic>).toList();
-        
-        final service = ref.read(regulationsServiceProvider);
-        final count = await service.importBulkRegulations(regulations);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Imported $count regulations to pending'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          _loadData();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Invalid JSON: $e')),
-          );
-        }
-      }
-    }
-  }
-  
-  Future<void> _exportRegulations() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final data = await service.exportRegulations();
-      final json = const JsonEncoder.withIndent('  ').convert(data);
-      
-      await Clipboard.setData(ClipboardData(text: json));
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Exported ${data.length} regulations to clipboard'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export error: $e')),
-        );
-      }
-    }
-  }
-  
-  Future<void> _seedSources() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Seed Extraction Sources'),
-        content: const Text(
-          'This will upsert 150 official source URLs (50 states × 3 categories) for extraction. '
-          'Existing sources will be updated with new URLs.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-            ),
-            child: const Text('Seed Sources'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed != true) return;
-    
-    try {
-      // Load seed data from assets or use embedded data
-      final seedData = _getSourcesSeedData();
-      
-      final service = ref.read(regulationsServiceProvider);
-      final result = await service.seedSources(seedData);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Seeded sources: ${result['inserted']} inserted, ${result['updated']} updated'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        _loadData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Seed error: $e')),
-        );
-      }
-    }
-  }
-  
-  Future<void> _seedPortalLinks() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Seed Portal Links'),
-        content: const Text(
-          'This will upsert portal links for all 50 states. '
-          'Portal links provide quick access to seasons, regulations, licensing, and fishing pages.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-            ),
-            child: const Text('Seed Portal'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed != true) return;
-    
-    try {
-      final portalData = _getPortalLinksSeedData();
-      final service = ref.read(regulationsServiceProvider);
-      final result = await service.seedPortalLinks(portalData);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Seeded portal links: ${result['inserted']} inserted, ${result['updated']} updated'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Seed error: $e')),
-        );
-      }
-    }
-  }
-  
-  /// Get seed data for all 50 states - embedded for reliability
-  List<Map<String, dynamic>> _getSourcesSeedData() {
-    // Return embedded seed data for all 50 states
-    return _allStatesSeedData;
-  }
-  
-  /// Get portal links seed data for all 50 states
-  List<Map<String, dynamic>> _getPortalLinksSeedData() {
-    return _allStatesPortalLinks;
   }
 
   @override
@@ -496,142 +313,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           child: Column(
             children: [
               // Header
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.screenPadding),
-                child: Row(
-                  children: [
-                    _BackButton(onTap: () => context.pop()),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Regulations Admin',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            'Manage regulations for all 50 states',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      onPressed: _loadData,
-                      tooltip: 'Refresh',
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Automation explanation banner
-              Container(
-                margin: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenPadding, 
-                  0, 
-                  AppSpacing.screenPadding, 
-                  AppSpacing.md,
-                ),
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                  border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.auto_awesome_rounded,
-                      size: 20,
-                      color: AppColors.info,
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Automated Updates',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Weekly automation checks official sources. High-confidence changes auto-approve. Others appear in Pending for manual review.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Tab bar
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceHover,
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicator: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                    boxShadow: AppColors.shadowCard,
-                  ),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  labelColor: AppColors.textPrimary,
-                  unselectedLabelColor: AppColors.textSecondary,
-                  labelStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  tabs: [
-                    Tab(text: 'Pending (${_pendingRegulations.length})'),
-                    const Tab(text: 'Coverage'),
-                    const Tab(text: 'Tools'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
+              _buildHeader(),
               
               // Content
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _error != null
-                        ? AppErrorState(
-                            message: _error!,
-                            onRetry: _loadData,
-                          )
-                        : TabBarView(
-                            controller: _tabController,
-                            children: [
-                              _buildPendingTab(),
-                              _buildCoverageTab(),
-                              _buildToolsTab(),
-                            ],
-                          ),
+                        ? _buildError()
+                        : _buildContent(),
               ),
             ],
           ),
@@ -639,1574 +329,567 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       ),
     );
   }
-  
-  Widget _buildPendingTab() {
-    if (_pendingRegulations.isEmpty) {
-      return AppEmptyState(
-        icon: Icons.check_circle_outline_rounded,
-        title: 'All caught up!',
-        message: 'No pending regulation updates to review.',
-      );
-    }
-    
-    return ListView.builder(
+
+  Widget _buildHeader() {
+    return Container(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      itemCount: _pendingRegulations.length,
-      itemBuilder: (context, index) {
-        return _PendingRegulationCard(
-          pending: _pendingRegulations[index],
-          onApprove: () => _approvePending(_pendingRegulations[index]),
-          onReject: () => _rejectPending(_pendingRegulations[index]),
-        );
-      },
-    );
-  }
-  
-  Widget _buildCoverageTab() {
-    final allStates = USStates.all;
-    final categories = ['deer', 'turkey', 'fishing'];
-    
-    // Filter states if showing missing only
-    final filteredStates = _showMissingOnly
-        ? allStates.where((state) {
-            for (final cat in categories) {
-              final cov = _coverage[state.code]?[cat];
-              if (cov == null || cov.isMissing) return true;
-            }
-            return false;
-          }).toList()
-        : allStates;
-    
-    // Count totals
-    int totalApproved = 0;
-    int totalPending = 0;
-    int totalMissing = 0;
-    
-    for (final state in allStates) {
-      for (final cat in categories) {
-        final cov = _coverage[state.code]?[cat];
-        if (cov == null || cov.isMissing) {
-          totalMissing++;
-        } else if (cov.hasApproved) {
-          totalApproved++;
-        } else if (cov.hasPending) {
-          totalPending++;
-        }
-      }
-    }
-    
-    return Column(
-      children: [
-        // Summary row
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-          child: Row(
-            children: [
-              _CoverageSummaryChip(
-                label: 'Approved',
-                count: totalApproved,
-                color: AppColors.success,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _CoverageSummaryChip(
-                label: 'Pending',
-                count: totalPending,
-                color: AppColors.warning,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _CoverageSummaryChip(
-                label: 'Missing',
-                count: totalMissing,
-                color: AppColors.error,
-              ),
-              const Spacer(),
-              // Filter toggle
-              Row(
-                children: [
-                  Text(
-                    'Missing only',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Switch(
-                    value: _showMissingOnly,
-                    onChanged: (v) => setState(() => _showMissingOnly = v),
-                    activeColor: AppColors.accent,
-                  ),
-                ],
-              ),
-            ],
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => context.pop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: AppColors.textPrimary,
           ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        
-        // Grid header
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-          child: Row(
-            children: [
-              const SizedBox(width: 60),
-              ...categories.map((cat) => Expanded(
-                child: Center(
-                  child: Text(
-                    cat[0].toUpperCase() + cat.substring(1),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Regulations Admin',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-              )),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        
-        // Grid
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-            itemCount: filteredStates.length,
-            itemBuilder: (context, index) {
-              final state = filteredStates[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      child: Text(
-                        state.code,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    ...categories.map((cat) {
-                      final cov = _coverage[state.code]?[cat];
-                      return Expanded(
-                        child: Center(
-                          child: _CoverageCell(coverage: cov),
-                        ),
-                      );
-                    }),
-                  ],
+                Text(
+                  'Manage official portal links',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              );
-            },
+              ],
+            ),
           ),
-        ),
-      ],
+          IconButton(
+            onPressed: _loadStats,
+            icon: const Icon(Icons.refresh_rounded),
+            color: AppColors.textSecondary,
+          ),
+        ],
+      ),
     );
   }
-  
-  Widget _buildToolsTab() {
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to load stats',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error ?? 'Unknown error',
+              style: TextStyle(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadStats,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Coverage Dashboard (portal-first)
-          _CoverageDashboardCard(
-            stats: _coverageStats,
-            onRefresh: _loadCoverageStats,
-            onDeleteJunk: _deleteJunkPending,
-          ),
-          const SizedBox(height: AppSpacing.md),
+          // Overview Section
+          _buildSectionHeader('Overview'),
+          const SizedBox(height: 12),
+          _buildOverviewCards(),
           
-          // How it works explanation
-          _HowItWorksCard(),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 32),
           
-          // Source counts display
-          _SourceCountsCard(counts: _sourceCounts),
-          const SizedBox(height: AppSpacing.md),
+          // Actions Section
+          _buildSectionHeader('Actions'),
+          const SizedBox(height: 12),
+          _buildActionsCard(),
           
-          // Checker stats header
-          _CheckerStatsCard(
-            stats: _checkerStats,
-            lastResult: _lastRunResult,
-          ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 32),
           
-          // Run Checker
-          _RunCheckerButton(
-            isRunning: _isRunningChecker,
-            onPressed: _runChecker,
-          ),
-          const SizedBox(height: AppSpacing.md),
+          // Broken Links Section (if any)
+          if (_brokenLinks.isNotEmpty) ...[
+            _buildBrokenLinksSection(),
+            const SizedBox(height: 32),
+          ],
           
-          // Seed section header
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Text(
-              'Seed Data',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
+          // Danger Zone
+          _buildDangerZone(),
           
-          // Seed Portal Links (50)
-          _ToolCard(
-            icon: Icons.link_rounded,
-            title: 'Seed Portal Links (50)',
-            description: 'Populate portal buttons (seasons, regs, licensing, fishing) for all states',
-            buttonLabel: 'Seed Portal',
-            onPressed: _seedPortalLinks,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          
-          // Seed Extraction Sources (150)
-          _ToolCard(
-            icon: Icons.cloud_download_outlined,
-            title: 'Seed Extraction Sources (150)',
-            description: 'Populate 150 source URLs (50 states × 3 categories) for checker',
-            buttonLabel: 'Seed Sources',
-            onPressed: _seedSources,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          
-          // Import/Export section
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Text(
-              'Import / Export',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          
-          // Bulk Import
-          _ToolCard(
-            icon: Icons.upload_file_outlined,
-            title: 'Bulk Import',
-            description: 'Import regulations from JSON into pending queue',
-            buttonLabel: 'Import JSON',
-            onPressed: _showBulkImportDialog,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          
-          // Export
-          _ToolCard(
-            icon: Icons.download_outlined,
-            title: 'Export Approved',
-            description: 'Export all approved regulations as JSON to clipboard',
-            buttonLabel: 'Export',
-            onPressed: _exportRegulations,
-          ),
+          const SizedBox(height: 32),
         ],
       ),
     );
   }
-}
 
-class _RunCheckerButton extends StatelessWidget {
-  const _RunCheckerButton({
-    required this.isRunning,
-    required this.onPressed,
-  });
-  
-  final bool isRunning;
-  final VoidCallback onPressed;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderSubtle),
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: AppColors.textPrimary,
       ),
-      child: Row(
-        children: [
+    );
+  }
+
+  Widget _buildOverviewCards() {
+    return Column(
+      children: [
+        // Row 1: Roots + Total Links
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                icon: Icons.account_tree_rounded,
+                label: 'Official Roots',
+                value: '${_stats.rootsCount}/50',
+                color: _stats.rootsCount == 50 ? AppColors.success : AppColors.warning,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.link_rounded,
+                label: 'Portal Links',
+                value: '${_stats.totalLinksCount}',
+                color: AppColors.info,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Row 2: Verified + Broken
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                icon: Icons.verified_rounded,
+                label: 'Verified Links',
+                value: '${_stats.verifiedCount}',
+                color: AppColors.success,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.link_off_rounded,
+                label: 'Broken Links',
+                value: '${_stats.brokenCount}',
+                color: _stats.brokenCount > 0 ? AppColors.error : AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Last verified
+        if (_stats.lastVerifiedAt != null)
           Container(
-            width: 40,
-            height: 40,
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.info.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
-              Icons.sync_rounded,
-              color: AppColors.info,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                const Text(
-                  'Regulations Checker',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+                Icon(Icons.schedule_rounded, size: 16, color: AppColors.textSecondary),
+                const SizedBox(width: 8),
                 Text(
-                  'Check official sources for updates',
+                  'Last verified: ${_formatDate(_stats.lastVerifiedAt!)}',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     color: AppColors.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: isRunning ? null : onPressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.info,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md,
-                vertical: AppSpacing.sm,
-              ),
-            ),
-            child: isRunning
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
-                    ),
-                  )
-                : const Text('Run Now'),
-          ),
-        ],
-      ),
+      ],
     );
   }
-}
 
-class _BackButton extends StatefulWidget {
-  const _BackButton({required this.onTap});
-  
-  final VoidCallback onTap;
-  
-  @override
-  State<_BackButton> createState() => _BackButtonState();
-}
-
-class _BackButtonState extends State<_BackButton> {
-  bool _isHovered = false;
-  
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: _isHovered ? AppColors.surfaceHover : AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          child: const Icon(
-            Icons.arrow_back_rounded,
-            size: 20,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PendingRegulationCard extends StatelessWidget {
-  const _PendingRegulationCard({
-    required this.pending,
-    required this.onApprove,
-    required this.onReject,
-  });
-
-  final PendingRegulation pending;
-  final VoidCallback onApprove;
-  final VoidCallback onReject;
-
-  @override
-  Widget build(BuildContext context) {
-    final stateName = USStates.byCode(pending.stateCode)?.name ?? pending.stateCode;
-    final showRegion = !pending.isStatewide;
-    final confidencePercent = (pending.confidenceScore * 100).toInt();
-    final isHighConfidence = pending.isHighConfidence;
-    
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: AppCard(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with confidence badge
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                    ),
-                    child: Text(
-                      pending.stateCode,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      showRegion
-                          ? '$stateName - ${pending.category.label} - ${pending.regionLabel}'
-                          : '$stateName - ${pending.category.label}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  // Confidence badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isHighConfidence 
-                          ? AppColors.success.withValues(alpha: 0.15)
-                          : AppColors.warning.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                    ),
-                    child: Text(
-                      '$confidencePercent%',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: isHighConfidence ? AppColors.success : AppColors.warning,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              
-              // Season label
-              Text(
-                'Season: ${pending.seasonYearLabel}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              
-              // Pending reason (prominent)
-              if (pending.pendingReason != null && pending.pendingReason!.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline_rounded, size: 14, color: AppColors.error),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          pending.pendingReason!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.error,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
-              // Extraction warnings
-              if (pending.extractionWarnings.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: pending.extractionWarnings.map((warning) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                    ),
-                    child: Text(
-                      warning,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: AppColors.warning,
-                      ),
-                    ),
-                  )).toList(),
-                ),
-              ],
-              
-              // Diff summary
-              if (pending.diffSummary != null && pending.diffSummary!.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceHover,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: Text(
-                    pending.diffSummary!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-              
-              // Source URL
-              if (pending.sourceUrl != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                GestureDetector(
-                  onTap: () async {
-                    final uri = Uri.parse(pending.sourceUrl!);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  child: Row(
-                    children: [
-                      const Icon(Icons.link_rounded, size: 14, color: AppColors.info),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          pending.sourceUrl!,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.info,
-                            decoration: TextDecoration.underline,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
-              const SizedBox(height: AppSpacing.md),
-              
-              // Actions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: onReject,
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    label: const Text('Reject'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.error,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  ElevatedButton.icon(
-                    onPressed: pending.proposedSummary != null ? onApprove : null,
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: const Text('Approve'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                      foregroundColor: AppColors.textInverse,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CoverageSummaryChip extends StatelessWidget {
-  const _CoverageSummaryChip({
-    required this.label,
-    required this.count,
-    required this.color,
-  });
-  
-  final String label;
-  final int count;
-  final Color color;
-  
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildActionsCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
           Text(
-            '$count $label',
+            'Verify Portal Links',
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: color,
+              color: AppColors.textPrimary,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CoverageCell extends StatelessWidget {
-  const _CoverageCell({this.coverage});
-  
-  final RegulationCoverage? coverage;
-  
-  @override
-  Widget build(BuildContext context) {
-    IconData icon;
-    Color color;
-    String tooltip;
-    
-    if (coverage == null || coverage!.isMissing) {
-      icon = Icons.close_rounded;
-      color = AppColors.error;
-      tooltip = 'Missing';
-    } else if (coverage!.hasApproved) {
-      icon = Icons.check_circle_rounded;
-      color = AppColors.success;
-      tooltip = '${coverage!.approvedCount} approved';
-    } else if (coverage!.hasPending) {
-      icon = Icons.pending_rounded;
-      color = AppColors.warning;
-      tooltip = '${coverage!.pendingCount} pending';
-    } else {
-      icon = Icons.close_rounded;
-      color = AppColors.error;
-      tooltip = 'Missing';
-    }
-    
-    return Tooltip(
-      message: tooltip,
-      child: Icon(icon, size: 16, color: color),
-    );
-  }
-}
-
-class _ToolCard extends StatelessWidget {
-  const _ToolCard({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.buttonLabel,
-    required this.onPressed,
-  });
-  
-  final IconData icon;
-  final String title;
-  final String description;
-  final String buttonLabel;
-  final VoidCallback onPressed;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: Icon(icon, color: AppColors.accent, size: 20),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: onPressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md,
-                vertical: AppSpacing.sm,
-              ),
-            ),
-            child: Text(buttonLabel),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Embedded seed data for all 50 states - official wildlife agency regulation URLs
-const _allStatesSeedData = <Map<String, dynamic>>[
-  // Alabama
-  {'state_code': 'AL', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.outdooralabama.com/hunting/deer-hunting', 'source_name': 'Alabama DCNR'},
-  {'state_code': 'AL', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.outdooralabama.com/hunting/turkey-hunting', 'source_name': 'Alabama DCNR'},
-  {'state_code': 'AL', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.outdooralabama.com/fishing', 'source_name': 'Alabama DCNR'},
-  // Alaska
-  {'state_code': 'AK', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=hunting.main', 'source_name': 'Alaska DFG'},
-  {'state_code': 'AK', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=hunting.main', 'source_name': 'Alaska DFG'},
-  {'state_code': 'AK', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=fishregulations.main', 'source_name': 'Alaska DFG'},
-  // Arizona
-  {'state_code': 'AZ', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.azgfd.com/hunting/regulations/', 'source_name': 'Arizona Game & Fish'},
-  {'state_code': 'AZ', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.azgfd.com/hunting/regulations/', 'source_name': 'Arizona Game & Fish'},
-  {'state_code': 'AZ', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.azgfd.com/fishing/regulations/', 'source_name': 'Arizona Game & Fish'},
-  // Arkansas
-  {'state_code': 'AR', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.agfc.com/en/hunting/big-game/deer/', 'source_name': 'Arkansas GFC'},
-  {'state_code': 'AR', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.agfc.com/en/hunting/big-game/turkey/', 'source_name': 'Arkansas GFC'},
-  {'state_code': 'AR', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.agfc.com/en/fishing/regulations/', 'source_name': 'Arkansas GFC'},
-  // California
-  {'state_code': 'CA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://wildlife.ca.gov/hunting/deer', 'source_name': 'California DFW'},
-  {'state_code': 'CA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wildlife.ca.gov/hunting/upland-game-birds', 'source_name': 'California DFW'},
-  {'state_code': 'CA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wildlife.ca.gov/fishing', 'source_name': 'California DFW'},
-  // Colorado
-  {'state_code': 'CO', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://cpw.state.co.us/thingstodo/Pages/Deer.aspx', 'source_name': 'Colorado Parks & Wildlife'},
-  {'state_code': 'CO', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://cpw.state.co.us/thingstodo/Pages/Turkey.aspx', 'source_name': 'Colorado Parks & Wildlife'},
-  {'state_code': 'CO', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://cpw.state.co.us/thingstodo/Pages/Fishing.aspx', 'source_name': 'Colorado Parks & Wildlife'},
-  // Connecticut
-  {'state_code': 'CT', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://portal.ct.gov/DEEP/Hunting/Deer/Deer-Hunting', 'source_name': 'Connecticut DEEP'},
-  {'state_code': 'CT', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://portal.ct.gov/DEEP/Hunting/Turkey/Turkey-Hunting', 'source_name': 'Connecticut DEEP'},
-  {'state_code': 'CT', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://portal.ct.gov/DEEP/Fishing/Fishing', 'source_name': 'Connecticut DEEP'},
-  // Delaware
-  {'state_code': 'DE', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://dnrec.delaware.gov/fish-wildlife/hunting/', 'source_name': 'Delaware DFW'},
-  {'state_code': 'DE', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://dnrec.delaware.gov/fish-wildlife/hunting/', 'source_name': 'Delaware DFW'},
-  {'state_code': 'DE', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://dnrec.delaware.gov/fish-wildlife/fishing/', 'source_name': 'Delaware DFW'},
-  // Florida
-  {'state_code': 'FL', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://myfwc.com/hunting/deer/', 'source_name': 'Florida FWC'},
-  {'state_code': 'FL', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://myfwc.com/hunting/turkey/', 'source_name': 'Florida FWC'},
-  {'state_code': 'FL', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://myfwc.com/fishing/', 'source_name': 'Florida FWC'},
-  // Georgia
-  {'state_code': 'GA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://georgiawildlife.com/hunting/deer', 'source_name': 'Georgia DNR'},
-  {'state_code': 'GA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://georgiawildlife.com/hunting/turkey', 'source_name': 'Georgia DNR'},
-  {'state_code': 'GA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://georgiawildlife.com/fishing', 'source_name': 'Georgia DNR'},
-  // Hawaii
-  {'state_code': 'HI', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://dlnr.hawaii.gov/hunting/', 'source_name': 'Hawaii DLNR'},
-  {'state_code': 'HI', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://dlnr.hawaii.gov/hunting/', 'source_name': 'Hawaii DLNR'},
-  {'state_code': 'HI', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://dlnr.hawaii.gov/dar/fishing/', 'source_name': 'Hawaii DLNR'},
-  // Idaho
-  {'state_code': 'ID', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://idfg.idaho.gov/hunt/deer', 'source_name': 'Idaho Fish & Game'},
-  {'state_code': 'ID', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://idfg.idaho.gov/hunt/turkey', 'source_name': 'Idaho Fish & Game'},
-  {'state_code': 'ID', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://idfg.idaho.gov/fish', 'source_name': 'Idaho Fish & Game'},
-  // Illinois
-  {'state_code': 'IL', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www2.illinois.gov/dnr/hunting/deer/Pages/default.aspx', 'source_name': 'Illinois DNR'},
-  {'state_code': 'IL', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www2.illinois.gov/dnr/hunting/turkey/Pages/default.aspx', 'source_name': 'Illinois DNR'},
-  {'state_code': 'IL', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www2.illinois.gov/dnr/fishing/Pages/default.aspx', 'source_name': 'Illinois DNR'},
-  // Indiana
-  {'state_code': 'IN', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/deer-hunting/', 'source_name': 'Indiana DNR'},
-  {'state_code': 'IN', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/turkey-hunting/', 'source_name': 'Indiana DNR'},
-  {'state_code': 'IN', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.in.gov/dnr/fish-and-wildlife/fishing/', 'source_name': 'Indiana DNR'},
-  // Iowa
-  {'state_code': 'IA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.iowadnr.gov/Hunting/Deer-Hunting', 'source_name': 'Iowa DNR'},
-  {'state_code': 'IA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.iowadnr.gov/Hunting/Turkey-Hunting', 'source_name': 'Iowa DNR'},
-  {'state_code': 'IA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.iowadnr.gov/Fishing', 'source_name': 'Iowa DNR'},
-  // Kansas
-  {'state_code': 'KS', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://ksoutdoors.com/Hunting/Big-Game/Deer', 'source_name': 'Kansas Wildlife'},
-  {'state_code': 'KS', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://ksoutdoors.com/Hunting/Upland-Birds/Turkey', 'source_name': 'Kansas Wildlife'},
-  {'state_code': 'KS', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://ksoutdoors.com/Fishing', 'source_name': 'Kansas Wildlife'},
-  // Kentucky
-  {'state_code': 'KY', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://fw.ky.gov/Hunt/Pages/Deer-Hunting.aspx', 'source_name': 'Kentucky DFW'},
-  {'state_code': 'KY', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://fw.ky.gov/Hunt/Pages/Turkey-Hunting.aspx', 'source_name': 'Kentucky DFW'},
-  {'state_code': 'KY', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://fw.ky.gov/Fish/Pages/default.aspx', 'source_name': 'Kentucky DFW'},
-  // Louisiana
-  {'state_code': 'LA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wlf.louisiana.gov/page/deer', 'source_name': 'Louisiana WLF'},
-  {'state_code': 'LA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wlf.louisiana.gov/page/turkey', 'source_name': 'Louisiana WLF'},
-  {'state_code': 'LA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wlf.louisiana.gov/page/freshwater-fishing', 'source_name': 'Louisiana WLF'},
-  // Maine
-  {'state_code': 'ME', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.maine.gov/ifw/hunting-trapping/hunting-laws.html', 'source_name': 'Maine IFW'},
-  {'state_code': 'ME', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.maine.gov/ifw/hunting-trapping/hunting-laws.html', 'source_name': 'Maine IFW'},
-  {'state_code': 'ME', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.maine.gov/ifw/fishing-boating/fishing/laws-rules/', 'source_name': 'Maine IFW'},
-  // Maryland
-  {'state_code': 'MD', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://dnr.maryland.gov/wildlife/Pages/hunt_trap/deerhunting.aspx', 'source_name': 'Maryland DNR'},
-  {'state_code': 'MD', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://dnr.maryland.gov/wildlife/Pages/hunt_trap/turkeyhunting.aspx', 'source_name': 'Maryland DNR'},
-  {'state_code': 'MD', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://dnr.maryland.gov/fisheries/Pages/regulations/index.aspx', 'source_name': 'Maryland DNR'},
-  // Massachusetts
-  {'state_code': 'MA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.mass.gov/info-details/deer-hunting-regulations', 'source_name': 'Massachusetts DFW'},
-  {'state_code': 'MA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.mass.gov/info-details/turkey-hunting-regulations', 'source_name': 'Massachusetts DFW'},
-  {'state_code': 'MA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.mass.gov/freshwater-fishing-regulations', 'source_name': 'Massachusetts DFW'},
-  // Michigan
-  {'state_code': 'MI', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.michigan.gov/dnr/things-to-do/hunting/deer', 'source_name': 'Michigan DNR'},
-  {'state_code': 'MI', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.michigan.gov/dnr/things-to-do/hunting/turkey', 'source_name': 'Michigan DNR'},
-  {'state_code': 'MI', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.michigan.gov/dnr/things-to-do/fishing', 'source_name': 'Michigan DNR'},
-  // Minnesota
-  {'state_code': 'MN', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dnr.state.mn.us/hunting/deer/index.html', 'source_name': 'Minnesota DNR'},
-  {'state_code': 'MN', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dnr.state.mn.us/hunting/turkey/index.html', 'source_name': 'Minnesota DNR'},
-  {'state_code': 'MN', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dnr.state.mn.us/fishing/index.html', 'source_name': 'Minnesota DNR'},
-  // Mississippi
-  {'state_code': 'MS', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.mdwfp.com/wildlife-hunting/deer-program/', 'source_name': 'Mississippi DWFP'},
-  {'state_code': 'MS', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.mdwfp.com/wildlife-hunting/turkey-program/', 'source_name': 'Mississippi DWFP'},
-  {'state_code': 'MS', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.mdwfp.com/fishing-boating/', 'source_name': 'Mississippi DWFP'},
-  // Missouri
-  {'state_code': 'MO', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://mdc.mo.gov/hunting-trapping/species/deer', 'source_name': 'Missouri MDC'},
-  {'state_code': 'MO', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://mdc.mo.gov/hunting-trapping/species/turkey', 'source_name': 'Missouri MDC'},
-  {'state_code': 'MO', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://mdc.mo.gov/fishing', 'source_name': 'Missouri MDC'},
-  // Montana
-  {'state_code': 'MT', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://fwp.mt.gov/hunt/deer', 'source_name': 'Montana FWP'},
-  {'state_code': 'MT', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://fwp.mt.gov/hunt/turkey', 'source_name': 'Montana FWP'},
-  {'state_code': 'MT', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://fwp.mt.gov/fish', 'source_name': 'Montana FWP'},
-  // Nebraska
-  {'state_code': 'NE', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://outdoornebraska.gov/huntbiggame/', 'source_name': 'Nebraska Game & Parks'},
-  {'state_code': 'NE', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://outdoornebraska.gov/huntturkey/', 'source_name': 'Nebraska Game & Parks'},
-  {'state_code': 'NE', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://outdoornebraska.gov/fishing/', 'source_name': 'Nebraska Game & Parks'},
-  // Nevada
-  {'state_code': 'NV', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.ndow.org/hunt/big-game-hunting/deer/', 'source_name': 'Nevada DOW'},
-  {'state_code': 'NV', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.ndow.org/hunt/upland-game/wild-turkey/', 'source_name': 'Nevada DOW'},
-  {'state_code': 'NV', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.ndow.org/fish/', 'source_name': 'Nevada DOW'},
-  // New Hampshire
-  {'state_code': 'NH', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlife.nh.gov/hunting/deer', 'source_name': 'New Hampshire FG'},
-  {'state_code': 'NH', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlife.nh.gov/hunting/turkey', 'source_name': 'New Hampshire FG'},
-  {'state_code': 'NH', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlife.nh.gov/fishing', 'source_name': 'New Hampshire FG'},
-  // New Jersey
-  {'state_code': 'NJ', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.nj.gov/dep/fgw/deerinfo.htm', 'source_name': 'New Jersey DFW'},
-  {'state_code': 'NJ', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.nj.gov/dep/fgw/turkinfo.htm', 'source_name': 'New Jersey DFW'},
-  {'state_code': 'NJ', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.nj.gov/dep/fgw/fishinfo.htm', 'source_name': 'New Jersey DFW'},
-  // New Mexico
-  {'state_code': 'NM', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlife.state.nm.us/hunting/species/deer/', 'source_name': 'New Mexico DGF'},
-  {'state_code': 'NM', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlife.state.nm.us/hunting/species/turkey/', 'source_name': 'New Mexico DGF'},
-  {'state_code': 'NM', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlife.state.nm.us/fishing/', 'source_name': 'New Mexico DGF'},
-  // New York
-  {'state_code': 'NY', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dec.ny.gov/outdoor/deer.html', 'source_name': 'New York DEC'},
-  {'state_code': 'NY', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dec.ny.gov/outdoor/turkey.html', 'source_name': 'New York DEC'},
-  {'state_code': 'NY', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dec.ny.gov/outdoor/fishing.html', 'source_name': 'New York DEC'},
-  // North Carolina
-  {'state_code': 'NC', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.ncwildlife.org/Hunting/Seasons-Regulations/Deer', 'source_name': 'North Carolina WRC'},
-  {'state_code': 'NC', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.ncwildlife.org/Hunting/Seasons-Regulations/Turkey', 'source_name': 'North Carolina WRC'},
-  {'state_code': 'NC', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.ncwildlife.org/Fishing/Regulations', 'source_name': 'North Carolina WRC'},
-  // North Dakota
-  {'state_code': 'ND', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://gf.nd.gov/hunting/deer', 'source_name': 'North Dakota GF'},
-  {'state_code': 'ND', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://gf.nd.gov/hunting/turkey', 'source_name': 'North Dakota GF'},
-  {'state_code': 'ND', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://gf.nd.gov/fishing', 'source_name': 'North Dakota GF'},
-  // Ohio
-  {'state_code': 'OH', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/deer', 'source_name': 'Ohio DNR'},
-  {'state_code': 'OH', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/wild-turkey', 'source_name': 'Ohio DNR'},
-  {'state_code': 'OH', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/fishing-resources', 'source_name': 'Ohio DNR'},
-  // Oklahoma
-  {'state_code': 'OK', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlifedepartment.com/hunting/deer', 'source_name': 'Oklahoma DWC'},
-  {'state_code': 'OK', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlifedepartment.com/hunting/turkey', 'source_name': 'Oklahoma DWC'},
-  {'state_code': 'OK', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.wildlifedepartment.com/fishing', 'source_name': 'Oklahoma DWC'},
-  // Oregon
-  {'state_code': 'OR', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://myodfw.com/hunting/big-game/deer', 'source_name': 'Oregon DFW'},
-  {'state_code': 'OR', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://myodfw.com/hunting/upland-birds/wild-turkey', 'source_name': 'Oregon DFW'},
-  {'state_code': 'OR', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://myodfw.com/fishing', 'source_name': 'Oregon DFW'},
-  // Pennsylvania
-  {'state_code': 'PA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/HuntTrapSeasonsDates.aspx', 'source_name': 'Pennsylvania GC'},
-  {'state_code': 'PA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/HuntTrapSeasonsDates.aspx', 'source_name': 'Pennsylvania GC'},
-  {'state_code': 'PA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.fishandboat.com/Fish/FishingRegulations/Pages/default.aspx', 'source_name': 'Pennsylvania Fish & Boat'},
-  // Rhode Island
-  {'state_code': 'RI', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/hunting', 'source_name': 'Rhode Island DEM'},
-  {'state_code': 'RI', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/hunting', 'source_name': 'Rhode Island DEM'},
-  {'state_code': 'RI', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/freshwater-fisheries', 'source_name': 'Rhode Island DEM'},
-  // South Carolina
-  {'state_code': 'SC', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dnr.sc.gov/hunting/deer/', 'source_name': 'South Carolina DNR'},
-  {'state_code': 'SC', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dnr.sc.gov/hunting/turkey/', 'source_name': 'South Carolina DNR'},
-  {'state_code': 'SC', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.dnr.sc.gov/fishing/', 'source_name': 'South Carolina DNR'},
-  // South Dakota
-  {'state_code': 'SD', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://gfp.sd.gov/deer/', 'source_name': 'South Dakota GFP'},
-  {'state_code': 'SD', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://gfp.sd.gov/turkey/', 'source_name': 'South Dakota GFP'},
-  {'state_code': 'SD', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://gfp.sd.gov/fishing/', 'source_name': 'South Dakota GFP'},
-  // Tennessee
-  {'state_code': 'TN', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://www.tn.gov/twra/hunting/big-game/deer.html', 'source_name': 'Tennessee TWRA'},
-  {'state_code': 'TN', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://www.tn.gov/twra/hunting/big-game/turkey.html', 'source_name': 'Tennessee TWRA'},
-  {'state_code': 'TN', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://www.tn.gov/twra/fishing.html', 'source_name': 'Tennessee TWRA'},
-  // Texas
-  {'state_code': 'TX', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/hunting/deer', 'source_name': 'Texas Parks & Wildlife'},
-  {'state_code': 'TX', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/hunting/turkey', 'source_name': 'Texas Parks & Wildlife'},
-  {'state_code': 'TX', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/fishing', 'source_name': 'Texas Parks & Wildlife'},
-  // Utah
-  {'state_code': 'UT', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://wildlife.utah.gov/deer.html', 'source_name': 'Utah DWR'},
-  {'state_code': 'UT', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wildlife.utah.gov/turkey.html', 'source_name': 'Utah DWR'},
-  {'state_code': 'UT', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wildlife.utah.gov/fishing-in-utah.html', 'source_name': 'Utah DWR'},
-  // Vermont
-  {'state_code': 'VT', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://vtfishandwildlife.com/hunt/deer-hunting', 'source_name': 'Vermont FW'},
-  {'state_code': 'VT', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://vtfishandwildlife.com/hunt/turkey-hunting', 'source_name': 'Vermont FW'},
-  {'state_code': 'VT', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://vtfishandwildlife.com/fish', 'source_name': 'Vermont FW'},
-  // Virginia
-  {'state_code': 'VA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://dwr.virginia.gov/hunting/deer/', 'source_name': 'Virginia DWR'},
-  {'state_code': 'VA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://dwr.virginia.gov/hunting/turkey/', 'source_name': 'Virginia DWR'},
-  {'state_code': 'VA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://dwr.virginia.gov/fishing/', 'source_name': 'Virginia DWR'},
-  // Washington
-  {'state_code': 'WA', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://wdfw.wa.gov/hunting/regulations/deer', 'source_name': 'Washington DFW'},
-  {'state_code': 'WA', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wdfw.wa.gov/hunting/regulations/turkey', 'source_name': 'Washington DFW'},
-  {'state_code': 'WA', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wdfw.wa.gov/fishing/regulations', 'source_name': 'Washington DFW'},
-  // West Virginia
-  {'state_code': 'WV', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://wvdnr.gov/hunting/deer/', 'source_name': 'West Virginia DNR'},
-  {'state_code': 'WV', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wvdnr.gov/hunting/turkey/', 'source_name': 'West Virginia DNR'},
-  {'state_code': 'WV', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wvdnr.gov/fishing/', 'source_name': 'West Virginia DNR'},
-  // Wisconsin
-  {'state_code': 'WI', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://dnr.wisconsin.gov/topic/Hunt/deer', 'source_name': 'Wisconsin DNR'},
-  {'state_code': 'WI', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://dnr.wisconsin.gov/topic/Hunt/turkey', 'source_name': 'Wisconsin DNR'},
-  {'state_code': 'WI', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://dnr.wisconsin.gov/topic/Fishing', 'source_name': 'Wisconsin DNR'},
-  // Wyoming
-  {'state_code': 'WY', 'category': 'deer', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Hunting/Deer', 'source_name': 'Wyoming Game & Fish'},
-  {'state_code': 'WY', 'category': 'turkey', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Hunting/Turkey', 'source_name': 'Wyoming Game & Fish'},
-  {'state_code': 'WY', 'category': 'fishing', 'region_key': 'STATEWIDE', 'source_url': 'https://wgfd.wyo.gov/Fishing', 'source_name': 'Wyoming Game & Fish'},
-];
-
-/// Portal links seed data for all 50 states
-const _allStatesPortalLinks = <Map<String, dynamic>>[
-  {'state_code': 'AL', 'state_name': 'Alabama', 'agency_name': 'Alabama DCNR', 'seasons_url': 'https://www.outdooralabama.com/hunting/seasons-bag-limits', 'regulations_url': 'https://www.outdooralabama.com/hunting', 'licensing_url': 'https://www.outdooralabama.com/licenses', 'buy_license_url': 'https://www.outdooralabama.com/licenses/buy-licenses-online', 'fishing_url': 'https://www.outdooralabama.com/fishing'},
-  {'state_code': 'AK', 'state_name': 'Alaska', 'agency_name': 'Alaska DFG', 'seasons_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=huntingmain.main', 'regulations_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=hunting.main', 'licensing_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=license.main', 'buy_license_url': 'https://store.prior.adfg.state.ak.us/', 'fishing_url': 'https://www.adfg.alaska.gov/index.cfm?adfg=fishregulations.main'},
-  {'state_code': 'AZ', 'state_name': 'Arizona', 'agency_name': 'Arizona Game & Fish', 'seasons_url': 'https://www.azgfd.com/hunting/regulations/', 'regulations_url': 'https://www.azgfd.com/hunting/', 'licensing_url': 'https://www.azgfd.com/license/', 'buy_license_url': 'https://license.azgfd.com/', 'fishing_url': 'https://www.azgfd.com/fishing/regulations/'},
-  {'state_code': 'AR', 'state_name': 'Arkansas', 'agency_name': 'Arkansas GFC', 'seasons_url': 'https://www.agfc.com/en/hunting/seasons/', 'regulations_url': 'https://www.agfc.com/en/hunting/', 'licensing_url': 'https://www.agfc.com/en/licenses/', 'buy_license_url': 'https://www.agfc.com/en/buy-a-license/', 'fishing_url': 'https://www.agfc.com/en/fishing/regulations/'},
-  {'state_code': 'CA', 'state_name': 'California', 'agency_name': 'California DFW', 'seasons_url': 'https://wildlife.ca.gov/hunting', 'regulations_url': 'https://wildlife.ca.gov/hunting', 'licensing_url': 'https://wildlife.ca.gov/licensing', 'buy_license_url': 'https://wildlife.ca.gov/Licensing/Hunting', 'fishing_url': 'https://wildlife.ca.gov/fishing'},
-  {'state_code': 'CO', 'state_name': 'Colorado', 'agency_name': 'Colorado Parks & Wildlife', 'seasons_url': 'https://cpw.state.co.us/thingstodo/Pages/Hunting.aspx', 'regulations_url': 'https://cpw.state.co.us/thingstodo/Pages/Hunting.aspx', 'licensing_url': 'https://cpw.state.co.us/buyapply/Pages/Hunting.aspx', 'buy_license_url': 'https://cpw.state.co.us/buyapply/Pages/Hunting.aspx', 'fishing_url': 'https://cpw.state.co.us/thingstodo/Pages/Fishing.aspx'},
-  {'state_code': 'CT', 'state_name': 'Connecticut', 'agency_name': 'Connecticut DEEP', 'seasons_url': 'https://portal.ct.gov/DEEP/Hunting/Hunting-Seasons', 'regulations_url': 'https://portal.ct.gov/DEEP/Hunting/Hunting', 'licensing_url': 'https://portal.ct.gov/DEEP/Hunting/Hunting-License', 'buy_license_url': 'https://ct.aspirafocus.com/internetsales', 'fishing_url': 'https://portal.ct.gov/DEEP/Fishing/Fishing'},
-  {'state_code': 'DE', 'state_name': 'Delaware', 'agency_name': 'Delaware DFW', 'seasons_url': 'https://dnrec.delaware.gov/fish-wildlife/hunting/', 'regulations_url': 'https://dnrec.delaware.gov/fish-wildlife/hunting/', 'licensing_url': 'https://dnrec.delaware.gov/fish-wildlife/licenses/', 'buy_license_url': 'https://dnrec.delaware.gov/fish-wildlife/licenses/', 'fishing_url': 'https://dnrec.delaware.gov/fish-wildlife/fishing/'},
-  {'state_code': 'FL', 'state_name': 'Florida', 'agency_name': 'Florida FWC', 'seasons_url': 'https://myfwc.com/hunting/season-dates/', 'regulations_url': 'https://myfwc.com/hunting/', 'licensing_url': 'https://myfwc.com/license/', 'buy_license_url': 'https://gooutdoorsflorida.com/', 'fishing_url': 'https://myfwc.com/fishing/'},
-  {'state_code': 'GA', 'state_name': 'Georgia', 'agency_name': 'Georgia DNR', 'seasons_url': 'https://georgiawildlife.com/hunting/seasons', 'regulations_url': 'https://georgiawildlife.com/hunting', 'licensing_url': 'https://georgiawildlife.com/licenses-permits-passes', 'buy_license_url': 'https://gooutdoorsgeorgia.com/', 'fishing_url': 'https://georgiawildlife.com/fishing'},
-  {'state_code': 'HI', 'state_name': 'Hawaii', 'agency_name': 'Hawaii DLNR', 'seasons_url': 'https://dlnr.hawaii.gov/hunting/', 'regulations_url': 'https://dlnr.hawaii.gov/hunting/', 'licensing_url': 'https://dlnr.hawaii.gov/hunting/licenses/', 'buy_license_url': 'https://dlnr.hawaii.gov/hunting/licenses/', 'fishing_url': 'https://dlnr.hawaii.gov/dar/fishing/'},
-  {'state_code': 'ID', 'state_name': 'Idaho', 'agency_name': 'Idaho Fish & Game', 'seasons_url': 'https://idfg.idaho.gov/hunt', 'regulations_url': 'https://idfg.idaho.gov/hunt', 'licensing_url': 'https://idfg.idaho.gov/licenses', 'buy_license_url': 'https://idfg.idaho.gov/buy', 'fishing_url': 'https://idfg.idaho.gov/fish'},
-  {'state_code': 'IL', 'state_name': 'Illinois', 'agency_name': 'Illinois DNR', 'seasons_url': 'https://www2.illinois.gov/dnr/hunting/Pages/HuntingSeasons.aspx', 'regulations_url': 'https://www2.illinois.gov/dnr/hunting/Pages/default.aspx', 'licensing_url': 'https://www2.illinois.gov/dnr/LPR/Pages/default.aspx', 'buy_license_url': 'https://www.exploremoreil.com/', 'fishing_url': 'https://www2.illinois.gov/dnr/fishing/Pages/default.aspx'},
-  {'state_code': 'IN', 'state_name': 'Indiana', 'agency_name': 'Indiana DNR', 'seasons_url': 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/hunting-seasons/', 'regulations_url': 'https://www.in.gov/dnr/fish-and-wildlife/hunting-and-trapping/', 'licensing_url': 'https://www.in.gov/dnr/fish-and-wildlife/licenses-and-permits/', 'buy_license_url': 'https://secure.in.gov/apps/dnr/portal/#/home', 'fishing_url': 'https://www.in.gov/dnr/fish-and-wildlife/fishing/'},
-  {'state_code': 'IA', 'state_name': 'Iowa', 'agency_name': 'Iowa DNR', 'seasons_url': 'https://www.iowadnr.gov/Hunting/Seasons', 'regulations_url': 'https://www.iowadnr.gov/Hunting', 'licensing_url': 'https://www.iowadnr.gov/Hunting/Licenses', 'buy_license_url': 'https://www.gooutdoorsiowa.com/', 'fishing_url': 'https://www.iowadnr.gov/Fishing'},
-  {'state_code': 'KS', 'state_name': 'Kansas', 'agency_name': 'Kansas Wildlife', 'seasons_url': 'https://ksoutdoors.com/Hunting/Seasons-More', 'regulations_url': 'https://ksoutdoors.com/Hunting', 'licensing_url': 'https://ksoutdoors.com/License-Permits', 'buy_license_url': 'https://ksoutdoors.com/License-Permits/Buy-A-License', 'fishing_url': 'https://ksoutdoors.com/Fishing'},
-  {'state_code': 'KY', 'state_name': 'Kentucky', 'agency_name': 'Kentucky DFW', 'seasons_url': 'https://fw.ky.gov/Hunt/Pages/Seasons-Dates.aspx', 'regulations_url': 'https://fw.ky.gov/Hunt/Pages/default.aspx', 'licensing_url': 'https://fw.ky.gov/License/Pages/default.aspx', 'buy_license_url': 'https://app.fw.ky.gov/SportLicense/', 'fishing_url': 'https://fw.ky.gov/Fish/Pages/default.aspx'},
-  {'state_code': 'LA', 'state_name': 'Louisiana', 'agency_name': 'Louisiana WLF', 'seasons_url': 'https://www.wlf.louisiana.gov/page/hunting-seasons', 'regulations_url': 'https://www.wlf.louisiana.gov/page/hunting', 'licensing_url': 'https://www.wlf.louisiana.gov/page/licenses-permits', 'buy_license_url': 'https://la-web.s3licensing.com/', 'fishing_url': 'https://www.wlf.louisiana.gov/page/freshwater-fishing'},
-  {'state_code': 'ME', 'state_name': 'Maine', 'agency_name': 'Maine IFW', 'seasons_url': 'https://www.maine.gov/ifw/hunting-trapping/hunting-laws.html', 'regulations_url': 'https://www.maine.gov/ifw/hunting-trapping/', 'licensing_url': 'https://www.maine.gov/ifw/licenses-permits/', 'buy_license_url': 'https://moses.informe.org/online/licensing/', 'fishing_url': 'https://www.maine.gov/ifw/fishing-boating/fishing/'},
-  {'state_code': 'MD', 'state_name': 'Maryland', 'agency_name': 'Maryland DNR', 'seasons_url': 'https://dnr.maryland.gov/wildlife/Pages/hunt_trap/seasons.aspx', 'regulations_url': 'https://dnr.maryland.gov/wildlife/Pages/hunt_trap/default.aspx', 'licensing_url': 'https://dnr.maryland.gov/fisheries/Pages/license.aspx', 'buy_license_url': 'https://compass.dnr.maryland.gov/', 'fishing_url': 'https://dnr.maryland.gov/fisheries/Pages/regulations/'},
-  {'state_code': 'MA', 'state_name': 'Massachusetts', 'agency_name': 'Massachusetts DFW', 'seasons_url': 'https://www.mass.gov/service-details/hunting-seasons', 'regulations_url': 'https://www.mass.gov/hunting-regulations', 'licensing_url': 'https://www.mass.gov/how-to/buy-a-hunting-or-fishing-license', 'buy_license_url': 'https://www.mass.gov/how-to/buy-a-hunting-or-fishing-license', 'fishing_url': 'https://www.mass.gov/freshwater-fishing-regulations'},
-  {'state_code': 'MI', 'state_name': 'Michigan', 'agency_name': 'Michigan DNR', 'seasons_url': 'https://www.michigan.gov/dnr/things-to-do/hunting/seasons', 'regulations_url': 'https://www.michigan.gov/dnr/things-to-do/hunting', 'licensing_url': 'https://www.michigan.gov/dnr/buy-and-apply/licenses', 'buy_license_url': 'https://www.mdnr-elicense.com/', 'fishing_url': 'https://www.michigan.gov/dnr/things-to-do/fishing'},
-  {'state_code': 'MN', 'state_name': 'Minnesota', 'agency_name': 'Minnesota DNR', 'seasons_url': 'https://www.dnr.state.mn.us/hunting/seasons.html', 'regulations_url': 'https://www.dnr.state.mn.us/hunting/index.html', 'licensing_url': 'https://www.dnr.state.mn.us/licenses/index.html', 'buy_license_url': 'https://www.dnr.state.mn.us/buyalicense/index.html', 'fishing_url': 'https://www.dnr.state.mn.us/fishing/index.html'},
-  {'state_code': 'MS', 'state_name': 'Mississippi', 'agency_name': 'Mississippi DWFP', 'seasons_url': 'https://www.mdwfp.com/wildlife-hunting/hunting-seasons/', 'regulations_url': 'https://www.mdwfp.com/wildlife-hunting/', 'licensing_url': 'https://www.mdwfp.com/license/', 'buy_license_url': 'https://www.ms.gov/mdwfp/license/', 'fishing_url': 'https://www.mdwfp.com/fishing-boating/'},
-  {'state_code': 'MO', 'state_name': 'Missouri', 'agency_name': 'Missouri MDC', 'seasons_url': 'https://mdc.mo.gov/hunting-trapping/seasons', 'regulations_url': 'https://mdc.mo.gov/hunting-trapping', 'licensing_url': 'https://mdc.mo.gov/permits/hunting-permits', 'buy_license_url': 'https://mdc-web.s3licensing.com/', 'fishing_url': 'https://mdc.mo.gov/fishing'},
-  {'state_code': 'MT', 'state_name': 'Montana', 'agency_name': 'Montana FWP', 'seasons_url': 'https://fwp.mt.gov/hunt/regulations', 'regulations_url': 'https://fwp.mt.gov/hunt', 'licensing_url': 'https://fwp.mt.gov/buyandapply', 'buy_license_url': 'https://fwp.mt.gov/buyandapply', 'fishing_url': 'https://fwp.mt.gov/fish'},
-  {'state_code': 'NE', 'state_name': 'Nebraska', 'agency_name': 'Nebraska Game & Parks', 'seasons_url': 'https://outdoornebraska.gov/huntingseasons/', 'regulations_url': 'https://outdoornebraska.gov/hunt/', 'licensing_url': 'https://outdoornebraska.gov/permits/', 'buy_license_url': 'https://outdoornebraska.ne.gov/', 'fishing_url': 'https://outdoornebraska.gov/fishing/'},
-  {'state_code': 'NV', 'state_name': 'Nevada', 'agency_name': 'Nevada DOW', 'seasons_url': 'https://www.ndow.org/hunt/seasons-regulations/', 'regulations_url': 'https://www.ndow.org/hunt/', 'licensing_url': 'https://www.ndow.org/licenses-tags/', 'buy_license_url': 'https://www.ndow.org/licenses-tags/', 'fishing_url': 'https://www.ndow.org/fish/'},
-  {'state_code': 'NH', 'state_name': 'New Hampshire', 'agency_name': 'New Hampshire FG', 'seasons_url': 'https://www.wildlife.nh.gov/hunting/seasons', 'regulations_url': 'https://www.wildlife.nh.gov/hunting', 'licensing_url': 'https://www.wildlife.nh.gov/licensing', 'buy_license_url': 'https://www.wildlife.nh.gov/licensing', 'fishing_url': 'https://www.wildlife.nh.gov/fishing'},
-  {'state_code': 'NJ', 'state_name': 'New Jersey', 'agency_name': 'New Jersey DFW', 'seasons_url': 'https://www.nj.gov/dep/fgw/hunting_dates.htm', 'regulations_url': 'https://www.nj.gov/dep/fgw/hunting.htm', 'licensing_url': 'https://www.nj.gov/dep/fgw/licenses.htm', 'buy_license_url': 'https://www.njfishandwildlife.com/', 'fishing_url': 'https://www.nj.gov/dep/fgw/fishing.htm'},
-  {'state_code': 'NM', 'state_name': 'New Mexico', 'agency_name': 'New Mexico DGF', 'seasons_url': 'https://www.wildlife.state.nm.us/hunting/game-and-seasons/', 'regulations_url': 'https://www.wildlife.state.nm.us/hunting/', 'licensing_url': 'https://www.wildlife.state.nm.us/hunting/licenses-and-applications/', 'buy_license_url': 'https://onlinesales.wildlife.state.nm.us/', 'fishing_url': 'https://www.wildlife.state.nm.us/fishing/'},
-  {'state_code': 'NY', 'state_name': 'New York', 'agency_name': 'New York DEC', 'seasons_url': 'https://www.dec.ny.gov/outdoor/hunting_seasons.html', 'regulations_url': 'https://www.dec.ny.gov/outdoor/hunting.html', 'licensing_url': 'https://www.dec.ny.gov/permits/6094.html', 'buy_license_url': 'https://decals.dec.ny.gov/', 'fishing_url': 'https://www.dec.ny.gov/outdoor/fishing.html'},
-  {'state_code': 'NC', 'state_name': 'North Carolina', 'agency_name': 'North Carolina WRC', 'seasons_url': 'https://www.ncwildlife.org/Hunting/Seasons-Regulations', 'regulations_url': 'https://www.ncwildlife.org/Hunting', 'licensing_url': 'https://www.ncwildlife.org/Licensing', 'buy_license_url': 'https://www.ncwildlife.org/Licensing/How-to-Buy', 'fishing_url': 'https://www.ncwildlife.org/Fishing/Regulations'},
-  {'state_code': 'ND', 'state_name': 'North Dakota', 'agency_name': 'North Dakota GF', 'seasons_url': 'https://gf.nd.gov/hunting/seasons', 'regulations_url': 'https://gf.nd.gov/hunting', 'licensing_url': 'https://gf.nd.gov/licensing', 'buy_license_url': 'https://gf.nd.gov/licensing', 'fishing_url': 'https://gf.nd.gov/fishing'},
-  {'state_code': 'OH', 'state_name': 'Ohio', 'agency_name': 'Ohio DNR', 'seasons_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/hunting-seasons-bag-limits', 'regulations_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources', 'licensing_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/hunting-resources/hunting-license', 'buy_license_url': 'https://oh-web.s3licensing.com/', 'fishing_url': 'https://ohiodnr.gov/buy-and-apply/hunting-fishing-boating/fishing-resources'},
-  {'state_code': 'OK', 'state_name': 'Oklahoma', 'agency_name': 'Oklahoma DWC', 'seasons_url': 'https://www.wildlifedepartment.com/hunting/seasons', 'regulations_url': 'https://www.wildlifedepartment.com/hunting', 'licensing_url': 'https://www.wildlifedepartment.com/licensing', 'buy_license_url': 'https://www.gooutdoorsoklahoma.com/', 'fishing_url': 'https://www.wildlifedepartment.com/fishing'},
-  {'state_code': 'OR', 'state_name': 'Oregon', 'agency_name': 'Oregon DFW', 'seasons_url': 'https://myodfw.com/hunting/seasons', 'regulations_url': 'https://myodfw.com/hunting', 'licensing_url': 'https://myodfw.com/licenses-and-tags', 'buy_license_url': 'https://odfw.huntfishoregon.com/', 'fishing_url': 'https://myodfw.com/fishing'},
-  {'state_code': 'PA', 'state_name': 'Pennsylvania', 'agency_name': 'Pennsylvania GC', 'seasons_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/HuntTrapSeasonsDates.aspx', 'regulations_url': 'https://www.pgc.pa.gov/HuntTrap/Pages/default.aspx', 'licensing_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/Licenses.aspx', 'buy_license_url': 'https://www.pgc.pa.gov/HuntTrap/Law/Pages/HuntingLicenses.aspx', 'fishing_url': 'https://www.fishandboat.com/Fish/FishingRegulations/Pages/default.aspx'},
-  {'state_code': 'RI', 'state_name': 'Rhode Island', 'agency_name': 'Rhode Island DEM', 'seasons_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/hunting', 'regulations_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/hunting', 'licensing_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/licenses-permits', 'buy_license_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/licenses-permits', 'fishing_url': 'https://dem.ri.gov/natural-resources-bureau/fish-wildlife/freshwater-fisheries'},
-  {'state_code': 'SC', 'state_name': 'South Carolina', 'agency_name': 'South Carolina DNR', 'seasons_url': 'https://www.dnr.sc.gov/hunting/seasons/', 'regulations_url': 'https://www.dnr.sc.gov/hunting/', 'licensing_url': 'https://www.dnr.sc.gov/licenses/', 'buy_license_url': 'https://www.sc.wildlifelicense.com/', 'fishing_url': 'https://www.dnr.sc.gov/fishing/'},
-  {'state_code': 'SD', 'state_name': 'South Dakota', 'agency_name': 'South Dakota GFP', 'seasons_url': 'https://gfp.sd.gov/hunting/', 'regulations_url': 'https://gfp.sd.gov/hunting/', 'licensing_url': 'https://gfp.sd.gov/licenses/', 'buy_license_url': 'https://gfp.sd.gov/licenses/', 'fishing_url': 'https://gfp.sd.gov/fishing/'},
-  {'state_code': 'TN', 'state_name': 'Tennessee', 'agency_name': 'Tennessee TWRA', 'seasons_url': 'https://www.tn.gov/twra/hunting/seasons.html', 'regulations_url': 'https://www.tn.gov/twra/hunting.html', 'licensing_url': 'https://www.tn.gov/twra/license-sales.html', 'buy_license_url': 'https://www.gooutdoorstennessee.com/', 'fishing_url': 'https://www.tn.gov/twra/fishing.html'},
-  {'state_code': 'TX', 'state_name': 'Texas', 'agency_name': 'Texas Parks & Wildlife', 'seasons_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/hunting/general-regulations/seasons', 'regulations_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/hunting', 'licensing_url': 'https://tpwd.texas.gov/business/licenses/', 'buy_license_url': 'https://tpwd.texas.gov/business/licenses/online-sales/', 'fishing_url': 'https://tpwd.texas.gov/regulations/outdoor-annual/fishing'},
-  {'state_code': 'UT', 'state_name': 'Utah', 'agency_name': 'Utah DWR', 'seasons_url': 'https://wildlife.utah.gov/hunting-in-utah.html', 'regulations_url': 'https://wildlife.utah.gov/hunting-in-utah.html', 'licensing_url': 'https://wildlife.utah.gov/licenses.html', 'buy_license_url': 'https://wildlife.utah.gov/licenses.html', 'fishing_url': 'https://wildlife.utah.gov/fishing-in-utah.html'},
-  {'state_code': 'VT', 'state_name': 'Vermont', 'agency_name': 'Vermont FW', 'seasons_url': 'https://vtfishandwildlife.com/hunt/hunting-seasons', 'regulations_url': 'https://vtfishandwildlife.com/hunt', 'licensing_url': 'https://vtfishandwildlife.com/licenses-and-lotteries', 'buy_license_url': 'https://vtfishandwildlife.com/licenses-and-lotteries', 'fishing_url': 'https://vtfishandwildlife.com/fish'},
-  {'state_code': 'VA', 'state_name': 'Virginia', 'agency_name': 'Virginia DWR', 'seasons_url': 'https://dwr.virginia.gov/hunting/regulations/', 'regulations_url': 'https://dwr.virginia.gov/hunting/', 'licensing_url': 'https://dwr.virginia.gov/licenses/', 'buy_license_url': 'https://gooutdoorsvirginia.com/', 'fishing_url': 'https://dwr.virginia.gov/fishing/'},
-  {'state_code': 'WA', 'state_name': 'Washington', 'agency_name': 'Washington DFW', 'seasons_url': 'https://wdfw.wa.gov/hunting/regulations', 'regulations_url': 'https://wdfw.wa.gov/hunting', 'licensing_url': 'https://wdfw.wa.gov/licensing', 'buy_license_url': 'https://fishhunt.dfw.wa.gov/', 'fishing_url': 'https://wdfw.wa.gov/fishing/regulations'},
-  {'state_code': 'WV', 'state_name': 'West Virginia', 'agency_name': 'West Virginia DNR', 'seasons_url': 'https://wvdnr.gov/hunting/seasons/', 'regulations_url': 'https://wvdnr.gov/hunting/', 'licensing_url': 'https://wvdnr.gov/licenses/', 'buy_license_url': 'https://www.wvhunt.com/', 'fishing_url': 'https://wvdnr.gov/fishing/'},
-  {'state_code': 'WI', 'state_name': 'Wisconsin', 'agency_name': 'Wisconsin DNR', 'seasons_url': 'https://dnr.wisconsin.gov/topic/Hunt/seasons', 'regulations_url': 'https://dnr.wisconsin.gov/topic/Hunt', 'licensing_url': 'https://dnr.wisconsin.gov/permits/licenses', 'buy_license_url': 'https://gowild.wi.gov/', 'fishing_url': 'https://dnr.wisconsin.gov/topic/Fishing'},
-  {'state_code': 'WY', 'state_name': 'Wyoming', 'agency_name': 'Wyoming Game & Fish', 'seasons_url': 'https://wgfd.wyo.gov/Hunting/Season-Dates', 'regulations_url': 'https://wgfd.wyo.gov/Hunting', 'licensing_url': 'https://wgfd.wyo.gov/Apply-or-Buy', 'buy_license_url': 'https://wgfd.wyo.gov/Apply-or-Buy', 'fishing_url': 'https://wgfd.wyo.gov/Fishing'},
-];
-
-/// Coverage Dashboard - portal-first metrics
-class _CoverageDashboardCard extends StatelessWidget {
-  const _CoverageDashboardCard({
-    required this.stats,
-    required this.onRefresh,
-    required this.onDeleteJunk,
-  });
-  
-  final Map<String, dynamic> stats;
-  final VoidCallback onRefresh;
-  final VoidCallback onDeleteJunk;
-  
-  @override
-  Widget build(BuildContext context) {
-    final portalCoverage = stats['portal_coverage'] ?? 0;
-    final portalTotal = stats['portal_total'] ?? 50;
-    final factsStates = stats['facts_states'] ?? 0;
-    final factsRows = stats['facts_total_rows'] ?? 0;
-    final pendingCount = stats['pending_count'] ?? 0;
-    final sourcesExtractable = stats['sources_extractable'] ?? 0;
-    final sourcesPortalOnly = stats['sources_portal_only'] ?? 0;
-    
-    final portalComplete = portalCoverage >= portalTotal;
-    
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.accent.withValues(alpha: 0.08),
-            AppColors.surface,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            children: [
-              Icon(Icons.dashboard_rounded, size: 20, color: AppColors.accent),
-              const SizedBox(width: AppSpacing.sm),
-              const Text(
-                'Coverage Dashboard',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                onPressed: onRefresh,
-                tooltip: 'Refresh stats',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                color: AppColors.textSecondary,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          
-          // Two-layer metrics
-          Row(
-            children: [
-              // Portal Links (always complete)
-              Expanded(
-                child: _MetricBox(
-                  icon: Icons.link_rounded,
-                  label: 'Portal Links',
-                  value: '$portalCoverage/$portalTotal',
-                  subtitle: 'Official links',
-                  color: portalComplete ? AppColors.success : AppColors.warning,
-                  isComplete: portalComplete,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              // Extracted Facts (optional)
-              Expanded(
-                child: _MetricBox(
-                  icon: Icons.fact_check_rounded,
-                  label: 'Extracted Facts',
-                  value: '$factsStates states',
-                  subtitle: '$factsRows rows',
-                  color: AppColors.info,
-                  isComplete: false,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          
-          // Sources breakdown
-          Row(
-            children: [
-              Expanded(
-                child: _MetricBox(
-                  icon: Icons.source_rounded,
-                  label: 'Extractable',
-                  value: '$sourcesExtractable',
-                  subtitle: 'sources',
-                  color: AppColors.accent,
-                  isComplete: false,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _MetricBox(
-                  icon: Icons.warning_amber_rounded,
-                  label: 'Pending',
-                  value: '$pendingCount',
-                  subtitle: 'to review',
-                  color: pendingCount > 0 ? AppColors.warning : AppColors.success,
-                  isComplete: pendingCount == 0,
-                ),
-              ),
-            ],
-          ),
-          
-          // Delete junk button if pending > 0
-          if (pendingCount > 0) ...[
-            const SizedBox(height: AppSpacing.md),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onDeleteJunk,
-                icon: const Icon(Icons.delete_sweep_rounded, size: 16),
-                label: const Text('Clear Junk Pending'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.error,
-                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _MetricBox extends StatelessWidget {
-  const _MetricBox({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.subtitle,
-    required this.color,
-    required this.isComplete,
-  });
-  
-  final IconData icon;
-  final String label;
-  final String value;
-  final String subtitle;
-  final Color color;
-  final bool isComplete;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              if (isComplete) ...[
-                const Spacer(),
-                Icon(Icons.check_circle_rounded, size: 12, color: AppColors.success),
-              ],
-            ],
           ),
           const SizedBox(height: 4),
           Text(
-            value,
+            'Server-side verification with timeout & retry. Safe to navigate away.',
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 10,
-              color: AppColors.textTertiary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Explanation card for how the system works.
-class _HowItWorksCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.help_outline_rounded, size: 18, color: AppColors.accent),
-              const SizedBox(width: AppSpacing.sm),
-              const Text(
-                'How This System Works',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            '• Portal links always work – direct links to official state pages\n'
-            '• Checker extracts facts from structured pages when possible\n'
-            '• High-confidence extractions (≥85%) auto-approve\n'
-            '• Lower confidence items appear in Pending for manual review\n'
-            '• Automation runs weekly to detect changes',
-            style: TextStyle(
-              fontSize: 12,
+              fontSize: 13,
               color: AppColors.textSecondary,
-              height: 1.5,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Source counts display card.
-class _SourceCountsCard extends StatelessWidget {
-  const _SourceCountsCard({required this.counts});
-  
-  final SourceCounts counts;
-  
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.source_rounded, size: 18, color: AppColors.info),
-              const SizedBox(width: AppSpacing.sm),
-              const Text(
-                'Extraction Sources',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: counts.total >= 150 ? AppColors.success.withValues(alpha: 0.15) : AppColors.warning.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                ),
-                child: Text(
-                  '${counts.total} total',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: counts.total >= 150 ? AppColors.success : AppColors.warning,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: _CountItem(label: 'Deer', count: counts.deer, target: 50),
-              ),
-              Expanded(
-                child: _CountItem(label: 'Turkey', count: counts.turkey, target: 50),
-              ),
-              Expanded(
-                child: _CountItem(label: 'Fishing', count: counts.fishing, target: 50),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CountItem extends StatelessWidget {
-  const _CountItem({
-    required this.label,
-    required this.count,
-    required this.target,
-  });
-  
-  final String label;
-  final int count;
-  final int target;
-  
-  @override
-  Widget build(BuildContext context) {
-    final isComplete = count >= target;
-    return Column(
-      children: [
-        Text(
-          '$count',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: isComplete ? AppColors.success : AppColors.warning,
-          ),
-        ),
-        Text(
-          '$label / $target',
-          style: TextStyle(
-            fontSize: 11,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Stats card showing checker activity over the past week.
-class _CheckerStatsCard extends StatelessWidget {
-  const _CheckerStatsCard({
-    required this.stats,
-    this.lastResult,
-  });
-  
-  final Map<String, int> stats;
-  final Map<String, dynamic>? lastResult;
-  
-  @override
-  Widget build(BuildContext context) {
-    final autoApproved = stats['auto_approved'] ?? 0;
-    final pending = stats['pending'] ?? 0;
-    final manual = stats['manual'] ?? 0;
-    final total = autoApproved + pending + manual;
-    
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.analytics_outlined,
-                size: 18,
-                color: AppColors.accent,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              const Text(
-                'Checker Activity (Last 7 Days)',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          
-          // Stats row
-          Row(
-            children: [
-              Expanded(
-                child: _StatItem(
-                  icon: Icons.auto_awesome_rounded,
-                  label: 'Auto-Approved',
-                  value: autoApproved,
-                  color: AppColors.success,
-                ),
-              ),
-              Expanded(
-                child: _StatItem(
-                  icon: Icons.pending_rounded,
-                  label: 'Pending',
-                  value: pending,
-                  color: AppColors.warning,
-                ),
-              ),
-              Expanded(
-                child: _StatItem(
-                  icon: Icons.verified_user_rounded,
-                  label: 'Manual',
-                  value: manual,
-                  color: AppColors.info,
-                ),
-              ),
-            ],
-          ),
-          
-          if (total > 0) ...[
-            const SizedBox(height: AppSpacing.md),
-            // Auto-approval rate
+          const SizedBox(height: 16),
+          if (_isVerifying) ...[
+            // Progress bar with actual progress value
+            LinearProgressIndicator(
+              value: _currentRun?.progress,
+              backgroundColor: AppColors.border,
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+            ),
+            const SizedBox(height: 12),
+            // Progress text with counts
             Row(
               children: [
-                Text(
-                  'Auto-approval rate: ',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _verifyProgress ?? 'Verifying...',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (_currentRun != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_currentRun!.okCount} OK • ${_currentRun!.brokenCount} broken',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                Text(
-                  '${((autoApproved / total) * 100).toInt()}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: autoApproved > pending ? AppColors.success : AppColors.warning,
+                // Cancel button
+                TextButton.icon(
+                  onPressed: _isCanceling ? null : _cancelVerification,
+                  icon: Icon(
+                    Icons.cancel_outlined,
+                    size: 18,
+                    color: _isCanceling ? AppColors.textTertiary : AppColors.error,
+                  ),
+                  label: Text(
+                    _isCanceling ? 'Canceling...' : 'Cancel',
+                    style: TextStyle(
+                      color: _isCanceling ? AppColors.textTertiary : AppColors.error,
+                    ),
                   ),
                 ),
               ],
             ),
-          ],
-          
-          if (lastResult != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            const Divider(height: 1, color: AppColors.borderSubtle),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Last run: ${lastResult!['checked'] ?? 0} sources checked, '
-              '${lastResult!['auto_approved'] ?? 0} auto-approved, '
-              '${lastResult!['pending'] ?? 0} pending',
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textTertiary,
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _verifyAllLinks,
+                icon: const Icon(Icons.verified_rounded),
+                label: const Text('Verify All Links'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
             ),
-          ],
         ],
       ),
     );
   }
+
+  Widget _buildBrokenLinksSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _showBrokenLinks = !_showBrokenLinks),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: AppColors.error,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Broken Links (${_brokenLinks.length})',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.error,
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  _showBrokenLinks ? Icons.expand_less : Icons.expand_more,
+                  color: AppColors.textSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_showBrokenLinks) ...[
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _brokenLinks.length,
+              separatorBuilder: (_, __) => Divider(
+                height: 1,
+                color: AppColors.border,
+              ),
+              itemBuilder: (context, index) {
+                final link = _brokenLinks[index];
+                return ListTile(
+                  dense: true,
+                  leading: Text(
+                    link.stateCode,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  title: Text(
+                    link.field,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: Text(
+                    link.error ?? 'Unknown error',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.error,
+                    ),
+                  ),
+                  trailing: Text(
+                    'HTTP ${link.status ?? '?'}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDangerZone() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_rounded, size: 18, color: AppColors.error),
+              const SizedBox(width: 8),
+              Text(
+                'Danger Zone',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.error,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Reset verification status for all portal links. This does not delete official roots.',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _resetData,
+            icon: const Icon(Icons.restart_alt_rounded),
+            label: const Text('Reset Verification Status'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.error,
+              side: BorderSide(color: AppColors.error.withOpacity(0.5)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    
+    return '${date.month}/${date.day}/${date.year}';
+  }
 }
 
-class _StatItem extends StatelessWidget {
-  const _StatItem({
+// ============================================================================
+// MODELS
+// ============================================================================
+
+class _AdminStats {
+  const _AdminStats({
+    this.rootsCount = 0,
+    this.totalLinksCount = 0,
+    this.verifiedCount = 0,
+    this.brokenCount = 0,
+    this.lastVerifiedAt,
+  });
+
+  final int rootsCount;
+  final int totalLinksCount;
+  final int verifiedCount;
+  final int brokenCount;
+  final DateTime? lastVerifiedAt;
+
+  factory _AdminStats.fromMap(Map<String, dynamic> map) {
+    return _AdminStats(
+      rootsCount: map['roots_count'] ?? 0,
+      totalLinksCount: map['total_links_count'] ?? 0,
+      verifiedCount: map['verified_count'] ?? 0,
+      brokenCount: map['broken_count'] ?? 0,
+      lastVerifiedAt: map['last_verified_at'] != null
+          ? DateTime.tryParse(map['last_verified_at'])
+          : null,
+    );
+  }
+}
+
+class _BrokenLink {
+  const _BrokenLink({
+    required this.stateCode,
+    required this.field,
+    this.status,
+    this.error,
+  });
+
+  final String stateCode;
+  final String field;
+  final int? status;
+  final String? error;
+
+  factory _BrokenLink.fromMap(Map<String, dynamic> map) {
+    return _BrokenLink(
+      stateCode: map['state_code'] ?? '',
+      field: map['field'] ?? '',
+      status: map['status'],
+      error: map['error'],
+    );
+  }
+}
+
+// ============================================================================
+// WIDGETS
+// ============================================================================
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.color,
   });
-  
+
   final IconData icon;
   final String label;
-  final int value;
+  final String value;
   final Color color;
-  
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
           ),
-          child: Icon(icon, size: 18, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$value',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: color,
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
           ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: AppColors.textSecondary,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
