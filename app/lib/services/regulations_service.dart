@@ -2985,6 +2985,35 @@ extension RegulationsServiceJobQueue on RegulationsService {
   Future<AdminRunStatus?> getLatestActiveRun() async {
     return getJobQueueRunStatus();
   }
+
+  /// Reset data with different levels.
+  /// [type] can be:
+  /// - 'verification': Only clears verification flags
+  /// - 'extracted': Clears discovery + extraction data, keeps official roots
+  /// - 'full': Clears everything except official roots
+  Future<Map<String, dynamic>> resetData({
+    required String type,
+    required String confirmCode,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-reset',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'type': type, 'confirm_code': confirmCode},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      throw Exception('Reset failed: $error');
+    }
+
+    return response.data as Map<String, dynamic>;
+  }
 }
 
 /// Provider for regulations service.

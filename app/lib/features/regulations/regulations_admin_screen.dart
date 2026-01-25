@@ -39,13 +39,11 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   RepairRunStatus? _repairRun;
   bool _isRepairCanceling = false;
   
-  // Extraction run state
-  ExtractionRunStatus? _extractionRun;
-  bool _isExtractionCanceling = false;
-  
-  // GPT-guided discovery run state
-  DiscoveryRunStatus? _discoveryRun;
-  bool _isDiscoveryCanceling = false;
+  // Job queue run state (NEW - uses droplet worker)
+  AdminRunStatus? _activeDiscoveryRun;
+  AdminRunStatus? _activeExtractionRun;
+  bool _isDiscoveryStopping = false;
+  bool _isExtractionStopping = false;
 
   @override
   void initState() {
@@ -53,37 +51,26 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     _loadStats();
     _checkForExistingRun();
     _checkForExistingRepairRun();
-    _checkForExistingExtractionRun();
-    _checkForExistingDiscoveryRun();
+    _checkForActiveJobQueueRuns();
   }
   
-  /// Check for an existing running discovery on page load (for resume).
-  Future<void> _checkForExistingDiscoveryRun() async {
+  /// Check for active job queue runs on page load (for resume).
+  Future<void> _checkForActiveJobQueueRuns() async {
     try {
       final service = ref.read(regulationsServiceProvider);
-      final latestRun = await service.getLatestDiscoveryRunStatus();
+      final latestRun = await service.getJobQueueRunStatus();
       
       if (latestRun != null && latestRun.isRunning && mounted) {
-        setState(() => _discoveryRun = latestRun);
-        _pollDiscoveryRun(latestRun.runId);
+        if (latestRun.type == 'discover') {
+          setState(() => _activeDiscoveryRun = latestRun);
+          _pollJobQueueDiscoveryRun(latestRun.runId);
+        } else if (latestRun.type == 'extract') {
+          setState(() => _activeExtractionRun = latestRun);
+          _pollJobQueueExtractionRun(latestRun.runId);
+        }
       }
     } catch (e) {
-      debugPrint('[RegsAdmin] Error checking for existing discovery run: $e');
-    }
-  }
-  
-  /// Check for an existing running extraction on page load (for resume).
-  Future<void> _checkForExistingExtractionRun() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final latestRun = await service.getLatestExtractionRunStatus();
-      
-      if (latestRun != null && latestRun.isRunning && mounted) {
-        setState(() => _extractionRun = latestRun);
-        _pollExtractionRun(latestRun.runId);
-      }
-    } catch (e) {
-      debugPrint('[RegsAdmin] Error checking for existing extraction run: $e');
+      debugPrint('[RegsAdmin] Error checking for active job queue runs: $e');
     }
   }
 
@@ -409,19 +396,25 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
 
   // ============================================================
-  // EXTRACTION METHODS
+  // JOB QUEUE EXTRACTION METHODS (Droplet Worker)
   // ============================================================
 
-  /// Start a new extraction run.
+  /// Start a new job queue extraction run.
   Future<void> _startExtractionRun({String tier = 'basic'}) async {
     try {
-      _extractionTier = tier;
       final service = ref.read(regulationsServiceProvider);
-      final run = await service.startExtractionRun(tier: tier);
+      final run = await service.startJobQueueExtractionRun(tier: tier);
       
       if (mounted) {
-        setState(() => _extractionRun = run);
-        _pollExtractionRun(run.runId);
+        setState(() => _activeExtractionRun = run);
+        _pollJobQueueExtractionRun(run.runId);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Extraction started: ${run.progressTotal} jobs queued'),
+            backgroundColor: AppColors.info,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -432,77 +425,109 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
 
-  /// Poll extraction run until done.
-  Future<void> _pollExtractionRun(String runId) async {
+  /// Poll job queue extraction run until done.
+  Future<void> _pollJobQueueExtractionRun(String runId) async {
     final service = ref.read(regulationsServiceProvider);
 
-    while (mounted && _extractionRun != null && !_isExtractionCanceling) {
+    while (mounted && _activeExtractionRun != null && !_isExtractionStopping) {
       try {
-        final status = await service.continueExtractionRun(runId, tier: _extractionTier);
+        // Wait before polling
+        await Future.delayed(const Duration(seconds: 2));
         
-        if (!mounted) break;
+        if (!mounted || _activeExtractionRun == null) break;
         
-        setState(() => _extractionRun = status);
+        final status = await service.getJobQueueRunStatus(runId: runId);
+        
+        if (!mounted || status == null) break;
+        
+        setState(() => _activeExtractionRun = status);
 
         if (status.done) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Extraction complete: ${status.deerPublished} deer, ${status.turkeyPublished} turkey published',
-              ),
-              backgroundColor: (status.deerPublished > 0 || status.turkeyPublished > 0) 
+              content: Text('Extraction complete: ${status.summaryLabel}'),
+              backgroundColor: (status.jobs['done'] ?? 0) > 0 
                   ? AppColors.success 
                   : AppColors.warning,
             ),
           );
+          _loadStats();
           break;
         }
-
-        // Small delay between batches
-        await Future.delayed(const Duration(milliseconds: 500));
         
       } catch (e) {
         if (mounted) {
-          setState(() => _extractionRun = null);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          debugPrint('[RegsAdmin] Poll error: $e');
+          // Don't clear on transient errors, keep polling
         }
-        break;
       }
     }
   }
 
-  /// Cancel extraction run (just stop polling).
-  void _cancelExtractionRun() {
-    setState(() {
-      _isExtractionCanceling = true;
-      _extractionRun = null;
-      _isExtractionCanceling = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Extraction stopped')),
-    );
+  /// Stop extraction run (actually stops on server).
+  Future<void> _stopExtractionRun() async {
+    if (_activeExtractionRun == null) return;
+    
+    setState(() => _isExtractionStopping = true);
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      await service.stopJobQueueRun(_activeExtractionRun!.runId);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stopping extraction...')),
+        );
+        
+        // Keep polling until stopped
+        while (mounted && _activeExtractionRun != null) {
+          await Future.delayed(const Duration(seconds: 1));
+          final status = await service.getJobQueueRunStatus(runId: _activeExtractionRun!.runId);
+          if (status == null || status.done) {
+            setState(() {
+              _activeExtractionRun = status;
+              _isExtractionStopping = false;
+            });
+            break;
+          }
+          setState(() => _activeExtractionRun = status);
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Extraction stopped')),
+        );
+        _loadStats();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isExtractionStopping = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error stopping: $e')),
+        );
+      }
+    }
   }
 
   // ============================================================
-  // GPT-GUIDED DISCOVERY METHODS
+  // JOB QUEUE DISCOVERY METHODS (Droplet Worker)
   // ============================================================
 
-  // Track tier for ongoing runs
-  String _discoveryTier = 'basic';
-  String _extractionTier = 'basic';
-
-  /// Start a new GPT-guided discovery run.
+  /// Start a new job queue discovery run.
   Future<void> _startDiscoveryRun({String tier = 'basic'}) async {
     try {
-      _discoveryTier = tier;
       final service = ref.read(regulationsServiceProvider);
-      final run = await service.startDiscoveryRun(tier: tier);
+      final run = await service.startJobQueueDiscoveryRun(tier: tier);
       
       if (mounted) {
-        setState(() => _discoveryRun = run);
-        _pollDiscoveryRun(run.runId);
+        setState(() => _activeDiscoveryRun = run);
+        _pollJobQueueDiscoveryRun(run.runId);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Discovery started: ${run.progressTotal} jobs queued'),
+            backgroundColor: AppColors.info,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -513,58 +538,86 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
 
-  /// Poll discovery run until done.
-  Future<void> _pollDiscoveryRun(String runId) async {
+  /// Poll job queue discovery run until done.
+  Future<void> _pollJobQueueDiscoveryRun(String runId) async {
     final service = ref.read(regulationsServiceProvider);
 
-    while (mounted && _discoveryRun != null && !_isDiscoveryCanceling) {
+    while (mounted && _activeDiscoveryRun != null && !_isDiscoveryStopping) {
       try {
-        final status = await service.continueDiscoveryRun(runId, tier: _discoveryTier);
+        // Wait before polling
+        await Future.delayed(const Duration(seconds: 2));
         
-        if (!mounted) break;
+        if (!mounted || _activeDiscoveryRun == null) break;
         
-        setState(() => _discoveryRun = status);
+        final status = await service.getJobQueueRunStatus(runId: runId);
+        
+        if (!mounted || status == null) break;
+        
+        setState(() => _activeDiscoveryRun = status);
 
         if (status.done) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Discovery complete: ${status.fixedCount} fields filled',
-              ),
-              backgroundColor: status.fixedCount > 0 
+              content: Text('Discovery complete: ${status.summaryLabel}'),
+              backgroundColor: (status.jobs['done'] ?? 0) > 0 
                   ? AppColors.success 
                   : AppColors.warning,
             ),
           );
-          _loadStats(); // Refresh stats
+          _loadStats();
           break;
         }
-
-        // Longer delay for discovery (more intensive)
-        await Future.delayed(const Duration(milliseconds: 1000));
         
       } catch (e) {
         if (mounted) {
-          setState(() => _discoveryRun = null);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          debugPrint('[RegsAdmin] Poll error: $e');
         }
-        break;
       }
     }
   }
 
-  /// Cancel discovery run (just stop polling).
-  void _cancelDiscoveryRun() {
-    setState(() {
-      _isDiscoveryCanceling = true;
-      _discoveryRun = null;
-      _isDiscoveryCanceling = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Discovery stopped')),
-    );
+  /// Stop discovery run (actually stops on server).
+  Future<void> _stopDiscoveryRun() async {
+    if (_activeDiscoveryRun == null) return;
+    
+    setState(() => _isDiscoveryStopping = true);
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      await service.stopJobQueueRun(_activeDiscoveryRun!.runId);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stopping discovery...')),
+        );
+        
+        // Keep polling until stopped
+        while (mounted && _activeDiscoveryRun != null) {
+          await Future.delayed(const Duration(seconds: 1));
+          final status = await service.getJobQueueRunStatus(runId: _activeDiscoveryRun!.runId);
+          if (status == null || status.done) {
+            setState(() {
+              _activeDiscoveryRun = status;
+              _isDiscoveryStopping = false;
+            });
+            break;
+          }
+          setState(() => _activeDiscoveryRun = status);
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Discovery stopped')),
+        );
+        _loadStats();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDiscoveryStopping = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error stopping: $e')),
+        );
+      }
+    }
   }
 
   /// View repair report in dialog.
@@ -797,6 +850,129 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
 
   Future<void> _resetData() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => _ResetOptionsDialog(),
+    );
+    
+    if (result == null || !mounted) return;
+    
+    // Show confirmation with RESET code
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: AppColors.error),
+            const SizedBox(width: 8),
+            Text('Confirm ${result.replaceAll('_', ' ').toUpperCase()}'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _getResetDescription(result),
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Type RESET to confirm',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text == 'RESET') {
+                Navigator.pop(context, true);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Type RESET to confirm')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+            ),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true || !mounted) return;
+    
+    try {
+      setState(() => _isLoading = true);
+      
+      final service = ref.read(regulationsServiceProvider);
+      final resetResult = await service.resetData(
+        type: result,
+        confirmCode: 'RESET',
+      );
+      
+      if (mounted) {
+        setState(() => _isLoading = false);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reset complete'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        
+        // Reload stats
+        _loadStats();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reset failed: $e')),
+        );
+      }
+    }
+  }
+  
+  String _getResetDescription(String type) {
+    switch (type) {
+      case 'verification':
+        return 'This will clear all verification flags and timestamps. '
+               'Discovered URLs and extracted data will NOT be deleted.';
+      case 'extracted':
+        return 'This will clear:\n'
+               '• All job queue data (runs, jobs, events)\n'
+               '• All extracted regulations data\n'
+               '• All discovered portal URLs\n'
+               '• All verification status\n\n'
+               'Official root URLs will be preserved.';
+      case 'full':
+        return 'This will clear EVERYTHING except official root URLs:\n'
+               '• All job queue data\n'
+               '• All extracted data\n'
+               '• All discovered URLs\n'
+               '• All approved/pending regulations\n'
+               '• All locks and audit logs\n\n'
+               'Only official root URLs will remain.';
+      default:
+        return 'Unknown reset type';
+    }
+  }
+
+  // Legacy method kept for compatibility
+  Future<void> _resetDataLegacy() async {
     final controller = TextEditingController();
     
     final confirmed = await showDialog<bool>(
@@ -1723,10 +1899,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         ),
         const SizedBox(height: 12),
         
-        if (_extractionRun != null && _extractionRun!.isRunning) ...[
+        if (_activeExtractionRun != null && _activeExtractionRun!.isRunning) ...[
           // Progress bar
           LinearProgressIndicator(
-            value: _extractionRun!.progress,
+            value: _activeExtractionRun!.progress,
             backgroundColor: AppColors.border,
             valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
           ),
@@ -1738,7 +1914,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _extractionRun!.progressLabel,
+                      '${_activeExtractionRun!.progressDone}/${_activeExtractionRun!.progressTotal} jobs',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -1747,15 +1923,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _extractionRun!.summaryLabel,
+                      _activeExtractionRun!.summaryLabel,
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    if (_extractionRun!.tierUsed != null || _extractionRun!.lastStateCode != null)
+                    if (_activeExtractionRun!.lastState != null)
                       Text(
-                        '${_extractionRun!.tierUsed?.toUpperCase() ?? ''} ${_extractionRun!.lastStateCode != null ? '• Last: ${_extractionRun!.lastStateCode}' : ''}',
+                        '${_activeExtractionRun!.tier.toUpperCase()} • Last: ${_activeExtractionRun!.lastState}',
                         style: TextStyle(
                           fontSize: 11,
                           color: AppColors.textTertiary,
@@ -1765,16 +1941,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 ),
               ),
               TextButton.icon(
-                onPressed: _isExtractionCanceling ? null : _cancelExtractionRun,
+                onPressed: _isExtractionStopping ? null : _stopExtractionRun,
                 icon: Icon(
-                  Icons.cancel_outlined,
+                  Icons.stop_circle_outlined,
                   size: 18,
-                  color: _isExtractionCanceling ? AppColors.textTertiary : AppColors.error,
+                  color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
                 ),
                 label: Text(
-                  'Stop',
+                  _isExtractionStopping ? 'Stopping...' : 'Stop',
                   style: TextStyle(
-                    color: _isExtractionCanceling ? AppColors.textTertiary : AppColors.error,
+                    color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
                   ),
                 ),
               ),
@@ -1782,7 +1958,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
         ] else ...[
           // Results display (if completed)
-          if (_extractionRun != null && _extractionRun!.done) ...[
+          if (_activeExtractionRun != null && _activeExtractionRun!.done) ...[
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -1796,7 +1972,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _extractionRun!.summaryLabel,
+                      _activeExtractionRun!.summaryLabel,
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textPrimary,
@@ -1879,10 +2055,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         ),
         const SizedBox(height: 12),
         
-        if (_discoveryRun != null && _discoveryRun!.isRunning) ...[
+        if (_activeDiscoveryRun != null && _activeDiscoveryRun!.isRunning) ...[
           // Progress bar
           LinearProgressIndicator(
-            value: _discoveryRun!.progress,
+            value: _activeDiscoveryRun!.progress,
             backgroundColor: AppColors.border,
             valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
           ),
@@ -1894,7 +2070,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _discoveryRun!.progressLabel,
+                      '${_activeDiscoveryRun!.progressDone}/${_activeDiscoveryRun!.progressTotal} states',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -1903,15 +2079,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _discoveryRun!.fieldsLabel,
+                      _activeDiscoveryRun!.summaryLabel,
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    if (_discoveryRun!.lastStateCode != null)
+                    if (_activeDiscoveryRun!.lastState != null)
                       Text(
-                        'Crawling: ${_discoveryRun!.lastStateCode}',
+                        '${_activeDiscoveryRun!.tier.toUpperCase()} • Crawling: ${_activeDiscoveryRun!.lastState}',
                         style: TextStyle(
                           fontSize: 11,
                           color: AppColors.textTertiary,
@@ -1921,16 +2097,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 ),
               ),
               TextButton.icon(
-                onPressed: _isDiscoveryCanceling ? null : _cancelDiscoveryRun,
+                onPressed: _isDiscoveryStopping ? null : _stopDiscoveryRun,
                 icon: Icon(
-                  Icons.cancel_outlined,
+                  Icons.stop_circle_outlined,
                   size: 18,
-                  color: _isDiscoveryCanceling ? AppColors.textTertiary : AppColors.error,
+                  color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
                 ),
                 label: Text(
-                  'Stop',
+                  _isDiscoveryStopping ? 'Stopping...' : 'Stop',
                   style: TextStyle(
-                    color: _isDiscoveryCanceling ? AppColors.textTertiary : AppColors.error,
+                    color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
                   ),
                 ),
               ),
@@ -1938,7 +2114,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
         ] else ...[
           // Results display (if completed)
-          if (_discoveryRun != null && _discoveryRun!.done) ...[
+          if (_activeDiscoveryRun != null && _activeDiscoveryRun!.done) ...[
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -1952,7 +2128,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${_discoveryRun!.fixedCount} fields filled (${_discoveryRun!.skippedCount} skipped)',
+                      _activeDiscoveryRun!.summaryLabel,
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textPrimary,
@@ -2360,7 +2536,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            'Reset verification status for all portal links. This does not delete official roots.',
+            'Reset various levels of data. Official root URLs are always preserved.',
             style: TextStyle(
               fontSize: 13,
               color: AppColors.textSecondary,
@@ -2370,7 +2546,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           OutlinedButton.icon(
             onPressed: _resetData,
             icon: const Icon(Icons.restart_alt_rounded),
-            label: const Text('Reset Verification Status'),
+            label: const Text('Reset Data...'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.error,
               side: BorderSide(color: AppColors.error.withOpacity(0.5)),
@@ -2880,6 +3056,142 @@ class _ConfidenceBadge extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w600,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialog to choose reset type.
+class _ResetOptionsDialog extends StatelessWidget {
+  const _ResetOptionsDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Row(
+        children: [
+          Icon(Icons.warning_rounded, color: AppColors.warning),
+          const SizedBox(width: 8),
+          const Text('Reset Data'),
+        ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Choose what to reset:',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            
+            // Reset Verification Only
+            _ResetOptionTile(
+              title: 'Reset Verification Only',
+              subtitle: 'Clear verification flags and timestamps. '
+                       'Keep all discovered URLs and extracted data.',
+              icon: Icons.verified_outlined,
+              color: AppColors.info,
+              onTap: () => Navigator.pop(context, 'verification'),
+            ),
+            const SizedBox(height: 12),
+            
+            // Reset Extracted Data
+            _ResetOptionTile(
+              title: 'Reset Extracted Data',
+              subtitle: 'Clear all job queue data, extracted regulations, '
+                       'discovered URLs, and verification. Keep official roots.',
+              icon: Icons.delete_sweep_outlined,
+              color: AppColors.warning,
+              onTap: () => Navigator.pop(context, 'extracted'),
+            ),
+            const SizedBox(height: 12),
+            
+            // Full Reset
+            _ResetOptionTile(
+              title: 'Full Reset (Keep Official Roots)',
+              subtitle: 'Clear EVERYTHING except official root URLs. '
+                       'Includes approved regulations, audit logs, and locks.',
+              icon: Icons.restore_outlined,
+              color: AppColors.error,
+              onTap: () => Navigator.pop(context, 'full'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResetOptionTile extends StatelessWidget {
+  const _ResetOptionTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: 0.05),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: color),
+            ],
+          ),
         ),
       ),
     );
