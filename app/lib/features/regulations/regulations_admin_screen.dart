@@ -613,6 +613,40 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
 
+  /// Requeue stuck jobs in the current discovery run.
+  Future<void> _requeueDiscoveryRun() async {
+    if (_activeDiscoveryRun == null) return;
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final result = await service.requeDiscoveryRun(_activeDiscoveryRun!.runId);
+      
+      final requeued = result['requeued_stuck'] as int? ?? 0;
+      final cleared = result['locks_cleared'] as int? ?? 0;
+      
+      if (mounted) {
+        // Refresh status
+        final status = await service.getJobQueueRunStatus(runId: _activeDiscoveryRun!.runId);
+        if (status != null) {
+          setState(() => _activeDiscoveryRun = status);
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Requeued $requeued stuck jobs, cleared $cleared locks'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error requeuing: $e')),
+        );
+      }
+    }
+  }
+
   /// Poll job queue discovery run until done.
   Future<void> _pollJobQueueDiscoveryRun(String runId) async {
     final service = ref.read(regulationsServiceProvider);
@@ -2385,6 +2419,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   ),
                   label: const Text('Resume'),
                 ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _requeueDiscoveryRun,
+                  icon: const Icon(
+                    Icons.refresh,
+                    size: 18,
+                  ),
+                  label: const Text('Unstick'),
+                ),
               ]
               else
                 // Show "finishing" indicator when no stoppable jobs
@@ -2466,7 +2509,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               ),
             ),
             const SizedBox(height: 12),
-            // Show Resume button if stopped but not completed
+            // Show Resume and Unstick buttons if stopped but not completed
             if (_activeDiscoveryRun!.wasStopped && !_activeDiscoveryRun!.allJobsTerminal)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -2476,8 +2519,14 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                       child: OutlinedButton.icon(
                         onPressed: _resumeDiscoveryRun,
                         icon: const Icon(Icons.play_arrow_rounded),
-                        label: const Text('Resume Discovery'),
+                        label: const Text('Resume'),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _requeueDiscoveryRun,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Unstick'),
                     ),
                   ],
                 ),

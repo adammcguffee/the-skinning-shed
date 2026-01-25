@@ -296,6 +296,95 @@ label text
 UNIQUE (page, position)
 ```
 
+## Regulations Worker & Job Queue
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Flutter Admin UI                            │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │ Run GPT Discovery│  │ View Progress   │  │ Resume/Unstick  │  │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘  │
+└───────────┼────────────────────┼────────────────────┼───────────┘
+            │                    │                    │
+            ▼                    ▼                    ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                      Supabase Database                            │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │ regs_admin_runs │  │    regs_jobs    │  │ regs_job_events │  │
+│  │ (run lifecycle) │  │ (job queue)     │  │ (logs)          │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+│                                                                   │
+│  RPCs: regs_claim_job, regs_complete_job, regs_admin_requeue_run │
+└───────────────────────────────────────────────────────────────────┘
+            │
+            │  Poll every 2s
+            ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                     Regs Worker (Node.js)                         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │ Job Claim Loop  │  │ Discovery Proc  │  │ Extraction Proc │  │
+│  │ (regs_claim_job)│  │ (GPT + Crawl)   │  │ (GPT + Parse)   │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### Job Claim Process (regs_claim_job RPC)
+
+The `regs_claim_job` RPC is the atomic heart of the job queue:
+
+1. **Auto-unstick**: Requeues jobs stuck in 'running' > 15 min
+2. **Auto-resume**: Sets stalled runs back to 'running' if queued jobs exist
+3. **Atomic claim**: Uses `FOR UPDATE SKIP LOCKED` to claim one job
+4. **Updates**: Sets `status='running'`, `locked_at`, `locked_by`, increments `attempts`
+
+```sql
+UPDATE regs_jobs SET status = 'running', locked_at = NOW(), ...
+WHERE id = (
+  SELECT j.id FROM regs_jobs j
+  JOIN regs_admin_runs r ON r.id = j.run_id
+  WHERE j.status = 'queued' AND r.status IN ('running', 'queued')
+  FOR UPDATE OF j SKIP LOCKED
+  LIMIT 1
+) RETURNING *;
+```
+
+### Self-Healing Guarantees
+
+The system is designed to self-heal without manual intervention:
+
+| Scenario | Auto-Fix |
+|----------|----------|
+| Job stuck running > 15 min | Requeued on next claim_job call |
+| Run status not 'running' but has queued jobs | Auto-set to 'running' |
+| Worker crashes mid-job | Job requeued after timeout |
+| UI error during start | Run remains valid, jobs still queued |
+
+### Admin RPCs
+
+- **regs_admin_requeue_run(p_run_id, p_stuck_minutes)**
+  - Requeues jobs stuck > N minutes
+  - Clears stale locks from terminal jobs
+  - Ensures run status = 'running'
+
+- **regs_admin_force_restart_run(p_run_id)**
+  - Requeues ALL non-terminal jobs (keeps done/skipped)
+  - Resets run to 'running'
+
+### Progress Tracking
+
+Progress is computed from regs_jobs, not fragile UI state:
+
+```sql
+SELECT 
+  COUNT(*) FILTER (WHERE status = 'queued') as queued,
+  COUNT(*) FILTER (WHERE status = 'running') as running,
+  COUNT(*) FILTER (WHERE status = 'done') as done,
+  COUNT(*) FILTER (WHERE status IN ('done','failed','skipped','canceled')) as terminal
+FROM regs_jobs WHERE run_id = ?
+```
+
 ## Error Handling Patterns
 
 ### Service Layer

@@ -3531,6 +3531,45 @@ extension RegulationsServiceJobQueue on RegulationsService {
 
     return response.data as Map<String, dynamic>;
   }
+
+  /// Requeue stuck jobs in a discovery run.
+  /// This clears stale locks and ensures the run is in 'running' state.
+  Future<Map<String, dynamic>> requeDiscoveryRun(String runId, {int stuckMinutes = 15}) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final result = await client.rpc(
+      'regs_admin_requeue_run',
+      params: {
+        'p_run_id': runId,
+        'p_stuck_minutes': stuckMinutes,
+      },
+    );
+
+    // RPC returns TABLE, so result is a list
+    final resultList = result as List<dynamic>?;
+    if (resultList == null || resultList.isEmpty) {
+      return {'requeued_stuck': 0, 'locks_cleared': 0, 'run_status_set': 'running'};
+    }
+    return resultList[0] as Map<String, dynamic>;
+  }
+
+  /// Force restart a discovery run by requeuing all non-terminal jobs.
+  Future<Map<String, dynamic>> forceRestartDiscoveryRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final result = await client.rpc(
+      'regs_admin_force_restart_run',
+      params: {'p_run_id': runId},
+    );
+
+    final resultList = result as List<dynamic>?;
+    if (resultList == null || resultList.isEmpty) {
+      return {'jobs_requeued': 0, 'run_status': 'running'};
+    }
+    return resultList[0] as Map<String, dynamic>;
+  }
 }
 
 /// Provider for regulations service.
