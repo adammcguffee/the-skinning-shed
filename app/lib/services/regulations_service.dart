@@ -466,6 +466,13 @@ class StatePortalLinks {
     this.licensingVerified = false,
     this.buyLicenseVerified = false,
     this.recordsVerified = false,
+    // New species-specific hunting slots
+    this.deerSeasonsUrl,
+    this.turkeySeasonsUrl,
+    this.huntingDigestUrl,
+    this.deerSeasonsVerified = false,
+    this.turkeySeasonsVerified = false,
+    this.huntingDigestVerified = false,
   });
   
   final String stateCode;
@@ -479,6 +486,11 @@ class StatePortalLinks {
   final String? recordsUrl;
   final String? notes;
   
+  // New species-specific hunting slots
+  final String? deerSeasonsUrl;
+  final String? turkeySeasonsUrl;
+  final String? huntingDigestUrl;
+  
   // Verification status
   final bool huntingSeasonsVerified;
   final bool huntingRegsVerified;
@@ -486,6 +498,9 @@ class StatePortalLinks {
   final bool licensingVerified;
   final bool buyLicenseVerified;
   final bool recordsVerified;
+  final bool deerSeasonsVerified;
+  final bool turkeySeasonsVerified;
+  final bool huntingDigestVerified;
   
   // Has URL
   bool get hasHuntingSeasons => huntingSeasonsUrl != null && huntingSeasonsUrl!.isNotEmpty;
@@ -494,6 +509,9 @@ class StatePortalLinks {
   bool get hasLicensing => licensingUrl != null && licensingUrl!.isNotEmpty;
   bool get hasBuyLicense => buyLicenseUrl != null && buyLicenseUrl!.isNotEmpty;
   bool get hasRecords => recordsUrl != null && recordsUrl!.isNotEmpty;
+  bool get hasDeerSeasons => deerSeasonsUrl != null && deerSeasonsUrl!.isNotEmpty;
+  bool get hasTurkeySeasons => turkeySeasonsUrl != null && turkeySeasonsUrl!.isNotEmpty;
+  bool get hasHuntingDigest => huntingDigestUrl != null && huntingDigestUrl!.isNotEmpty;
   
   // Available = has URL AND verified
   bool get huntingSeasonsAvailable => hasHuntingSeasons && huntingSeasonsVerified;
@@ -502,6 +520,9 @@ class StatePortalLinks {
   bool get licensingAvailable => hasLicensing && licensingVerified;
   bool get buyLicenseAvailable => hasBuyLicense && buyLicenseVerified;
   bool get recordsAvailable => hasRecords && recordsVerified;
+  bool get deerSeasonsAvailable => hasDeerSeasons && deerSeasonsVerified;
+  bool get turkeySeasonsAvailable => hasTurkeySeasons && turkeySeasonsVerified;
+  bool get huntingDigestAvailable => hasHuntingDigest && huntingDigestVerified;
   
   factory StatePortalLinks.fromJson(Map<String, dynamic> json) {
     return StatePortalLinks(
@@ -521,6 +542,13 @@ class StatePortalLinks {
       licensingVerified: json['verified_licensing_ok'] as bool? ?? false,
       buyLicenseVerified: json['verified_buy_license_ok'] as bool? ?? false,
       recordsVerified: json['verified_records_ok'] as bool? ?? false,
+      // New species-specific hunting slots
+      deerSeasonsUrl: json['deer_seasons_url'] as String?,
+      turkeySeasonsUrl: json['turkey_seasons_url'] as String?,
+      huntingDigestUrl: json['hunting_digest_url'] as String?,
+      deerSeasonsVerified: json['verified_deer_seasons_ok'] as bool? ?? false,
+      turkeySeasonsVerified: json['verified_turkey_seasons_ok'] as bool? ?? false,
+      huntingDigestVerified: json['verified_hunting_digest_ok'] as bool? ?? false,
     );
   }
 }
@@ -1297,6 +1325,7 @@ class RegulationsService {
 
     for (final row in linksResponse) {
       // Count non-null URLs and their verification status
+      // Includes both old and new hunting slots
       final fields = [
         ('hunting_seasons_url', 'verified_hunting_seasons_ok'),
         ('hunting_regs_url', 'verified_hunting_regs_ok'),
@@ -1304,6 +1333,10 @@ class RegulationsService {
         ('licensing_url', 'verified_licensing_ok'),
         ('buy_license_url', 'verified_buy_license_ok'),
         ('records_url', 'verified_records_ok'),
+        // New species-specific slots
+        ('deer_seasons_url', 'verified_deer_seasons_ok'),
+        ('turkey_seasons_url', 'verified_turkey_seasons_ok'),
+        ('hunting_digest_url', 'verified_hunting_digest_ok'),
       ];
 
       for (final (urlField, verifiedField) in fields) {

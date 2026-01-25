@@ -1894,8 +1894,11 @@ class _AdminStats {
   final List<String> missingStateCodes;
   final DateTime? lastVerifiedAt;
 
-  /// Total possible fields (6 per state * 50 states = 300)
-  int get totalPossibleFields => rootsCount * 6;
+  /// Total possible fields (9 per state * 50 states = 450)
+  /// Old: hunting_seasons, hunting_regs, fishing_regs, licensing, buy_license, records
+  /// New: deer_seasons, turkey_seasons, hunting_digest, fishing_regs, licensing, buy_license, records
+  /// Plus legacy hunting_seasons + hunting_regs for compatibility = 9 total
+  int get totalPossibleFields => rootsCount * 9;
   
   /// Whether all states have portal rows
   bool get allStatesHavePortalRows => portalRowsCount >= rootsCount;

@@ -470,22 +470,28 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
             ),
             const SizedBox(height: AppSpacing.md),
             
-            // HUNTING section
+            // HUNTING section — species-specific + digest
             _buildPortalSection(
               'HUNTING',
               Icons.forest_rounded,
               [
                 _PortalButton(
-                  icon: Icons.calendar_today_rounded,
-                  label: 'Season Dates',
-                  url: links.huntingSeasonsUrl,
-                  verified: links.huntingSeasonsVerified,
+                  icon: Icons.cruelty_free_rounded,
+                  label: 'Deer Seasons',
+                  url: links.deerSeasonsUrl ?? links.huntingSeasonsUrl, // fallback to legacy
+                  verified: links.deerSeasonsVerified || links.huntingSeasonsVerified,
                 ),
                 _PortalButton(
-                  icon: Icons.description_rounded,
-                  label: 'Regulations',
-                  url: links.huntingRegsUrl,
-                  verified: links.huntingRegsVerified,
+                  icon: Icons.emoji_nature_rounded,
+                  label: 'Turkey Seasons',
+                  url: links.turkeySeasonsUrl,
+                  verified: links.turkeySeasonsVerified,
+                ),
+                _PortalButton(
+                  icon: Icons.menu_book_rounded,
+                  label: 'Regs Digest',
+                  url: links.huntingDigestUrl ?? links.huntingRegsUrl, // fallback to legacy
+                  verified: links.huntingDigestVerified || links.huntingRegsVerified,
                 ),
               ],
             ),
