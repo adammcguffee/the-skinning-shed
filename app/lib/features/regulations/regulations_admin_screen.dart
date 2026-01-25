@@ -35,17 +35,31 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   bool _isRepairing = false;
   RepairResult? _lastRepairResult;
   
-  // Discovery repair state
-  bool _isDiscoveryRepairing = false;
-  DiscoveryRepairResult? _lastDiscoveryResult;
-  bool _showRepairReport = false;
-  List<RepairReportEntry>? _repairReportEntries;
+  // Discovery repair run state (resumable)
+  RepairRunStatus? _repairRun;
+  bool _isRepairCanceling = false;
 
   @override
   void initState() {
     super.initState();
     _loadStats();
     _checkForExistingRun();
+    _checkForExistingRepairRun();
+  }
+
+  /// Check for an existing running repair run on page load (for resume).
+  Future<void> _checkForExistingRepairRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final latestRun = await service.getLatestRepairRunStatus();
+      
+      if (latestRun != null && latestRun.isRunning && mounted) {
+        setState(() => _repairRun = latestRun);
+        _pollRepairRun(latestRun.runId);
+      }
+    } catch (e) {
+      debugPrint('[RegsAdmin] Error checking for existing repair run: $e');
+    }
   }
 
   /// Check for an existing running verification on page load (for resume).
@@ -263,39 +277,21 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
 
-  /// Repair broken links by crawling official domains.
-  Future<void> _discoveryRepairBrokenLinks() async {
-    setState(() {
-      _isDiscoveryRepairing = true;
-      _lastDiscoveryResult = null;
-    });
-
+  /// Start discovery repair run.
+  Future<void> _startRepairRun() async {
     try {
       final service = ref.read(regulationsServiceProvider);
-      final result = await service.repairBrokenLinksViaDiscovery();
+      final run = await service.startRepairRun();
       
       if (mounted) {
-        setState(() {
-          _isDiscoveryRepairing = false;
-          _lastDiscoveryResult = result;
-        });
+        setState(() => _repairRun = run);
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Discovery complete: ${result.fixed} fixed, ${result.stillBroken} still broken.',
-            ),
-            backgroundColor: result.fixed > 0 ? AppColors.success : AppColors.warning,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        
-        // Reload stats to reflect changes
-        _loadStats();
+        if (!run.done) {
+          _pollRepairRun(run.runId);
+        }
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isDiscoveryRepairing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
@@ -303,27 +299,89 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
 
-  /// View the repair report in a dialog.
-  Future<void> _viewRepairReport() async {
-    final runId = _lastDiscoveryResult?.runId;
-    if (runId == null) return;
+  /// Poll repair run until complete.
+  Future<void> _pollRepairRun(String runId) async {
+    final service = ref.read(regulationsServiceProvider);
 
-    setState(() => _showRepairReport = true);
+    while (mounted && _repairRun != null && !_isRepairCanceling) {
+      try {
+        final status = await service.continueRepairRun(runId);
+        
+        if (!mounted) break;
+        
+        setState(() => _repairRun = status);
 
+        if (status.done) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Discovery complete: ${status.fixedCount} fixed, ${status.skippedCount} skipped',
+              ),
+              backgroundColor: status.fixedCount > 0 ? AppColors.success : AppColors.warning,
+            ),
+          );
+          _loadStats();
+          break;
+        }
+
+        // Small delay between batches
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+      } catch (e) {
+        if (mounted) {
+          setState(() => _repairRun = null);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  /// Cancel repair run.
+  Future<void> _cancelRepairRun() async {
+    if (_repairRun == null) return;
+    
+    setState(() => _isRepairCanceling = true);
+    
     try {
       final service = ref.read(regulationsServiceProvider);
-      final entries = await service.fetchRepairReport(runId: runId);
+      await service.cancelRepairRun(_repairRun!.runId);
       
       if (mounted) {
         setState(() {
-          _repairReportEntries = entries;
+          _repairRun = null;
+          _isRepairCanceling = false;
         });
-        
-        _showRepairReportDialog(entries);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Repair canceled')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _showRepairReport = false);
+        setState(() => _isRepairCanceling = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  /// View repair report in dialog.
+  Future<void> _viewRepairReport() async {
+    final runId = _repairRun?.runId;
+    if (runId == null) return;
+
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final items = await service.fetchRepairRunItems(runId);
+      
+      if (mounted) {
+        _showRepairReportDialog(items);
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading report: $e')),
         );
@@ -331,7 +389,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     }
   }
 
-  void _showRepairReportDialog(List<RepairReportEntry> entries) {
+  void _showRepairReportDialog(List<RepairRunItem> items) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -376,29 +434,29 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   children: [
                     _buildReportStat(
                       'Total',
-                      entries.length.toString(),
+                      items.length.toString(),
                       AppColors.textPrimary,
                     ),
                     _buildReportStat(
                       'Fixed',
-                      entries.where((e) => e.isFixed).length.toString(),
+                      items.where((e) => e.isFixed).length.toString(),
                       AppColors.success,
                     ),
                     _buildReportStat(
-                      'No Match',
-                      entries.where((e) => !e.isFixed).length.toString(),
+                      'Skipped',
+                      items.where((e) => !e.isFixed).length.toString(),
                       AppColors.warning,
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              // Entries list
+              // Items list
               Expanded(
                 child: ListView.builder(
-                  itemCount: entries.length,
+                  itemCount: items.length,
                   itemBuilder: (context, index) {
-                    final entry = entries[index];
+                    final item = items[index];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
@@ -406,7 +464,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                         color: AppColors.background,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: entry.isFixed 
+                          color: item.isFixed 
                               ? AppColors.success.withValues(alpha: 0.3)
                               : AppColors.border,
                         ),
@@ -419,23 +477,23 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: entry.isFixed 
+                                  color: item.isFixed 
                                       ? AppColors.success.withValues(alpha: 0.1)
                                       : AppColors.warning.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  entry.stateCode,
+                                  item.stateCode,
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: entry.isFixed ? AppColors.success : AppColors.warning,
+                                    color: item.isFixed ? AppColors.success : AppColors.warning,
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                entry.fieldLabel,
+                                item.fieldLabel,
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
@@ -444,30 +502,30 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                               ),
                               const Spacer(),
                               Icon(
-                                entry.isFixed ? Icons.check_circle : Icons.help_outline,
+                                item.isFixed ? Icons.check_circle : Icons.help_outline,
                                 size: 16,
-                                color: entry.isFixed ? AppColors.success : AppColors.warning,
+                                color: item.isFixed ? AppColors.success : AppColors.warning,
                               ),
                             ],
                           ),
-                          if (entry.newUrl != null) ...[
+                          if (item.newUrl != null) ...[
                             const SizedBox(height: 6),
                             Text(
-                              'New: ${entry.newUrl}',
+                              'New: ${item.newUrl}',
                               style: TextStyle(fontSize: 11, color: AppColors.success),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
-                          if (entry.message != null) ...[
+                          if (item.message != null) ...[
                             const SizedBox(height: 4),
                             Text(
-                              entry.message!,
+                              item.message!,
                               style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
                             ),
                           ],
                           Text(
-                            'Crawled ${entry.pagesCrawled} pages, ${entry.candidatesFound} candidates',
+                            'Crawled ${item.pagesCrawled} pages, ${item.candidatesFound} candidates',
                             style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
                           ),
                         ],
@@ -480,9 +538,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
         ),
       ),
-    ).then((_) {
-      setState(() => _showRepairReport = false);
-    });
+    );
   }
 
   Widget _buildReportStat(String label, String value, Color color) {
@@ -501,6 +557,29 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           style: TextStyle(
             fontSize: 12,
             color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRepairProgressStat(String label, int value, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$label: $value',
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
           ),
         ),
       ],
@@ -1049,32 +1128,102 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               ),
             ),
             const SizedBox(height: 12),
-            if (_isDiscoveryRepairing)
-              Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
+            if (_repairRun != null && _repairRun!.isRunning) ...[
+              // Running state with progress
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Running Discovery Repair...',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.info,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Crawling official domains... (this may take a minute)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
+                    const SizedBox(height: 12),
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: _repairRun!.progress,
+                        backgroundColor: AppColors.border,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
+                        minHeight: 8,
+                      ),
                     ),
-                  ),
-                ],
-              )
-            else ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Progress: ${_repairRun!.progressPercent}%',
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                        Text(
+                          '${_repairRun!.processedFields} / ${_repairRun!.totalFields}',
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _buildRepairProgressStat('Fixed', _repairRun!.fixedCount, AppColors.success),
+                        const SizedBox(width: 12),
+                        _buildRepairProgressStat('Skipped', _repairRun!.skippedCount, AppColors.warning),
+                        const SizedBox(width: 12),
+                        _buildRepairProgressStat('Errors', _repairRun!.errorCount, AppColors.error),
+                      ],
+                    ),
+                    if (_repairRun!.lastStateCode != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Current: ${_repairRun!.lastStateCode} • ${_repairRun!.lastFieldLabel}',
+                        style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _isRepairCanceling ? null : _cancelRepairRun,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.warning,
+                          side: BorderSide(color: AppColors.warning),
+                        ),
+                        child: Text(_isRepairCanceling ? 'Canceling...' : 'Cancel'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              // Start button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _discoveryRepairBrokenLinks,
+                  onPressed: _startRepairRun,
                   icon: const Icon(Icons.travel_explore_rounded),
                   label: const Text('Repair via Official Discovery'),
                   style: ElevatedButton.styleFrom(
@@ -1084,7 +1233,8 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   ),
                 ),
               ),
-              if (_lastDiscoveryResult != null) ...[
+              // Show completed run summary
+              if (_repairRun != null && _repairRun!.isComplete) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1092,7 +1242,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: _lastDiscoveryResult!.fixed > 0 
+                      color: _repairRun!.fixedCount > 0 
                           ? AppColors.success.withValues(alpha: 0.3)
                           : AppColors.border,
                     ),
@@ -1103,40 +1253,27 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                       Row(
                         children: [
                           Icon(
-                            _lastDiscoveryResult!.fixed > 0 
+                            _repairRun!.fixedCount > 0 
                                 ? Icons.check_circle_outline 
                                 : Icons.info_outline,
                             size: 16,
-                            color: _lastDiscoveryResult!.fixed > 0 
+                            color: _repairRun!.fixedCount > 0 
                                 ? AppColors.success 
                                 : AppColors.textSecondary,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Discovery: ${_lastDiscoveryResult!.fixed} fixed, ${_lastDiscoveryResult!.stillBroken} still broken',
+                            'Discovery complete: ${_repairRun!.fixedCount} fixed, ${_repairRun!.skippedCount} skipped',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
-                              color: _lastDiscoveryResult!.fixed > 0 
+                              color: _repairRun!.fixedCount > 0 
                                   ? AppColors.success 
                                   : AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                      if (_lastDiscoveryResult!.results.where((r) => r.isFixed).isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        ...(_lastDiscoveryResult!.results.where((r) => r.isFixed).take(3).map((r) => Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '${r.state} ${r.field}: Found replacement',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.success,
-                            ),
-                          ),
-                        ))),
-                      ],
                       const SizedBox(height: 8),
                       TextButton.icon(
                         onPressed: _viewRepairReport,

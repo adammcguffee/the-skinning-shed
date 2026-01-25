@@ -1528,9 +1528,8 @@ class RegulationsService {
         .eq('state_code', stateCode);
   }
 
-  /// Repair broken links by crawling official domains to discover replacements.
-  /// This is a longer-running operation that crawls official sites.
-  Future<DiscoveryRepairResult> repairBrokenLinksViaDiscovery() async {
+  /// Start a discovery repair run (or resume existing).
+  Future<RepairRunStatus> startRepairRun() async {
     final client = _supabaseService.client;
     if (client == null) throw Exception('Not connected');
 
@@ -1538,7 +1537,7 @@ class RegulationsService {
     if (session == null) throw Exception('Not authenticated');
 
     final response = await client.functions.invoke(
-      'regs-repair-discover',
+      'regs-repair-start',
       headers: {'Authorization': 'Bearer ${session.accessToken}'},
     );
 
@@ -1549,33 +1548,248 @@ class RegulationsService {
       throw Exception(error);
     }
 
-    final data = response.data as Map<String, dynamic>;
-    return DiscoveryRepairResult.fromJson(data);
+    return RepairRunStatus.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// Fetch repair report entries (latest repairs).
-  Future<List<RepairReportEntry>> fetchRepairReport({
-    String? runId,
-    int limit = 100,
-  }) async {
+  /// Continue a repair run (processes next batch).
+  Future<RepairRunStatus> continueRepairRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    final session = _supabaseService.currentSession;
+    if (session == null) throw Exception('Not authenticated');
+
+    final response = await client.functions.invoke(
+      'regs-repair-continue',
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      body: {'run_id': runId},
+    );
+
+    if (response.status != 200) {
+      final error = response.data?['error'] ?? 'Unknown error';
+      if (response.status == 401) throw Exception('Please log in again');
+      if (response.status == 403) throw Exception('Admin access required');
+      throw Exception(error);
+    }
+
+    return RepairRunStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Get latest repair run status (for resume on page load).
+  Future<RepairRunStatus?> getLatestRepairRunStatus() async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+
+    try {
+      final response = await client
+          .from('reg_repair_runs')
+          .select('*')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (response == null) return null;
+
+      return RepairRunStatus(
+        runId: response['id'] as String,
+        status: response['status'] as String,
+        totalFields: response['total_fields'] as int? ?? 0,
+        processedFields: response['processed_fields'] as int? ?? 0,
+        fixedCount: response['fixed_count'] as int? ?? 0,
+        skippedCount: response['skipped_count'] as int? ?? 0,
+        errorCount: response['error_count'] as int? ?? 0,
+        lastStateCode: response['last_state_code'] as String?,
+        lastField: response['last_field'] as String?,
+        done: response['status'] != 'running',
+        resumed: false,
+      );
+    } catch (e) {
+      print('Error fetching latest repair run: $e');
+      return null;
+    }
+  }
+
+  /// Cancel a running repair run.
+  Future<void> cancelRepairRun(String runId) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    await client
+        .from('reg_repair_runs')
+        .update({
+          'status': 'canceled',
+          'finished_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', runId);
+  }
+
+  /// Fetch repair run items (results).
+  Future<List<RepairRunItem>> fetchRepairRunItems(String runId) async {
     final client = _supabaseService.client;
     if (client == null) return [];
 
-    final baseQuery = client
-        .from('reg_link_repairs')
-        .select('*');
+    final response = await client
+        .from('reg_repair_run_items')
+        .select('*')
+        .eq('run_id', runId)
+        .order('checked_at', ascending: false);
 
-    // Apply filter first, then order and limit
-    final filteredQuery = runId != null 
-        ? baseQuery.eq('run_id', runId)
-        : baseQuery;
-
-    final response = await filteredQuery
-        .order('repaired_at', ascending: false)
-        .limit(limit);
     return (response as List)
-        .map((r) => RepairReportEntry.fromJson(r as Map<String, dynamic>))
+        .map((r) => RepairRunItem.fromJson(r as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Toggle lock for a portal link field.
+  Future<void> toggleFieldLock({
+    required String stateCode,
+    required String field,
+    required bool locked,
+  }) async {
+    final client = _supabaseService.client;
+    if (client == null) throw Exception('Not connected');
+
+    // Map field to lock column
+    const lockColumns = {
+      'hunting_seasons_url': 'locked_hunting_seasons',
+      'hunting_regs_url': 'locked_hunting_regs',
+      'fishing_regs_url': 'locked_fishing_regs',
+      'licensing_url': 'locked_licensing',
+      'buy_license_url': 'locked_buy_license',
+      'records_url': 'locked_records',
+      // Also accept label names
+      'Hunting Seasons': 'locked_hunting_seasons',
+      'Hunting Regs': 'locked_hunting_regs',
+      'Fishing Regs': 'locked_fishing_regs',
+      'Licensing': 'locked_licensing',
+      'Buy License': 'locked_buy_license',
+      'Records': 'locked_records',
+    };
+
+    final column = lockColumns[field];
+    if (column == null) throw Exception('Invalid field: $field');
+
+    await client
+        .from('state_portal_links')
+        .update({column: locked})
+        .eq('state_code', stateCode);
+  }
+}
+
+/// Status of a discovery repair run.
+class RepairRunStatus {
+  const RepairRunStatus({
+    required this.runId,
+    required this.status,
+    required this.totalFields,
+    required this.processedFields,
+    required this.fixedCount,
+    required this.skippedCount,
+    required this.errorCount,
+    this.lastStateCode,
+    this.lastField,
+    required this.done,
+    required this.resumed,
+  });
+
+  final String runId;
+  final String status; // running, done, error, canceled
+  final int totalFields;
+  final int processedFields;
+  final int fixedCount;
+  final int skippedCount;
+  final int errorCount;
+  final String? lastStateCode;
+  final String? lastField;
+  final bool done;
+  final bool resumed;
+
+  factory RepairRunStatus.fromJson(Map<String, dynamic> json) {
+    return RepairRunStatus(
+      runId: json['run_id'] as String,
+      status: json['status'] as String,
+      totalFields: json['total_fields'] as int? ?? 0,
+      processedFields: json['processed_fields'] as int? ?? 0,
+      fixedCount: json['fixed_count'] as int? ?? 0,
+      skippedCount: json['skipped_count'] as int? ?? 0,
+      errorCount: json['error_count'] as int? ?? 0,
+      lastStateCode: json['last_state_code'] as String?,
+      lastField: json['last_field'] as String?,
+      done: json['done'] as bool? ?? false,
+      resumed: json['resumed'] as bool? ?? false,
+    );
+  }
+
+  double get progress => totalFields > 0 ? processedFields / totalFields : 0.0;
+  int get progressPercent => (progress * 100).round().clamp(0, 100);
+  bool get isRunning => status == 'running';
+  bool get isComplete => status == 'done';
+  
+  String get lastFieldLabel {
+    const labels = {
+      'hunting_seasons_url': 'Hunting Seasons',
+      'hunting_regs_url': 'Hunting Regs',
+      'fishing_regs_url': 'Fishing Regs',
+      'licensing_url': 'Licensing',
+      'buy_license_url': 'Buy License',
+      'records_url': 'Records',
+    };
+    return labels[lastField] ?? lastField ?? '';
+  }
+}
+
+/// Item result from a repair run.
+class RepairRunItem {
+  const RepairRunItem({
+    required this.runId,
+    required this.stateCode,
+    required this.field,
+    this.oldUrl,
+    this.newUrl,
+    required this.status,
+    this.message,
+    required this.pagesCrawled,
+    required this.candidatesFound,
+    required this.checkedAt,
+  });
+
+  final String runId;
+  final String stateCode;
+  final String field;
+  final String? oldUrl;
+  final String? newUrl;
+  final String status; // fixed, skipped, error
+  final String? message;
+  final int pagesCrawled;
+  final int candidatesFound;
+  final DateTime checkedAt;
+
+  factory RepairRunItem.fromJson(Map<String, dynamic> json) {
+    return RepairRunItem(
+      runId: json['run_id'] as String,
+      stateCode: json['state_code'] as String,
+      field: json['field'] as String,
+      oldUrl: json['old_url'] as String?,
+      newUrl: json['new_url'] as String?,
+      status: json['status'] as String,
+      message: json['message'] as String?,
+      pagesCrawled: json['pages_crawled'] as int? ?? 0,
+      candidatesFound: json['candidates_found'] as int? ?? 0,
+      checkedAt: DateTime.parse(json['checked_at'] as String),
+    );
+  }
+
+  bool get isFixed => status == 'fixed';
+  
+  String get fieldLabel {
+    const labels = {
+      'hunting_seasons_url': 'Hunting Seasons',
+      'hunting_regs_url': 'Hunting Regs',
+      'fishing_regs_url': 'Fishing Regs',
+      'licensing_url': 'Licensing',
+      'buy_license_url': 'Buy License',
+      'records_url': 'Records',
+    };
+    return labels[field] ?? field;
   }
 }
 
