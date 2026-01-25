@@ -4,24 +4,15 @@ import 'package:shed/app/theme/app_colors.dart';
 
 /// 🌿 PREMIUM HUNTING CAMO BACKGROUND
 /// 
-/// Creates a subtle switchgrass/swamp-bottom hunting camo texture.
+/// Creates a visible switchgrass/swamp-bottom hunting camo texture.
 /// IMPORTANT: Camo is placed BEHIND content, not over it.
 /// 
 /// Usage areas:
-/// - Outer scaffold margins (strong at edges, fades to center)
-/// - Nav rail background (very subtle)
-/// - Hero background BEHIND the wordmark
-/// 
-/// DO NOT use:
-/// - Over wordmark/logo
-/// - Behind dense text content areas
+/// - Outer scaffold margins (visible at edges, fades toward center content)
+/// - Nav rail background (subtle behind icons)
+/// - Hero background BEHIND the wordmark (wordmark sits on top, crisp)
 
 /// 🎨 HUNTING CAMO PATTERN
-/// 
-/// Switchgrass/swamp-bottom style:
-/// - Vertical grass-like strokes
-/// - Organic branch/reed shapes
-/// - Muted earth tones with forest greens
 enum CamoPattern {
   /// Vertical grass strokes + organic shapes (switchgrass/marsh)
   hunting,
@@ -32,15 +23,15 @@ enum CamoPattern {
 
 /// 🖼️ SCAFFOLD CAMO BACKGROUND
 /// 
-/// Wraps scaffold with camo visible in outer margins.
-/// Center content stays clean via radial gradient masking.
+/// Wraps scaffold with VISIBLE camo in outer margins.
+/// Center content area is cleaner but camo still visible.
 /// Child content sits ABOVE the camo (not covered by it).
 class ScaffoldCamoBackground extends StatelessWidget {
   const ScaffoldCamoBackground({
     super.key,
     required this.child,
     this.baseGradient,
-    this.camoOpacity = 0.08,
+    this.camoOpacity = 0.12, // Increased for visibility
   });
 
   final Widget child;
@@ -60,7 +51,7 @@ class ScaffoldCamoBackground extends StatelessWidget {
           ),
         ),
         
-        // Layer 2: Camo texture (behind content)
+        // Layer 2: Camo texture (VISIBLE - higher opacity)
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
@@ -74,27 +65,28 @@ class ScaffoldCamoBackground extends StatelessWidget {
           ),
         ),
         
-        // Layer 3: Radial mask to fade camo toward center
+        // Layer 3: Soft radial vignette - lets camo show through more
+        // Fades camo slightly toward center but still visible everywhere
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: Alignment.center,
-                  radius: 1.0,
+                  radius: 1.2, // Larger radius = more visible camo
                   colors: [
-                    AppColors.background.withValues(alpha: 0.95), // Hide center
-                    AppColors.background.withValues(alpha: 0.7),  // Medium fade
-                    Colors.transparent,  // Show full camo at edges
+                    AppColors.background.withValues(alpha: 0.6), // Less hiding in center
+                    AppColors.background.withValues(alpha: 0.3), // Medium 
+                    Colors.transparent, // Full camo at edges
                   ],
-                  stops: const [0.0, 0.4, 1.0],
+                  stops: const [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
         ),
         
-        // Layer 4: Content (sits above camo)
+        // Layer 4: Content (sits above camo - NOT affected)
         child,
       ],
     );
@@ -104,12 +96,12 @@ class ScaffoldCamoBackground extends StatelessWidget {
 /// 🎨 HERO CAMO BACKGROUND
 /// 
 /// For the banner/header area. Camo visible BEHIND the wordmark.
-/// Wordmark sits above and remains crisp.
+/// NO overlay between camo and wordmark - wordmark is crisp.
 class HeroCamoBackground extends StatelessWidget {
   const HeroCamoBackground({
     super.key,
     required this.child,
-    this.camoOpacity = 0.10,
+    this.camoOpacity = 0.15, // Increased for visibility
   });
 
   final Widget child;
@@ -119,7 +111,7 @@ class HeroCamoBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Layer 1: Camo texture (behind everything)
+        // Layer 1: Camo texture (VISIBLE behind wordmark)
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
@@ -133,27 +125,10 @@ class HeroCamoBackground extends StatelessWidget {
           ),
         ),
         
-        // Layer 2: Gradient mask (stronger at bottom to not distract from logo)
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,  // Show camo at top
-                    AppColors.background.withValues(alpha: 0.5),  // Fade
-                    AppColors.background.withValues(alpha: 0.85), // Mostly hidden at bottom
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
-              ),
-            ),
-          ),
-        ),
+        // NO gradient mask here - wordmark sits directly on top, crisp
+        // The camo is behind, wordmark is above, no fading
         
-        // Layer 3: Content (logo/wordmark sits ABOVE camo)
+        // Layer 2: Content (wordmark sits ABOVE camo, NOT faded)
         child,
       ],
     );
@@ -162,12 +137,12 @@ class HeroCamoBackground extends StatelessWidget {
 
 /// 📌 NAV RAIL CAMO BACKGROUND
 /// 
-/// Very subtle camo for the navigation rail.
+/// Visible camo for the navigation rail.
 class NavRailCamoBackground extends StatelessWidget {
   const NavRailCamoBackground({
     super.key,
     required this.child,
-    this.camoOpacity = 0.06,
+    this.camoOpacity = 0.10, // Increased for visibility
   });
 
   final Widget child;
@@ -177,7 +152,7 @@ class NavRailCamoBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Layer 1: Camo texture (behind nav items)
+        // Layer 1: Camo texture (visible behind nav items)
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
@@ -214,15 +189,16 @@ class _HuntingCamoPainter extends CustomPainter {
   final CamoPattern pattern;
   
   // Hunting camo colors (switchgrass/swamp-bottom palette)
+  // LIGHTER shades for better visibility against dark background
   static const _colors = [
-    Color(0xFF0D1A14), // Very dark green (shadow)
-    Color(0xFF1A2820), // Dark forest green
-    Color(0xFF25362A), // Medium dark green
-    Color(0xFF1C1C14), // Dark brown/mud
-    Color(0xFF2A2A1E), // Olive brown
-    Color(0xFF1E2B22), // Dark olive
-    Color(0xFF32301E), // Tan shadow
-    Color(0xFF14201A), // Deep swamp green
+    Color(0xFF1A2E20), // Dark green
+    Color(0xFF2A4030), // Forest green
+    Color(0xFF354535), // Medium green
+    Color(0xFF2A2A1E), // Dark brown/mud
+    Color(0xFF3A3A28), // Olive brown
+    Color(0xFF2E3B2A), // Dark olive
+    Color(0xFF3D3A28), // Tan
+    Color(0xFF253525), // Deep green
   ];
 
   @override
@@ -231,11 +207,11 @@ class _HuntingCamoPainter extends CustomPainter {
     
     final random = math.Random(42); // Fixed seed for consistency
     
-    // Draw vertical grass strokes first (switchgrass effect)
-    _drawGrassStrokes(canvas, size, random);
-    
-    // Draw organic blob shapes (branch/leaf patterns)
+    // Draw organic blob shapes first (base camouflage patches)
     _drawOrganicPatches(canvas, size, random);
+    
+    // Draw vertical grass strokes (switchgrass effect)
+    _drawGrassStrokes(canvas, size, random);
     
     if (pattern == CamoPattern.hunting) {
       // Add more detail for full hunting pattern
@@ -243,30 +219,48 @@ class _HuntingCamoPainter extends CustomPainter {
     }
   }
   
+  /// Draw organic blob patches (camouflage base patches)
+  void _drawOrganicPatches(Canvas canvas, Size size, math.Random random) {
+    final patchCount = pattern == CamoPattern.subtle ? 35 : 70;
+    
+    for (int i = 0; i < patchCount; i++) {
+      final color = _colors[random.nextInt(_colors.length)];
+      final paint = Paint()
+        ..color = color.withValues(alpha: opacity * (0.5 + random.nextDouble() * 0.5))
+        ..style = PaintingStyle.fill;
+      
+      final x = random.nextDouble() * size.width;
+      final y = random.nextDouble() * size.height;
+      final blobSize = 40 + random.nextDouble() * 100;
+      
+      _drawOrganicBlob(canvas, paint, x, y, blobSize, random);
+    }
+  }
+  
   /// Draw vertical grass-like strokes
   void _drawGrassStrokes(Canvas canvas, Size size, math.Random random) {
-    final strokeCount = pattern == CamoPattern.subtle ? 40 : 80;
+    final strokeCount = pattern == CamoPattern.subtle ? 50 : 100;
     
     for (int i = 0; i < strokeCount; i++) {
       final color = _colors[random.nextInt(_colors.length)];
       final paint = Paint()
-        ..color = color.withValues(alpha: opacity * (0.3 + random.nextDouble() * 0.4))
+        ..color = color.withValues(alpha: opacity * (0.4 + random.nextDouble() * 0.5))
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5 + random.nextDouble() * 3
+        ..strokeWidth = 2.0 + random.nextDouble() * 4
         ..strokeCap = StrokeCap.round;
       
       // Random start position
       final x = random.nextDouble() * size.width;
       final startY = random.nextDouble() * size.height;
-      final length = 30 + random.nextDouble() * 80;
+      final length = 40 + random.nextDouble() * 100;
       
       // Draw slightly curved vertical stroke
       final path = Path();
       path.moveTo(x, startY);
       
       // Add slight curves to simulate grass bend
-      final midX = x + (random.nextDouble() - 0.5) * 15;
-      final endX = x + (random.nextDouble() - 0.5) * 8;
+      final midX = x + (random.nextDouble() - 0.5) * 20;
+      final endX = x + (random.nextDouble() - 0.5) * 10;
       
       path.quadraticBezierTo(
         midX,
@@ -279,34 +273,16 @@ class _HuntingCamoPainter extends CustomPainter {
     }
   }
   
-  /// Draw organic blob patches (camouflage patches)
-  void _drawOrganicPatches(Canvas canvas, Size size, math.Random random) {
-    final patchCount = pattern == CamoPattern.subtle ? 25 : 50;
-    
-    for (int i = 0; i < patchCount; i++) {
-      final color = _colors[random.nextInt(_colors.length)];
-      final paint = Paint()
-        ..color = color.withValues(alpha: opacity * (0.4 + random.nextDouble() * 0.4))
-        ..style = PaintingStyle.fill;
-      
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final blobSize = 30 + random.nextDouble() * 70;
-      
-      _drawOrganicBlob(canvas, paint, x, y, blobSize, random);
-    }
-  }
-  
   /// Draw reed/branch-like elements
   void _drawReeds(Canvas canvas, Size size, math.Random random) {
-    final reedCount = 30;
+    const reedCount = 40;
     
     for (int i = 0; i < reedCount; i++) {
       final color = _colors[random.nextInt(_colors.length)];
       final paint = Paint()
-        ..color = color.withValues(alpha: opacity * 0.5)
+        ..color = color.withValues(alpha: opacity * 0.6)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.8 + random.nextDouble() * 1.5
+        ..strokeWidth = 1.0 + random.nextDouble() * 2
         ..strokeCap = StrokeCap.round;
       
       final x = random.nextDouble() * size.width;
@@ -320,8 +296,8 @@ class _HuntingCamoPainter extends CustomPainter {
       double currentX = x;
       
       for (int j = 0; j < 3 + random.nextInt(3); j++) {
-        final segmentLength = 15 + random.nextDouble() * 25;
-        final xOffset = (random.nextDouble() - 0.5) * 12;
+        final segmentLength = 20 + random.nextDouble() * 30;
+        final xOffset = (random.nextDouble() - 0.5) * 15;
         
         currentX += xOffset;
         currentY += segmentLength;
@@ -329,9 +305,9 @@ class _HuntingCamoPainter extends CustomPainter {
         path.lineTo(currentX, currentY);
         
         // Occasionally add a small leaf/branch
-        if (random.nextDouble() > 0.6) {
-          final leafAngle = random.nextBool() ? 0.7 : -0.7;
-          final leafLen = 8 + random.nextDouble() * 12;
+        if (random.nextDouble() > 0.5) {
+          final leafAngle = random.nextBool() ? 0.8 : -0.8;
+          final leafLen = 10 + random.nextDouble() * 15;
           
           final leafX = currentX + leafLen * math.cos(leafAngle);
           final leafY = currentY - leafLen * math.sin(leafAngle);
