@@ -73,6 +73,29 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       debugPrint('[RegsAdmin] Error checking for active job queue runs: $e');
     }
   }
+  
+  /// Clear all run states (used before reset to stop polling).
+  void _clearAllRunStates() {
+    setState(() {
+      // Clear job queue runs
+      _activeDiscoveryRun = null;
+      _activeExtractionRun = null;
+      _isDiscoveryStopping = false;
+      _isExtractionStopping = false;
+      
+      // Clear legacy runs
+      _currentRun = null;
+      _isCanceling = false;
+      _isVerifying = false;
+      _verifyProgress = null;
+      
+      // Clear repair runs
+      _repairRun = null;
+      _isRepairCanceling = false;
+      _isRepairing = false;
+      _lastRepairResult = null;
+    });
+  }
 
   /// Check for an existing running repair run on page load (for resume).
   Future<void> _checkForExistingRepairRun() async {
@@ -438,7 +461,19 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
         final status = await service.getJobQueueRunStatus(runId: runId);
         
-        if (!mounted || status == null) break;
+        // Handle 404 / run not found (e.g., after reset)
+        if (status == null) {
+          if (mounted) {
+            setState(() => _activeExtractionRun = null);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Run ended or was reset')),
+            );
+            _loadStats();
+          }
+          break;
+        }
+        
+        if (!mounted) break;
         
         setState(() => _activeExtractionRun = status);
 
@@ -457,8 +492,17 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
       } catch (e) {
         if (mounted) {
+          // Check if it's a 404 error
+          final errorStr = e.toString().toLowerCase();
+          if (errorStr.contains('404') || errorStr.contains('not found')) {
+            setState(() => _activeExtractionRun = null);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Run ended or was reset')),
+            );
+            _loadStats();
+            break;
+          }
           debugPrint('[RegsAdmin] Poll error: $e');
-          // Don't clear on transient errors, keep polling
         }
       }
     }
@@ -551,7 +595,19 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
         final status = await service.getJobQueueRunStatus(runId: runId);
         
-        if (!mounted || status == null) break;
+        // Handle 404 / run not found (e.g., after reset)
+        if (status == null) {
+          if (mounted) {
+            setState(() => _activeDiscoveryRun = null);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Run ended or was reset')),
+            );
+            _loadStats();
+          }
+          break;
+        }
+        
+        if (!mounted) break;
         
         setState(() => _activeDiscoveryRun = status);
 
@@ -570,6 +626,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
       } catch (e) {
         if (mounted) {
+          // Check if it's a 404 error
+          final errorStr = e.toString().toLowerCase();
+          if (errorStr.contains('404') || errorStr.contains('not found')) {
+            setState(() => _activeDiscoveryRun = null);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Run ended or was reset')),
+            );
+            _loadStats();
+            break;
+          }
           debugPrint('[RegsAdmin] Poll error: $e');
         }
       }
@@ -917,6 +983,10 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     try {
       setState(() => _isLoading = true);
       
+      // IMPORTANT: Clear all active run states BEFORE reset
+      // This stops polling and prevents 404 errors after runs are deleted
+      _clearAllRunStates();
+      
       final service = ref.read(regulationsServiceProvider);
       final resetResult = await service.resetData(
         type: result,
@@ -926,14 +996,17 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       if (mounted) {
         setState(() => _isLoading = false);
         
+        final resultData = resetResult['results'] as Map<String, dynamic>?;
+        final portalCleared = resultData?['portal_links_cleared'] ?? resultData?['portal_links_updated'] ?? 0;
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Reset complete'),
+            content: Text('Reset complete: $portalCleared portal rows updated'),
             backgroundColor: AppColors.success,
           ),
         );
         
-        // Reload stats
+        // Reload stats to show 0s
         _loadStats();
       }
     } catch (e) {
