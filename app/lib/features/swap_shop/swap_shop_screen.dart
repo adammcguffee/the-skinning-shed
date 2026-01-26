@@ -300,7 +300,8 @@ class _SwapShopScreenState extends ConsumerState<SwapShopScreen> {
                     crossAxisCount: isWide ? 3 : 2,
                     mainAxisSpacing: AppSpacing.gridGap,
                     crossAxisSpacing: AppSpacing.gridGap,
-                    childAspectRatio: 0.75,
+                    // Slightly taller cards to fit image + compact content
+                    childAspectRatio: 0.72,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -350,11 +351,11 @@ class _SwapShopScreenState extends ConsumerState<SwapShopScreen> {
           crossAxisCount: isWide ? 3 : 2,
           mainAxisSpacing: AppSpacing.gridGap,
           crossAxisSpacing: AppSpacing.gridGap,
-          childAspectRatio: 0.75,
+          childAspectRatio: 0.72,
         ),
         itemCount: 6,
         itemBuilder: (context, index) => const AppCardSkeleton(
-          aspectRatio: 0.75,
+          aspectRatio: 0.72,
           hasContent: true,
         ),
       ),
@@ -735,9 +736,8 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Image with badges
+              // Image with badges - takes most of the space
               Expanded(
-                flex: 3,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -794,26 +794,33 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
                 ),
               ),
 
-              // Content
+              // Content - fixed height, compact
               Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Title
+                    // Title - single line to prevent overflow
                     Text(
                       listing.title,
-                      style: Theme.of(context).textTheme.titleSmall,
-                      maxLines: 2,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontSize: 13,
+                        height: 1.2,
+                      ),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     // Location
                     Row(
                       children: [
                         const Icon(
                           Icons.location_on_outlined,
-                          size: 12,
+                          size: 10,
                           color: AppColors.textTertiary,
                         ),
                         const SizedBox(width: 2),
@@ -822,7 +829,7 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
                             listing.locationDisplay,
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: AppColors.textSecondary,
-                              fontSize: 11,
+                              fontSize: 10,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

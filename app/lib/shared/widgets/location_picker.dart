@@ -185,9 +185,12 @@ class _LocationField extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: enabled ? Colors.white : AppColors.backgroundAlt,
+          // Use dark surface for dark theme compatibility
+          color: enabled ? AppColors.surfaceElevated : AppColors.surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(
+            color: enabled ? AppColors.borderStrong : AppColors.borderSubtle,
+          ),
         ),
         child: Row(
           children: [
@@ -199,14 +202,19 @@ class _LocationField extends StatelessWidget {
                     Text(
                       label!,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.textTertiary,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   if (label != null) const SizedBox(height: 2),
                   Text(
                     value ?? hint,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: value != null ? AppColors.textPrimary : AppColors.textTertiary,
+                      // High contrast: white for selected value, muted for hint
+                      color: value != null 
+                          ? Colors.white 
+                          : AppColors.textTertiary,
+                      fontWeight: value != null ? FontWeight.w500 : FontWeight.w400,
                     ),
                   ),
                 ],
@@ -214,7 +222,7 @@ class _LocationField extends StatelessWidget {
             ),
             Icon(
               Icons.keyboard_arrow_down_rounded,
-              color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
+              color: enabled ? AppColors.textPrimary : AppColors.textTertiary,
             ),
           ],
         ),
@@ -502,7 +510,7 @@ class _CountyPickerSheetState extends State<CountyPickerSheet> {
                           final isSelected = county.fips == widget.selectedCountyFips;
                           return ListTile(
                             title: Text(county.name),
-                            subtitle: Text('FIPS: ${county.fips}'),
+                            // No FIPS subtitle - just show county name
                             trailing: isSelected
                                 ? const Icon(Icons.check, color: AppColors.primary)
                                 : null,

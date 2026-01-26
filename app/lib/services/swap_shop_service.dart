@@ -165,7 +165,15 @@ class SwapShopService {
     // Apply filters
     if (params != null) {
       if (params.query != null && params.query!.isNotEmpty) {
-        builder = builder.or('title.ilike.%${params.query}%,description.ilike.%${params.query}%');
+        // Full keyword search across title, description, category, state, county
+        final q = params.query!.replaceAll("'", "''"); // Escape single quotes
+        builder = builder.or(
+          'title.ilike.%$q%,'
+          'description.ilike.%$q%,'
+          'category.ilike.%$q%,'
+          'state.ilike.%$q%,'
+          'county.ilike.%$q%'
+        );
       }
 
       if (params.category != null) {
