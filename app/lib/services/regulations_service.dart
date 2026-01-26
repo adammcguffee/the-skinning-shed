@@ -659,7 +659,7 @@ class StateRecordHighlights {
   const StateRecordHighlights({
     required this.stateCode,
     this.updatedAt,
-    // Buck fields
+    // Buck (TYPICAL - B&C) fields
     this.buckTitle,
     this.buckSpecies,
     this.buckScoreText,
@@ -674,6 +674,20 @@ class StateRecordHighlights {
     this.buckSourceName,
     this.buckPhotoVerified,
     this.buckPhotoEvidenceText,
+    // Buck NON-TYPICAL fields
+    this.buckNtTitle,
+    this.buckNtSpecies,
+    this.buckNtScoreText,
+    this.buckNtHunterName,
+    this.buckNtDateText,
+    this.buckNtLocationText,
+    this.buckNtWeapon,
+    this.buckNtPhotoUrl,
+    this.buckNtStorySummary,
+    this.buckNtSourceUrl,
+    this.buckNtSourceName,
+    this.buckNtPhotoVerified,
+    this.buckNtPhotoEvidenceText,
     // Bass fields
     this.bassTitle,
     this.bassSpecies,
@@ -701,7 +715,7 @@ class StateRecordHighlights {
   final String stateCode;
   final DateTime? updatedAt;
   
-  // Buck (deer) record
+  // Buck TYPICAL (B&C) record
   final String? buckTitle;
   final String? buckSpecies;
   final String? buckScoreText;
@@ -716,6 +730,21 @@ class StateRecordHighlights {
   final String? buckSourceName;
   final bool? buckPhotoVerified;
   final String? buckPhotoEvidenceText;
+  
+  // Buck NON-TYPICAL record
+  final String? buckNtTitle;
+  final String? buckNtSpecies;
+  final String? buckNtScoreText;
+  final String? buckNtHunterName;
+  final String? buckNtDateText;
+  final String? buckNtLocationText;
+  final String? buckNtWeapon;
+  final String? buckNtPhotoUrl;
+  final String? buckNtStorySummary;
+  final String? buckNtSourceUrl;
+  final String? buckNtSourceName;
+  final bool? buckNtPhotoVerified;
+  final String? buckNtPhotoEvidenceText;
   
   // Bass record
   final String? bassTitle;
@@ -744,8 +773,9 @@ class StateRecordHighlights {
   
   // Convenience getters
   bool get hasBuckRecord => buckTitle != null && buckTitle!.isNotEmpty;
+  bool get hasBuckNtRecord => buckNtTitle != null && buckNtTitle!.isNotEmpty;
   bool get hasBassRecord => bassTitle != null && bassTitle!.isNotEmpty;
-  bool get hasAnyRecord => hasBuckRecord || hasBassRecord;
+  bool get hasAnyRecord => hasBuckRecord || hasBuckNtRecord || hasBassRecord;
   
   factory StateRecordHighlights.fromJson(Map<String, dynamic> json) {
     return StateRecordHighlights(
@@ -768,6 +798,20 @@ class StateRecordHighlights {
       buckSourceName: json['buck_source_name'] as String?,
       buckPhotoVerified: json['buck_photo_verified'] as bool?,
       buckPhotoEvidenceText: json['buck_photo_evidence_text'] as String?,
+      // Buck Non-Typical
+      buckNtTitle: json['buck_nt_title'] as String?,
+      buckNtSpecies: json['buck_nt_species'] as String?,
+      buckNtScoreText: json['buck_nt_score_text'] as String?,
+      buckNtHunterName: json['buck_nt_hunter_name'] as String?,
+      buckNtDateText: json['buck_nt_date_text'] as String?,
+      buckNtLocationText: json['buck_nt_location_text'] as String?,
+      buckNtWeapon: json['buck_nt_weapon'] as String?,
+      buckNtPhotoUrl: json['buck_nt_photo_url'] as String?,
+      buckNtStorySummary: json['buck_nt_story_summary'] as String?,
+      buckNtSourceUrl: json['buck_nt_source_url'] as String?,
+      buckNtSourceName: json['buck_nt_source_name'] as String?,
+      buckNtPhotoVerified: json['buck_nt_photo_verified'] as bool?,
+      buckNtPhotoEvidenceText: json['buck_nt_photo_evidence_text'] as String?,
       // Bass
       bassTitle: json['bass_title'] as String?,
       bassSpecies: json['bass_species'] as String?,
@@ -2263,6 +2307,26 @@ class RegulationsService {
         .maybeSingle();
 
     return response?['official_root_url'] as String?;
+  }
+
+  /// Fetch all official root URLs for all states.
+  Future<Map<String, String?>> fetchAllOfficialRootUrls() async {
+    final client = _supabaseService.client;
+    if (client == null) return {};
+
+    final response = await client
+        .from('state_official_roots')
+        .select('state_code, official_root_url');
+
+    final Map<String, String?> urls = {};
+    for (final row in response as List) {
+      final stateCode = row['state_code'] as String?;
+      final url = row['official_root_url'] as String?;
+      if (stateCode != null) {
+        urls[stateCode] = url;
+      }
+    }
+    return urls;
   }
 
   /// Get latest repair run status (for resume on page load).

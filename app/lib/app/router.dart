@@ -16,7 +16,6 @@ import '../features/land/land_screen.dart';
 import '../features/post/post_screen.dart';
 import '../features/regulations/regulations_screen.dart';
 import '../features/regulations/regulations_admin_screen.dart';
-import '../features/regulations/state_regulations_screen.dart';
 import '../features/research/research_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/swap_shop/swap_shop_create_screen.dart';
@@ -102,7 +101,7 @@ final authNotifierProvider = ChangeNotifierProvider<AuthNotifier>((ref) {
 /// Helper to get current index from location.
 /// Indices match _destinationsBase in app_scaffold.dart:
 /// 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-/// 5=SwapShop, 6=Weather, 7=Research, 8=Regulations, 9=Settings
+/// 5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
 int _getIndexFromLocation(String location) {
   if (location.startsWith('/explore')) return 1;
   if (location.startsWith('/trophy-wall') || location.startsWith('/profile')) return 2;
@@ -111,7 +110,7 @@ int _getIndexFromLocation(String location) {
   if (location.startsWith('/swap-shop')) return 5;
   if (location.startsWith('/weather')) return 6;
   if (location.startsWith('/research')) return 7;
-  if (location.startsWith('/regulations')) return 8;
+  if (location.startsWith('/official-links')) return 8;
   if (location.startsWith('/settings')) return 9;
   return 0; // Feed is default
 }
@@ -228,9 +227,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           
-          // Regulations (Seasons & Limits)
+          // Official Links (State Wildlife Portals)
           GoRoute(
-            path: '/regulations',
+            path: '/official-links',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: RegulationsScreen(),
             ),
@@ -255,18 +254,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       
-      // State regulations detail (outside shell for full screen)
+      // Official links admin (admin only)
       GoRoute(
-        path: '/regulations/:stateCode',
-        builder: (context, state) {
-          final stateCode = state.pathParameters['stateCode']!;
-          return StateRegulationsScreen(stateCode: stateCode);
-        },
-      ),
-      
-      // Regulations admin (admin only)
-      GoRoute(
-        path: '/admin/regulations',
+        path: '/admin/official-links',
         builder: (context, state) => const RegulationsAdminScreen(),
       ),
       

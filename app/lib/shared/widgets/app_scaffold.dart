@@ -33,7 +33,7 @@ class AppScaffold extends ConsumerWidget {
 
   /// Map navigation index to page identifier for ad targeting.
   /// Indices: 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-  ///          5=SwapShop, 6=Weather, 7=Research, 8=Regulations, 9=Settings
+  ///          5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
   String get _currentPageId {
     switch (currentIndex) {
       case 0: return AdPages.feed;
@@ -93,9 +93,9 @@ class AppScaffold extends ConsumerWidget {
       label: 'Research',
     ),
     AppNavDestination(
-      icon: Icons.map_outlined,
-      selectedIcon: Icons.map_rounded,
-      label: 'Regs & Records',
+      icon: Icons.link_outlined,
+      selectedIcon: Icons.link_rounded,
+      label: 'Official Links',
     ),
     AppNavDestination(
       icon: Icons.settings_outlined,
@@ -126,7 +126,7 @@ class AppScaffold extends ConsumerWidget {
   void _onDestinationSelected(BuildContext context, int index) {
     // Indices match _destinationsBase array order:
     // 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-    // 5=SwapShop, 6=Weather, 7=Research, 8=Regulations, 9=Settings
+    // 5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
     switch (index) {
       case 0:
         context.go('/');
@@ -153,7 +153,7 @@ class AppScaffold extends ConsumerWidget {
         context.go('/research');
         break;
       case 8:
-        context.go('/regulations');
+        context.go('/official-links');
         break;
       case 9:
         context.go('/settings');
@@ -163,7 +163,7 @@ class AppScaffold extends ConsumerWidget {
 
   /// Get the create context based on current page.
   /// Indices: 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-  ///          5=SwapShop, 6=Weather, 7=Research, 8=Regulations, 9=Settings
+  ///          5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
   CreateContext get _createContext {
     switch (currentIndex) {
       case 0: return CreateContext.feed;
@@ -174,7 +174,7 @@ class AppScaffold extends ConsumerWidget {
       case 5: return CreateContext.feed;  // Swap Shop - show general create menu
       case 6: return CreateContext.other; // Weather
       case 7: return CreateContext.other; // Research
-      case 8: return CreateContext.other; // Regulations
+      case 8: return CreateContext.other; // Official Links
       case 9: return CreateContext.other; // Settings
       default: return CreateContext.other;
     }
@@ -673,12 +673,12 @@ class _MoreSheet extends StatelessWidget {
               },
             ),
             _MoreSheetItem(
-              icon: Icons.gavel_outlined,
-              label: 'Regs & Records',
+              icon: Icons.link_outlined,
+              label: 'Official Links',
               isSelected: false,
               onTap: () {
                 Navigator.pop(context);
-                context.push('/regulations');
+                context.push('/official-links');
               },
             ),
             _MoreSheetItem(

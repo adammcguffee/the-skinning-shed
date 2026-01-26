@@ -156,10 +156,10 @@ class SettingsScreen extends ConsumerWidget {
                           title: 'Admin',
                           children: [
                             _SettingsItem(
-                              icon: Icons.gavel_outlined,
-                              title: 'Regulations Admin',
-                              subtitle: 'Review pending updates',
-                              onTap: () => context.push('/admin/regulations'),
+                              icon: Icons.link_outlined,
+                              title: 'Official Links Admin',
+                              subtitle: 'Manage state portal links',
+                              onTap: () => context.push('/admin/official-links'),
                             ),
                             _SettingsItem(
                               icon: Icons.palette_outlined,
