@@ -85,6 +85,7 @@ class PageHeader extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   title,
@@ -93,6 +94,8 @@ class PageHeader extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
@@ -102,6 +105,8 @@ class PageHeader extends StatelessWidget {
                       fontSize: 13,
                       color: AppColors.textSecondary,
                     ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ],
               ],

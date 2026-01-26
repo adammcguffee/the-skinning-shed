@@ -496,12 +496,16 @@ class _ListingTypeChipState extends State<_ListingTypeChip> {
                     widget.isSelected ? AppColors.success : AppColors.textSecondary,
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color:
-                      widget.isSelected ? AppColors.success : AppColors.textSecondary,
+              Flexible(
+                child: Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color:
+                        widget.isSelected ? AppColors.success : AppColors.textSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
             ],
@@ -542,12 +546,16 @@ class _ListingTypeIndicator extends StatelessWidget {
             color: AppColors.success,
           ),
           const SizedBox(width: AppSpacing.sm),
-          Text(
-            isLease ? 'Creating Land For Lease Listing' : 'Creating Land For Sale Listing',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.success,
+          Flexible(
+            child: Text(
+              isLease ? 'Creating Land For Lease Listing' : 'Creating Land For Sale Listing',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.success,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
         ],
