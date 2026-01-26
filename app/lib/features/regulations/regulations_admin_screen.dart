@@ -2124,34 +2124,63 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         ),
         const SizedBox(height: 12),
         
-        // Info card about current status
+        // Info card about current status with detailed stats
         FutureBuilder<Map<String, dynamic>>(
           future: _getRecordHighlightsStats(),
           builder: (context, snapshot) {
-            final stats = snapshot.data ?? {'total': 0, 'high_quality': 0};
+            final stats = snapshot.data ?? {'total': 0, 'high_quality': 0, 'buck_photos': 0, 'bass_photos': 0};
             final total = stats['total'] as int? ?? 0;
             final highQuality = stats['high_quality'] as int? ?? 0;
+            final buckPhotos = stats['buck_photos'] as int? ?? 0;
+            final bassPhotos = stats['bass_photos'] as int? ?? 0;
+            final totalPhotos = buckPhotos + bassPhotos;
+            final maxPhotos = total * 2;
+            
+            final isComplete = total >= 50 && totalPhotos >= 100;
             
             return Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.info.withValues(alpha: 0.08),
+                color: isComplete 
+                    ? AppColors.success.withValues(alpha: 0.08)
+                    : AppColors.info.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: isComplete 
+                      ? AppColors.success.withValues(alpha: 0.3)
+                      : AppColors.info.withValues(alpha: 0.2),
+                ),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: AppColors.info),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '$total states have record data ($highQuality high quality). '
-                      'Data is manually curated with original summaries.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.info,
+                  Row(
+                    children: [
+                      Icon(
+                        isComplete ? Icons.check_circle : Icons.info_outline,
+                        size: 16,
+                        color: isComplete ? AppColors.success : AppColors.info,
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isComplete ? 'All 50 States Complete!' : 'Record Coverage',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isComplete ? AppColors.success : AppColors.info,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: [
+                      _buildStatPill('States', '$total/50', total >= 50),
+                      _buildStatPill('Photos', '$totalPhotos/$maxPhotos', totalPhotos >= maxPhotos),
+                      _buildStatPill('High Quality', '$highQuality', highQuality >= 25),
+                    ],
                   ),
                 ],
               ),
@@ -2160,21 +2189,70 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         ),
         const SizedBox(height: 12),
         
-        // View records button
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _viewRecordHighlights,
-            icon: const Icon(Icons.visibility_rounded),
-            label: const Text('View All Record Highlights'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.accent,
-              side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+        // Action buttons row
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _viewRecordHighlights,
+                icon: const Icon(Icons.visibility_rounded, size: 16),
+                label: const Text('View Records'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.accent,
+                  side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _refreshRecordPhotos,
+                icon: const Icon(Icons.photo_library_rounded, size: 16),
+                label: const Text('Refresh Photos'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.info,
+                  side: BorderSide(color: AppColors.info.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
+    );
+  }
+  
+  /// Build a stat pill widget
+  Widget _buildStatPill(String label, String value, bool isGood) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isGood 
+            ? AppColors.success.withValues(alpha: 0.15)
+            : AppColors.surfaceHover,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isGood ? AppColors.success : AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
     );
   }
   
@@ -2183,18 +2261,25 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     try {
       final service = ref.read(regulationsServiceProvider);
       final client = service.client;
-      if (client == null) return {'total': 0, 'high_quality': 0};
+      if (client == null) return {'total': 0, 'high_quality': 0, 'buck_photos': 0, 'bass_photos': 0};
       
       final response = await client
           .from('state_record_highlights')
-          .select('state_code, data_quality');
+          .select('state_code, data_quality, buck_photo_url, bass_photo_url');
       
       final total = (response as List).length;
       final highQuality = response.where((r) => r['data_quality'] == 'high').length;
+      final buckPhotos = response.where((r) => r['buck_photo_url'] != null).length;
+      final bassPhotos = response.where((r) => r['bass_photo_url'] != null).length;
       
-      return {'total': total, 'high_quality': highQuality};
+      return {
+        'total': total,
+        'high_quality': highQuality,
+        'buck_photos': buckPhotos,
+        'bass_photos': bassPhotos,
+      };
     } catch (e) {
-      return {'total': 0, 'high_quality': 0};
+      return {'total': 0, 'high_quality': 0, 'buck_photos': 0, 'bass_photos': 0};
     }
   }
   
@@ -2202,10 +2287,80 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   void _viewRecordHighlights() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('View record highlights: navigate to any state page to see the records.'),
+        content: Text('Navigate to any state page to see the record highlights with photos.'),
         backgroundColor: AppColors.info,
       ),
     );
+  }
+  
+  /// Refresh record photos via Edge Function
+  Future<void> _refreshRecordPhotos() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Refresh Record Photos?'),
+        content: const Text(
+          'This will check for any missing photos and attempt to download them. '
+          'Photos that already exist will not be changed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.info),
+            child: const Text('Refresh'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true) return;
+    
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Refreshing photos... This may take a minute.'),
+          backgroundColor: AppColors.info,
+          duration: Duration(seconds: 10),
+        ),
+      );
+      
+      final service = ref.read(regulationsServiceProvider);
+      final client = service.client;
+      if (client == null) throw Exception('Not connected');
+      
+      // Call the Edge Function
+      final response = await client.functions.invoke(
+        'seed-record-photos',
+        body: {'mode': 'missing', 'limit': 50},
+      );
+      
+      if (mounted) {
+        final data = response.data as Map<String, dynamic>?;
+        final uploaded = (data?['buck_uploaded'] ?? 0) + (data?['bass_uploaded'] ?? 0);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Photo refresh complete: $uploaded new photos uploaded.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        
+        setState(() {}); // Refresh stats
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error refreshing photos: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
   
   Widget _buildExtractionSection() {
