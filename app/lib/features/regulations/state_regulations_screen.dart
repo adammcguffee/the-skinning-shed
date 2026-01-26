@@ -39,6 +39,9 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   // Extracted facts for deer/turkey
   Map<RegulationCategory, ExtractedFacts?> _extractedFacts = {};
   
+  // State record highlights (buck and bass)
+  StateRecordHighlights? _recordHighlights;
+  
   static const _categories = [
     RegulationCategory.deer,
     RegulationCategory.turkey,
@@ -131,6 +134,14 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         }
       }
       
+      // Load state record highlights (buck and bass)
+      StateRecordHighlights? recordHighlights;
+      try {
+        recordHighlights = await service.fetchRecordHighlights(stateCode);
+      } catch (e) {
+        debugPrint('Could not load record highlights: $e');
+      }
+      
       if (mounted) {
         setState(() {
           _portalLinks = portalLinks;
@@ -138,6 +149,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           _regulations = results;
           _regions = regionResults;
           _extractedFacts = extractedResults;
+          _recordHighlights = recordHighlights;
           _isLoading = false;
         });
       }
@@ -383,36 +395,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   
   Widget _buildPortalLinksSection() {
     final links = _portalLinks;
-    
-    // Show empty state if no portal links at all
-    if (links == null) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          0,
-          AppSpacing.screenPadding,
-          AppSpacing.md,
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.link_off_rounded, size: 16, color: AppColors.textTertiary),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                'No portal links available for this state',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    final agencyName = links?.agencyName ?? 'State Wildlife Agency';
     
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -421,161 +404,183 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         AppSpacing.screenPadding,
         AppSpacing.md,
       ),
+      child: Column(
+        children: [
+          // === SINGLE OFFICIAL PORTAL CARD ===
+          _buildOfficialPortalCard(agencyName),
+          
+          // === STATE RECORD HIGHLIGHTS ===
+          if (_recordHighlights != null && _recordHighlights!.hasAnyRecord) ...[
+            const SizedBox(height: AppSpacing.md),
+            _buildRecordHighlightsSection(),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  /// Build the single official portal card - ONE canonical link
+  Widget _buildOfficialPortalCard(String agencyName) {
+    final hasOfficialUrl = _officialRootUrl != null && _officialRootUrl!.isNotEmpty;
+    
+    return GestureDetector(
+      onTap: hasOfficialUrl ? () => _openPortalLink(_officialRootUrl!) : null,
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          gradient: hasOfficialUrl ? AppColors.accentGradient : null,
+          color: hasOfficialUrl ? null : AppColors.surface,
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(color: AppColors.borderSubtle),
+          border: hasOfficialUrl ? null : Border.all(color: AppColors.borderSubtle),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            // Header with Official Agency Home link
-            Row(
-              children: [
-                Icon(Icons.public_rounded, size: 16, color: AppColors.accent),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    links.agencyName ?? 'Official State Portal',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: hasOfficialUrl 
+                    ? Colors.white.withValues(alpha: 0.2)
+                    : AppColors.surfaceHover,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              ),
+              child: Icon(
+                Icons.account_balance_rounded,
+                color: hasOfficialUrl ? Colors.white : AppColors.textTertiary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Official Regulations Portal',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: hasOfficialUrl 
+                          ? Colors.white.withValues(alpha: 0.8)
+                          : AppColors.textTertiary,
+                      letterSpacing: 0.5,
                     ),
                   ),
-                ),
-                // Official Agency Home link (always shown if available)
-                if (_officialRootUrl != null)
-                  GestureDetector(
-                    onTap: () => _openPortalLink(_officialRootUrl!),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 2),
+                  Text(
+                    agencyName,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: hasOfficialUrl ? Colors.white : AppColors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (hasOfficialUrl)
+                    Text(
+                      'Tap to visit official site',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.home_rounded, size: 12, color: AppColors.accent),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Agency Home',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.accent,
-                            ),
-                          ),
-                        ],
+                    )
+                  else
+                    Text(
+                      'Link not available',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
                       ),
                     ),
-                  ),
-                const SizedBox(width: 8),
-                // Debug toggle (in debug mode only)
-                if (const bool.fromEnvironment('dart.vm.product') == false)
-                  GestureDetector(
-                    onTap: () => setState(() => _showDebugPanel = !_showDebugPanel),
-                    child: Icon(
-                      _showDebugPanel ? Icons.bug_report : Icons.bug_report_outlined,
-                      size: 16,
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            
-            // HUNTING section — species-specific + digest
-            _buildPortalSection(
-              'HUNTING',
-              Icons.forest_rounded,
-              [
-                _PortalButton(
-                  icon: Icons.cruelty_free_rounded,
-                  label: 'Deer Seasons',
-                  url: links.deerSeasonsUrl ?? links.huntingSeasonsUrl, // fallback to legacy
-                  verified: links.deerSeasonsVerified || links.huntingSeasonsVerified,
-                ),
-                _PortalButton(
-                  icon: Icons.emoji_nature_rounded,
-                  label: 'Turkey Seasons',
-                  url: links.turkeySeasonsUrl,
-                  verified: links.turkeySeasonsVerified,
-                ),
-                _PortalButton(
-                  icon: Icons.menu_book_rounded,
-                  label: 'Regs Digest',
-                  url: links.huntingDigestUrl ?? links.huntingRegsUrl, // fallback to legacy
-                  verified: links.huntingDigestVerified || links.huntingRegsVerified,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            
-            // FISHING section
-            _buildPortalSection(
-              'FISHING',
-              Icons.phishing_rounded,
-              [
-                _PortalButton(
-                  icon: Icons.description_rounded,
-                  label: 'Fishing Regs',
-                  url: links.fishingRegsUrl,
-                  verified: links.fishingRegsVerified,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            
-            // LICENSING section
-            _buildPortalSection(
-              'LICENSING',
-              Icons.badge_rounded,
-              [
-                _PortalButton(
-                  icon: Icons.info_outline_rounded,
-                  label: 'License Info',
-                  url: links.licensingUrl,
-                  verified: links.licensingVerified,
-                ),
-                _PortalButton(
-                  icon: Icons.shopping_cart_rounded,
-                  label: 'Buy License',
-                  url: links.buyLicenseUrl,
-                  verified: links.buyLicenseVerified,
-                  isPrimary: true,
-                ),
-              ],
-            ),
-            
-            // RECORDS section (optional - only show if we have data)
-            if (links.hasRecords) ...[
-              const SizedBox(height: AppSpacing.sm),
-              _buildPortalSection(
-                'RECORDS',
-                Icons.emoji_events_rounded,
-                [
-                  _PortalButton(
-                    icon: Icons.emoji_events_rounded,
-                    label: 'Record Books',
-                    url: links.recordsUrl,
-                    verified: links.recordsVerified,
-                  ),
                 ],
               ),
-            ],
-            
-            // Debug panel
-            if (_showDebugPanel) ...[
-              const SizedBox(height: AppSpacing.md),
-              _buildDebugPanel(links),
-            ],
+            ),
+            if (hasOfficialUrl)
+              Icon(
+                Icons.open_in_new_rounded,
+                color: Colors.white.withValues(alpha: 0.8),
+                size: 20,
+              ),
           ],
         ),
       ),
+    );
+  }
+  
+  /// Build state record highlights section with buck and bass cards
+  Widget _buildRecordHighlightsSection() {
+    final records = _recordHighlights;
+    if (records == null) return const SizedBox.shrink();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Row(
+          children: [
+            Icon(Icons.emoji_events_rounded, size: 16, color: AppColors.accent),
+            const SizedBox(width: 6),
+            Text(
+              'STATE RECORDS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textTertiary,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        
+        // Buck record card
+        if (records.hasBuckRecord)
+          _RecordHighlightCard(
+            title: records.buckTitle ?? 'State Record Buck',
+            species: records.buckSpecies,
+            primaryStat: records.buckScoreText,
+            primaryStatLabel: 'Score',
+            secondaryStat: records.buckWeightText,
+            secondaryStatLabel: 'Weight',
+            personName: records.buckHunterName,
+            personLabel: 'Hunter',
+            dateText: records.buckDateText,
+            locationText: records.buckLocationText,
+            methodText: records.buckWeapon,
+            photoUrl: records.buckPhotoUrl,
+            storySummary: records.buckStorySummary,
+            sourceUrl: records.buckSourceUrl,
+            sourceName: records.buckSourceName,
+            icon: Icons.cruelty_free_rounded,
+            accentColor: AppColors.accent,
+          ),
+        
+        if (records.hasBuckRecord && records.hasBassRecord)
+          const SizedBox(height: AppSpacing.md),
+        
+        // Bass record card
+        if (records.hasBassRecord)
+          _RecordHighlightCard(
+            title: records.bassTitle ?? 'State Record Bass',
+            species: records.bassSpecies,
+            primaryStat: records.bassWeightText,
+            primaryStatLabel: 'Weight',
+            secondaryStat: records.bassLengthText,
+            secondaryStatLabel: 'Length',
+            personName: records.bassAnglerName,
+            personLabel: 'Angler',
+            dateText: records.bassDateText,
+            locationText: records.bassLocationText,
+            methodText: records.bassMethod,
+            photoUrl: records.bassPhotoUrl,
+            storySummary: records.bassStorySummary,
+            sourceUrl: records.bassSourceUrl,
+            sourceName: records.bassSourceName,
+            icon: Icons.phishing_rounded,
+            accentColor: AppColors.info,
+          ),
+      ],
     );
   }
   
@@ -2345,6 +2350,315 @@ class _PortalButtonState extends State<_PortalButton> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// RECORD HIGHLIGHT CARD - Premium display for state records
+// ============================================================
+
+class _RecordHighlightCard extends StatefulWidget {
+  const _RecordHighlightCard({
+    required this.title,
+    this.species,
+    this.primaryStat,
+    this.primaryStatLabel,
+    this.secondaryStat,
+    this.secondaryStatLabel,
+    this.personName,
+    this.personLabel,
+    this.dateText,
+    this.locationText,
+    this.methodText,
+    this.photoUrl,
+    this.storySummary,
+    this.sourceUrl,
+    this.sourceName,
+    required this.icon,
+    required this.accentColor,
+  });
+  
+  final String title;
+  final String? species;
+  final String? primaryStat;
+  final String? primaryStatLabel;
+  final String? secondaryStat;
+  final String? secondaryStatLabel;
+  final String? personName;
+  final String? personLabel;
+  final String? dateText;
+  final String? locationText;
+  final String? methodText;
+  final String? photoUrl;
+  final String? storySummary;
+  final String? sourceUrl;
+  final String? sourceName;
+  final IconData icon;
+  final Color accentColor;
+  
+  @override
+  State<_RecordHighlightCard> createState() => _RecordHighlightCardState();
+}
+
+class _RecordHighlightCardState extends State<_RecordHighlightCard> {
+  bool _isExpanded = false;
+  
+  Future<void> _openSource() async {
+    if (widget.sourceUrl == null) return;
+    final uri = Uri.tryParse(widget.sourceUrl!);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with icon and title
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: widget.accentColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                      ),
+                      child: Icon(widget.icon, color: widget.accentColor, size: 18),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          if (widget.species != null)
+                            Text(
+                              widget.species!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    // Expand/collapse button
+                    GestureDetector(
+                      onTap: () => setState(() => _isExpanded = !_isExpanded),
+                      child: Icon(
+                        _isExpanded ? Icons.expand_less : Icons.expand_more,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                
+                // Stats chips row
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    if (widget.primaryStat != null)
+                      _StatChipLarge(
+                        label: widget.primaryStatLabel ?? 'Record',
+                        value: widget.primaryStat!,
+                        color: widget.accentColor,
+                      ),
+                    if (widget.secondaryStat != null)
+                      _StatChipSmall(
+                        label: widget.secondaryStatLabel ?? '',
+                        value: widget.secondaryStat!,
+                      ),
+                    if (widget.personName != null)
+                      _StatChipSmall(
+                        label: widget.personLabel ?? 'By',
+                        value: widget.personName!,
+                      ),
+                    if (widget.dateText != null)
+                      _StatChipSmall(
+                        label: 'Year',
+                        value: widget.dateText!,
+                      ),
+                    if (widget.locationText != null)
+                      _StatChipSmall(
+                        label: 'Location',
+                        value: widget.locationText!,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          // Expanded content: story summary and source
+          if (_isExpanded) ...[
+            const Divider(height: 1, color: AppColors.borderSubtle),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Story summary
+                  if (widget.storySummary != null) ...[
+                    Text(
+                      widget.storySummary!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
+                  
+                  // Source button
+                  if (widget.sourceUrl != null)
+                    GestureDetector(
+                      onTap: _openSource,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.info.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.link_rounded, size: 14, color: AppColors.info),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Source: ${widget.sourceName ?? 'Official'}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.info,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.open_in_new_rounded, size: 12, color: AppColors.info),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatChipLarge extends StatelessWidget {
+  const _StatChipLarge({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  
+  final String label;
+  final String value;
+  final Color color;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: color.withValues(alpha: 0.8),
+              letterSpacing: 0.5,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatChipSmall extends StatelessWidget {
+  const _StatChipSmall({
+    required this.label,
+    required this.value,
+  });
+  
+  final String label;
+  final String value;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHover,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textTertiary,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

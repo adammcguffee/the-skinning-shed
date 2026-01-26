@@ -653,6 +653,119 @@ class StatePortalLinks {
   }
 }
 
+/// State record highlights for buck and bass.
+/// Used to display premium content on state pages.
+class StateRecordHighlights {
+  const StateRecordHighlights({
+    required this.stateCode,
+    this.updatedAt,
+    // Buck fields
+    this.buckTitle,
+    this.buckSpecies,
+    this.buckScoreText,
+    this.buckWeightText,
+    this.buckHunterName,
+    this.buckDateText,
+    this.buckLocationText,
+    this.buckWeapon,
+    this.buckPhotoUrl,
+    this.buckStorySummary,
+    this.buckSourceUrl,
+    this.buckSourceName,
+    // Bass fields
+    this.bassTitle,
+    this.bassSpecies,
+    this.bassWeightText,
+    this.bassLengthText,
+    this.bassAnglerName,
+    this.bassDateText,
+    this.bassLocationText,
+    this.bassMethod,
+    this.bassPhotoUrl,
+    this.bassStorySummary,
+    this.bassSourceUrl,
+    this.bassSourceName,
+    // Metadata
+    this.dataQuality,
+  });
+
+  final String stateCode;
+  final DateTime? updatedAt;
+  
+  // Buck (deer) record
+  final String? buckTitle;
+  final String? buckSpecies;
+  final String? buckScoreText;
+  final String? buckWeightText;
+  final String? buckHunterName;
+  final String? buckDateText;
+  final String? buckLocationText;
+  final String? buckWeapon;
+  final String? buckPhotoUrl;
+  final String? buckStorySummary;
+  final String? buckSourceUrl;
+  final String? buckSourceName;
+  
+  // Bass record
+  final String? bassTitle;
+  final String? bassSpecies;
+  final String? bassWeightText;
+  final String? bassLengthText;
+  final String? bassAnglerName;
+  final String? bassDateText;
+  final String? bassLocationText;
+  final String? bassMethod;
+  final String? bassPhotoUrl;
+  final String? bassStorySummary;
+  final String? bassSourceUrl;
+  final String? bassSourceName;
+  
+  // Metadata
+  final String? dataQuality;
+  
+  // Convenience getters
+  bool get hasBuckRecord => buckTitle != null && buckTitle!.isNotEmpty;
+  bool get hasBassRecord => bassTitle != null && bassTitle!.isNotEmpty;
+  bool get hasAnyRecord => hasBuckRecord || hasBassRecord;
+  
+  factory StateRecordHighlights.fromJson(Map<String, dynamic> json) {
+    return StateRecordHighlights(
+      stateCode: json['state_code'] as String,
+      updatedAt: json['updated_at'] != null 
+          ? DateTime.tryParse(json['updated_at'] as String) 
+          : null,
+      // Buck
+      buckTitle: json['buck_title'] as String?,
+      buckSpecies: json['buck_species'] as String?,
+      buckScoreText: json['buck_score_text'] as String?,
+      buckWeightText: json['buck_weight_text'] as String?,
+      buckHunterName: json['buck_hunter_name'] as String?,
+      buckDateText: json['buck_date_text'] as String?,
+      buckLocationText: json['buck_location_text'] as String?,
+      buckWeapon: json['buck_weapon'] as String?,
+      buckPhotoUrl: json['buck_photo_url'] as String?,
+      buckStorySummary: json['buck_story_summary'] as String?,
+      buckSourceUrl: json['buck_source_url'] as String?,
+      buckSourceName: json['buck_source_name'] as String?,
+      // Bass
+      bassTitle: json['bass_title'] as String?,
+      bassSpecies: json['bass_species'] as String?,
+      bassWeightText: json['bass_weight_text'] as String?,
+      bassLengthText: json['bass_length_text'] as String?,
+      bassAnglerName: json['bass_angler_name'] as String?,
+      bassDateText: json['bass_date_text'] as String?,
+      bassLocationText: json['bass_location_text'] as String?,
+      bassMethod: json['bass_method'] as String?,
+      bassPhotoUrl: json['bass_photo_url'] as String?,
+      bassStorySummary: json['bass_story_summary'] as String?,
+      bassSourceUrl: json['bass_source_url'] as String?,
+      bassSourceName: json['bass_source_name'] as String?,
+      // Metadata
+      dataQuality: json['data_quality'] as String?,
+    );
+  }
+}
+
 /// Source counts by category.
 class SourceCounts {
   const SourceCounts({
@@ -712,6 +825,9 @@ class RegulationsService {
   RegulationsService(this._supabaseService);
   
   final SupabaseService _supabaseService;
+  
+  /// Public access to Supabase client for admin operations.
+  dynamic get client => _supabaseService.client;
   
   /// Fetch regulations for a specific state and category.
   Future<List<StateRegulation>> fetchRegulations({
@@ -1297,6 +1413,21 @@ class RegulationsService {
     
     if (response == null) return null;
     return StatePortalLinks.fromJson(response);
+  }
+  
+  /// Fetch state record highlights (buck and bass records).
+  Future<StateRecordHighlights?> fetchRecordHighlights(String stateCode) async {
+    final client = _supabaseService.client;
+    if (client == null) return null;
+    
+    final response = await client
+        .from('state_record_highlights')
+        .select()
+        .eq('state_code', stateCode)
+        .maybeSingle();
+    
+    if (response == null) return null;
+    return StateRecordHighlights.fromJson(response);
   }
   
   /// Fetch portal links readiness for all states.
@@ -3343,13 +3474,12 @@ extension RegulationsServiceJobQueue on RegulationsService {
     if (session == null) return null;
 
     try {
-      // If no runId provided, find latest active run
+      // If no runId provided, find latest active run (any type)
       String? actualRunId = runId;
       if (actualRunId == null) {
         final latestRun = await client
             .from('regs_admin_runs')
             .select('id')
-            .eq('type', 'discover')
             .inFilter('status', ['queued', 'running', 'stopping'])
             .order('created_at', ascending: false)
             .limit(1)
@@ -3368,31 +3498,42 @@ extension RegulationsServiceJobQueue on RegulationsService {
 
       if (run == null) return null;
 
-      // Get accurate progress from RPC (returns TABLE, so we get a list)
-      final progressResultList = await client.rpc(
-        'regs_get_discovery_progress',
-        params: {'p_run_id': actualRunId},
-      ) as List<dynamic>?;
+      // Determine job type based on run type
+      final runType = run['type'] as String? ?? 'discover';
+      final jobType = runType == 'extract' ? 'extract_state_species' : 'discover_state';
 
-      // Extract progress from first row (should always be exactly one row)
-      final progressResult = progressResultList != null && progressResultList.isNotEmpty
-          ? progressResultList[0] as Map<String, dynamic>
-          : <String, dynamic>{
-              'total_expected': 50,
-              'done_count': 0,
-              'running_count': 0,
-              'queued_count': 0,
-              'failed_count': 0,
-              'skipped_count': 0,
-              'canceled_count': 0,
-            };
+      // Get accurate progress from RPC (only for discovery runs)
+      Map<String, dynamic> progressResult = <String, dynamic>{
+        'total_expected': run['progress_total'] as int? ?? 50,
+        'done_count': 0,
+        'running_count': 0,
+        'queued_count': 0,
+        'failed_count': 0,
+        'skipped_count': 0,
+        'canceled_count': 0,
+      };
 
-      // Get job counts by status (fallback if RPC fails)
+      if (runType == 'discover') {
+        try {
+          final progressResultList = await client.rpc(
+            'regs_get_discovery_progress',
+            params: {'p_run_id': actualRunId},
+          ) as List<dynamic>?;
+
+          if (progressResultList != null && progressResultList.isNotEmpty) {
+            progressResult = progressResultList[0] as Map<String, dynamic>;
+          }
+        } catch (e) {
+          debugPrint('[RegulationsService] RPC progress failed, using job counts: $e');
+        }
+      }
+
+      // Get job counts by status
       final jobs = await client
           .from('regs_jobs')
           .select('status')
           .eq('run_id', actualRunId)
-          .eq('job_type', 'discover_state');
+          .eq('job_type', jobType);
 
       final jobsMap = <String, int>{};
       for (final job in jobs) {
@@ -3403,7 +3544,8 @@ extension RegulationsServiceJobQueue on RegulationsService {
       // Use RPC progress if available, otherwise compute from jobs
       final doneCount = progressResult['done_count'] as int? ?? 
           (jobsMap['done'] ?? 0) + (jobsMap['failed'] ?? 0) + (jobsMap['skipped'] ?? 0) + (jobsMap['canceled'] ?? 0);
-      final totalExpected = progressResult['total_expected'] as int? ?? 50;
+      final totalExpected = progressResult['total_expected'] as int? ?? 
+          (run['progress_total'] as int? ?? (runType == 'extract' ? 88 : 50));
 
       // Build AdminRunStatus from run + progress
       final status = run['status'] as String;
@@ -3442,12 +3584,16 @@ extension RegulationsServiceJobQueue on RegulationsService {
               .maybeSingle();
 
           if (runRecord != null) {
+            // Determine job type based on run type
+            final runType = runRecord['type'] as String? ?? 'discover';
+            final jobType = runType == 'extract' ? 'extract_state_species' : 'discover_state';
+
             // Get job counts directly
             final jobs = await client
                 .from('regs_jobs')
                 .select('status')
                 .eq('run_id', runId)
-                .eq('job_type', 'discover_state');
+                .eq('job_type', jobType);
 
             final jobsMap = <String, int>{};
             for (final job in jobs) {
@@ -3461,11 +3607,11 @@ extension RegulationsServiceJobQueue on RegulationsService {
 
             return AdminRunStatus(
               runId: runId,
-              type: runRecord['type'] as String? ?? 'discover',
+              type: runType,
               tier: runRecord['tier'] as String? ?? 'basic',
               status: fallbackRunStatus,
               progressDone: (jobsMap['done'] ?? 0) + (jobsMap['failed'] ?? 0) + (jobsMap['skipped'] ?? 0) + (jobsMap['canceled'] ?? 0),
-              progressTotal: runRecord['progress_total'] as int? ?? 50,
+              progressTotal: runRecord['progress_total'] as int? ?? (runType == 'extract' ? 88 : 50),
               lastState: runRecord['last_state'] as String?,
               lastMessage: runRecord['last_message'] as String?,
               errorMessage: runRecord['error_message'] as String?,

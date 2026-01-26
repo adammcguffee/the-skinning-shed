@@ -2083,8 +2083,127 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
               ),
             ),
             
+            // ====== RECORD HIGHLIGHTS SECTION ======
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            _buildRecordHighlightsAdminSection(),
+            
           ],
         ],
+      ),
+    );
+  }
+  
+  /// Build the Record Highlights admin section
+  Widget _buildRecordHighlightsAdminSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.emoji_events_rounded, size: 18, color: AppColors.accent),
+            const SizedBox(width: 8),
+            Text(
+              'State Record Highlights',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Premium content showing state record buck and bass data with photos and stories.',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        // Info card about current status
+        FutureBuilder<Map<String, dynamic>>(
+          future: _getRecordHighlightsStats(),
+          builder: (context, snapshot) {
+            final stats = snapshot.data ?? {'total': 0, 'high_quality': 0};
+            final total = stats['total'] as int? ?? 0;
+            final highQuality = stats['high_quality'] as int? ?? 0;
+            
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.info.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: AppColors.info),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$total states have record data ($highQuality high quality). '
+                      'Data is manually curated with original summaries.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.info,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        
+        // View records button
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _viewRecordHighlights,
+            icon: const Icon(Icons.visibility_rounded),
+            label: const Text('View All Record Highlights'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  /// Get record highlights stats
+  Future<Map<String, dynamic>> _getRecordHighlightsStats() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final client = service.client;
+      if (client == null) return {'total': 0, 'high_quality': 0};
+      
+      final response = await client
+          .from('state_record_highlights')
+          .select('state_code, data_quality');
+      
+      final total = (response as List).length;
+      final highQuality = response.where((r) => r['data_quality'] == 'high').length;
+      
+      return {'total': total, 'high_quality': highQuality};
+    } catch (e) {
+      return {'total': 0, 'high_quality': 0};
+    }
+  }
+  
+  /// View all record highlights
+  void _viewRecordHighlights() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('View record highlights: navigate to any state page to see the records.'),
+        backgroundColor: AppColors.info,
       ),
     );
   }
@@ -2148,6 +2267,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             color: hasExtractableSources ? AppColors.textSecondary : AppColors.warning,
           ),
         ),
+        const SizedBox(height: 8),
+        // Worker health indicator (same worker handles extraction)
+        _buildWorkerHealthIndicator(),
         const SizedBox(height: 12),
         
         if (_activeExtractionRun != null && _activeExtractionRun!.isRunning) ...[
@@ -2158,6 +2280,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
           ),
           const SizedBox(height: 12),
+          // Derived status badge based on worker health + run progress
+          _buildDerivedStatusBadgeFor(_activeExtractionRun),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -3014,7 +3139,11 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
 
   /// Build derived status badge showing combined run+worker state.
   Widget _buildDerivedStatusBadge() {
-    final run = _activeDiscoveryRun;
+    return _buildDerivedStatusBadgeFor(_activeDiscoveryRun);
+  }
+
+  /// Build derived status badge for any run type showing combined run+worker state.
+  Widget _buildDerivedStatusBadgeFor(AdminRunStatus? run) {
     final health = _workerHealth;
     
     // Determine derived state
@@ -3158,6 +3287,23 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             ),
           ),
         ),
+        // Stop button (always visible when worker is running)
+        if (health != null && health.isHealthy) ...[
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 28,
+            child: TextButton.icon(
+              onPressed: _stopWorker,
+              icon: const Icon(Icons.stop_circle_outlined, size: 14),
+              label: const Text('Stop'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.warning,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+        ],
         // Restart button when offline or stalled
         if (health != null && (health.isOffline || health.isStalled)) ...[
           const SizedBox(width: 8),
@@ -3220,6 +3366,59 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
         // Refresh health after a delay
         await Future.delayed(const Duration(seconds: 3));
+        _checkWorkerHealth();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  /// Issue stop command to worker (graceful shutdown, no restart).
+  Future<void> _stopWorker() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stop Worker?'),
+        content: const Text(
+          'This will send a STOP command to all workers. '
+          'Workers will finish current jobs and exit gracefully.\n\n'
+          'Workers will NOT restart automatically. '
+          'Use this to pause processing.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
+            child: const Text('Stop Workers'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      await service.issueWorkerCommand('stop');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Stop command sent. Workers will shut down after finishing current jobs.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        
+        // Refresh health after a delay
+        await Future.delayed(const Duration(seconds: 5));
         _checkWorkerHealth();
       }
     } catch (e) {
