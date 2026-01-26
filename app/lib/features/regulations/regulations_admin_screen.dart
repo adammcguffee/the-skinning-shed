@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,12 +6,9 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/regulations_service.dart';
 
-/// 🛡️ REGULATIONS ADMIN SCREEN - SIMPLIFIED 2026
+/// 🛡️ REGULATIONS & RECORDS ADMIN - 2026 PREMIUM
 /// 
-/// Clean, professional admin interface with:
-/// - Overview: Stats dashboard
-/// - Actions: Verify links
-/// - Danger Zone: Reset data
+/// Clean admin interface for managing state records and photos.
 class RegulationsAdminScreen extends ConsumerStatefulWidget {
   const RegulationsAdminScreen({super.key});
 
@@ -20,2313 +18,179 @@ class RegulationsAdminScreen extends ConsumerStatefulWidget {
 
 class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen> {
   bool _isLoading = true;
-  String? _error;
-  _AdminStats _stats = const _AdminStats();
-  bool _isVerifying = false;
-  String? _verifyProgress;
-  List<_BrokenLink> _brokenLinks = [];
-  bool _showBrokenLinks = false;
+  _RecordStats _stats = const _RecordStats();
   
-  // Server-side verification state
-  VerifyRunStatus? _currentRun;
-  bool _isCanceling = false;
+  // Photo seeding run state
+  _PhotoSeedRun? _activeRun;
+  Timer? _pollTimer;
+  List<_SeedEvent> _recentEvents = [];
   
-  // Auto-repair state
-  bool _isRepairing = false;
-  RepairResult? _lastRepairResult;
-  
-  // Discovery repair run state (resumable)
-  RepairRunStatus? _repairRun;
-  bool _isRepairCanceling = false;
-  
-  // Job queue run state (NEW - uses droplet worker)
-  AdminRunStatus? _activeDiscoveryRun;
-  AdminRunStatus? _activeExtractionRun;
-  bool _isDiscoveryStopping = false;
-  bool _isExtractionStopping = false;
-  
-  // Worker health state
-  WorkerHealthStatus? _workerHealth;
-  DateTime? _lastWorkerHealthCheck;
-
   @override
   void initState() {
     super.initState();
     _loadStats();
-    _checkWorkerHealth();
-    _checkForExistingRun();
-    _checkForExistingRepairRun();
-    _checkForActiveJobQueueRuns();
+    _checkForActiveRun();
   }
   
-  /// Check worker health status.
-  Future<void> _checkWorkerHealth() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final health = await service.getWorkerHealth();
-      if (mounted) {
-        setState(() {
-          _workerHealth = health;
-          _lastWorkerHealthCheck = DateTime.now();
-        });
-      }
-    } catch (e) {
-      debugPrint('[RegsAdmin] Error checking worker health: $e');
-    }
-  }
-
-  /// Check for active job queue runs on page load (for resume).
-  Future<void> _checkForActiveJobQueueRuns() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final latestRun = await service.getJobQueueRunStatus();
-      
-      if (latestRun != null && latestRun.isRunning && mounted) {
-        if (latestRun.type == 'discover') {
-          setState(() => _activeDiscoveryRun = latestRun);
-          _pollJobQueueDiscoveryRun(latestRun.runId);
-        } else if (latestRun.type == 'extract') {
-          setState(() => _activeExtractionRun = latestRun);
-          _pollJobQueueExtractionRun(latestRun.runId);
-        }
-      }
-    } catch (e) {
-      debugPrint('[RegsAdmin] Error checking for active job queue runs: $e');
-    }
-  }
-  
-  /// Clear all run states (used before reset to stop polling).
-  void _clearAllRunStates() {
-    setState(() {
-      // Clear job queue runs
-      _activeDiscoveryRun = null;
-      _activeExtractionRun = null;
-      _isDiscoveryStopping = false;
-      _isExtractionStopping = false;
-      
-      // Clear legacy runs
-      _currentRun = null;
-      _isCanceling = false;
-      _isVerifying = false;
-      _verifyProgress = null;
-      
-      // Clear repair runs
-      _repairRun = null;
-      _isRepairCanceling = false;
-      _isRepairing = false;
-      _lastRepairResult = null;
-    });
-  }
-
-  /// Check for an existing running repair run on page load (for resume).
-  Future<void> _checkForExistingRepairRun() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final latestRun = await service.getLatestRepairRunStatus();
-      
-      if (latestRun != null && latestRun.isRunning && mounted) {
-        setState(() => _repairRun = latestRun);
-        _pollRepairRun(latestRun.runId);
-      }
-    } catch (e) {
-      debugPrint('[RegsAdmin] Error checking for existing repair run: $e');
-    }
-  }
-
-  /// Check for an existing running verification on page load (for resume).
-  Future<void> _checkForExistingRun() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final latestRun = await service.getLatestVerifyRunStatus();
-      
-      if (latestRun != null && latestRun.isRunning && mounted) {
-        // Resume the running verification
-        setState(() {
-          _currentRun = latestRun;
-          _isVerifying = true;
-          _verifyProgress = 'Resuming verification... (${latestRun.processedStates}/${latestRun.totalStates})';
-        });
-        // Continue polling
-        _pollVerification(latestRun.runId);
-      }
-    } catch (e) {
-      debugPrint('[RegsAdmin] Error checking for existing run: $e');
-    }
-  }
-
-  Future<void> _loadStats() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final stats = await service.fetchAdminStats();
-      final broken = await service.fetchBrokenLinks();
-      
-      if (mounted) {
-        setState(() {
-          _stats = _AdminStats.fromMap(stats);
-          _brokenLinks = broken.map((b) => _BrokenLink.fromMap(b)).toList();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  /// Start server-side verification.
-  Future<void> _verifyAllLinks() async {
-    setState(() {
-      _isVerifying = true;
-      _verifyProgress = 'Starting verification...';
-      _currentRun = null;
-    });
-
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      
-      // Start a new run (or resume existing)
-      final run = await service.startVerificationRun();
-      
-      if (mounted) {
-        setState(() {
-          _currentRun = run;
-          _verifyProgress = run.resumed 
-              ? 'Resuming... (${run.processedStates}/${run.totalStates})'
-              : 'Started verification...';
-        });
-        
-        // Begin polling
-        _pollVerification(run.runId);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isVerifying = false;
-          _verifyProgress = null;
-          _currentRun = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
-  /// Poll the verification run until complete.
-  Future<void> _pollVerification(String runId) async {
-    final service = ref.read(regulationsServiceProvider);
-
-    while (mounted && _isVerifying && !_isCanceling) {
-      try {
-        final status = await service.continueVerificationRun(runId);
-        
-        if (!mounted) break;
-        
-        setState(() {
-          _currentRun = status;
-          _verifyProgress = status.lastStateCode != null
-              ? 'Verifying ${status.lastStateCode}... (${status.processedStates}/${status.totalStates})'
-              : 'Processing... (${status.processedStates}/${status.totalStates})';
-        });
-
-        if (status.done) {
-          // Verification complete
-          if (mounted) {
-            setState(() {
-              _isVerifying = false;
-              _verifyProgress = null;
-            });
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Verification complete: ${status.okCount} OK, ${status.brokenCount} broken',
-                ),
-                backgroundColor: status.brokenCount == 0 ? AppColors.success : AppColors.warning,
-              ),
-            );
-            _loadStats();
-          }
-          break;
-        }
-
-        // Small delay between batches to avoid hammering the server
-        await Future.delayed(const Duration(milliseconds: 500));
-        
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _isVerifying = false;
-            _verifyProgress = null;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-        break;
-      }
-    }
-  }
-
-  /// Cancel the current verification run.
-  Future<void> _cancelVerification() async {
-    if (_currentRun == null) return;
-    
-    setState(() => _isCanceling = true);
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      await service.cancelVerificationRun(_currentRun!.runId);
-      
-      if (mounted) {
-        setState(() {
-          _isVerifying = false;
-          _verifyProgress = null;
-          _currentRun = null;
-          _isCanceling = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Verification canceled')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isCanceling = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error canceling: $e')),
-        );
-      }
-    }
-  }
-
-  /// Auto-fix broken links (http->https, redirect canonicalization).
-  Future<void> _repairBrokenLinks() async {
-    setState(() {
-      _isRepairing = true;
-      _lastRepairResult = null;
-    });
-
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final result = await service.repairBrokenLinks();
-      
-      if (mounted) {
-        setState(() {
-          _isRepairing = false;
-          _lastRepairResult = result;
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Repaired ${result.repaired} links. ${result.stillBroken} still broken.',
-            ),
-            backgroundColor: result.repaired > 0 ? AppColors.success : AppColors.warning,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        
-        // Reload stats to reflect changes
-        _loadStats();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isRepairing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
-  /// Start discovery repair run.
-  Future<void> _startRepairRun() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final run = await service.startRepairRun();
-      
-      if (mounted) {
-        setState(() => _repairRun = run);
-        
-        if (!run.done) {
-          _pollRepairRun(run.runId);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
-  /// Poll repair run until complete.
-  Future<void> _pollRepairRun(String runId, {bool fullRebuild = false}) async {
-    final service = ref.read(regulationsServiceProvider);
-
-    while (mounted && _repairRun != null && !_isRepairCanceling) {
-      try {
-        final status = await service.continueRepairRun(runId, fullRebuild: fullRebuild);
-        
-        if (!mounted) break;
-        
-        setState(() => _repairRun = status);
-
-        if (status.done) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Discovery complete: ${status.fixedCount} fixed, ${status.skippedCount} skipped',
-              ),
-              backgroundColor: status.fixedCount > 0 ? AppColors.success : AppColors.warning,
-            ),
-          );
-          _loadStats();
-          break;
-        }
-
-        // Small delay between batches
-        await Future.delayed(const Duration(milliseconds: 300));
-        
-      } catch (e) {
-        if (mounted) {
-          setState(() => _repairRun = null);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-        break;
-      }
-    }
-  }
-
-  /// Cancel repair run.
-  Future<void> _cancelRepairRun() async {
-    if (_repairRun == null) return;
-    
-    setState(() => _isRepairCanceling = true);
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      await service.cancelRepairRun(_repairRun!.runId);
-      
-      if (mounted) {
-        setState(() {
-          _repairRun = null;
-          _isRepairCanceling = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Repair canceled')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isRepairCanceling = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
-  // ============================================================
-  // JOB QUEUE EXTRACTION METHODS (Droplet Worker)
-  // ============================================================
-
-  /// Start a new job queue extraction run.
-  Future<void> _startExtractionRun({String tier = 'basic'}) async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final run = await service.startJobQueueExtractionRun(tier: tier);
-      
-      if (mounted) {
-        setState(() => _activeExtractionRun = run);
-        _pollJobQueueExtractionRun(run.runId);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Extraction started: ${run.progressTotal} jobs queued'),
-            backgroundColor: AppColors.info,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error starting extraction: $e')),
-        );
-      }
-    }
-  }
-
-  /// Poll job queue extraction run until done.
-  Future<void> _pollJobQueueExtractionRun(String runId) async {
-    final service = ref.read(regulationsServiceProvider);
-
-    while (mounted && _activeExtractionRun != null && !_isExtractionStopping) {
-      try {
-        // Wait before polling
-        await Future.delayed(const Duration(seconds: 2));
-        
-        if (!mounted || _activeExtractionRun == null) break;
-        
-        final status = await service.getJobQueueRunStatus(runId: runId);
-        
-        // Handle 404 / run not found (e.g., after reset)
-        if (status == null) {
-          if (mounted) {
-            setState(() => _activeExtractionRun = null);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Run ended or was reset')),
-            );
-            _loadStats();
-          }
-          break;
-        }
-        
-        if (!mounted) break;
-        
-        setState(() => _activeExtractionRun = status);
-
-        if (status.done) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Extraction complete: ${status.summaryLabel}'),
-              backgroundColor: (status.jobs['done'] ?? 0) > 0 
-                  ? AppColors.success 
-                  : AppColors.warning,
-            ),
-          );
-          _loadStats();
-          break;
-        }
-        
-      } catch (e) {
-        if (mounted) {
-          // Check if it's a 404 error
-          final errorStr = e.toString().toLowerCase();
-          if (errorStr.contains('404') || errorStr.contains('not found')) {
-            setState(() => _activeExtractionRun = null);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Run ended or was reset')),
-            );
-            _loadStats();
-            break;
-          }
-          debugPrint('[RegsAdmin] Poll error: $e');
-        }
-      }
-    }
-  }
-
-  /// Stop extraction run (actually stops on server).
-  Future<void> _stopExtractionRun() async {
-    if (_activeExtractionRun == null) return;
-    
-    setState(() => _isExtractionStopping = true);
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      await service.stopJobQueueRun(_activeExtractionRun!.runId);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stopping extraction...')),
-        );
-        
-        // Keep polling until stopped
-        while (mounted && _activeExtractionRun != null) {
-          await Future.delayed(const Duration(seconds: 1));
-          final status = await service.getJobQueueRunStatus(runId: _activeExtractionRun!.runId);
-          if (status == null || status.done) {
-            setState(() {
-              _activeExtractionRun = status;
-              _isExtractionStopping = false;
-            });
-            break;
-          }
-          setState(() => _activeExtractionRun = status);
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Extraction stopped')),
-        );
-        _loadStats();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isExtractionStopping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error stopping: $e')),
-        );
-      }
-    }
-  }
-
-  // ============================================================
-  // JOB QUEUE DISCOVERY METHODS (Droplet Worker)
-  // ============================================================
-
-  /// Start a new job queue discovery run.
-  Future<void> _startDiscoveryRun({String tier = 'basic'}) async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final run = await service.startJobQueueDiscoveryRun(tier: tier);
-      
-      if (mounted) {
-        setState(() => _activeDiscoveryRun = run);
-        _pollJobQueueDiscoveryRun(run.runId);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Discovery started: Queued ${run.progressTotal} states'),
-            backgroundColor: AppColors.info,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error starting discovery: $e')),
-        );
-      }
-    }
-  }
-
-  /// Resume a discovery run by enqueueing missing states.
-  Future<void> _resumeDiscoveryRun() async {
-    if (_activeDiscoveryRun == null) return;
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final run = await service.resumeDiscoveryRun(
-        _activeDiscoveryRun!.runId,
-        tier: _activeDiscoveryRun!.tier == 'pro' ? 'pro' : 'basic',
-      );
-      
-      if (mounted) {
-        setState(() => _activeDiscoveryRun = run);
-        _pollJobQueueDiscoveryRun(run.runId);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Resumed discovery: Queued ${run.progressTotal} states'),
-            backgroundColor: AppColors.info,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error resuming discovery: $e')),
-        );
-      }
-    }
-  }
-
-  /// Requeue stuck jobs in the current discovery run.
-  Future<void> _requeueDiscoveryRun() async {
-    if (_activeDiscoveryRun == null) return;
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final result = await service.requeDiscoveryRun(_activeDiscoveryRun!.runId);
-      
-      final requeued = result['requeued_stuck'] as int? ?? 0;
-      final cleared = result['locks_cleared'] as int? ?? 0;
-      
-      if (mounted) {
-        // Refresh status
-        final status = await service.getJobQueueRunStatus(runId: _activeDiscoveryRun!.runId);
-        if (status != null) {
-          setState(() => _activeDiscoveryRun = status);
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Requeued $requeued stuck jobs, cleared $cleared locks'),
-            backgroundColor: AppColors.info,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error requeuing: $e')),
-        );
-      }
-    }
-  }
-
-  /// Poll job queue discovery run until done.
-  Future<void> _pollJobQueueDiscoveryRun(String runId) async {
-    final service = ref.read(regulationsServiceProvider);
-    int pollCount = 0;
-
-    while (mounted && _activeDiscoveryRun != null && !_isDiscoveryStopping) {
-      try {
-        // Wait before polling
-        await Future.delayed(const Duration(seconds: 2));
-        pollCount++;
-        
-        if (!mounted || _activeDiscoveryRun == null) break;
-        
-        // Refresh worker health every 3 polls (~6 seconds)
-        if (pollCount % 3 == 0) {
-          _checkWorkerHealth();
-        }
-        
-        final status = await service.getJobQueueRunStatus(runId: runId);
-        
-        // Handle 404 / run not found (e.g., after reset)
-        if (status == null) {
-          if (mounted) {
-            setState(() => _activeDiscoveryRun = null);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Run ended or was reset')),
-            );
-            _loadStats();
-          }
-          break;
-        }
-        
-        if (!mounted) break;
-        
-        setState(() => _activeDiscoveryRun = status);
-
-        if (status.done) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Discovery complete: ${status.summaryLabel}'),
-              backgroundColor: (status.jobs['done'] ?? 0) > 0 
-                  ? AppColors.success 
-                  : AppColors.warning,
-            ),
-          );
-          _loadStats();
-          break;
-        }
-        
-      } catch (e) {
-        if (mounted) {
-          // Check if it's a 404 error
-          final errorStr = e.toString().toLowerCase();
-          if (errorStr.contains('404') || errorStr.contains('not found')) {
-            setState(() => _activeDiscoveryRun = null);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Run ended or was reset')),
-            );
-            _loadStats();
-            break;
-          }
-          debugPrint('[RegsAdmin] Poll error: $e');
-        }
-      }
-    }
-  }
-
-  /// Stop discovery run (actually stops on server).
-  Future<void> _stopDiscoveryRun() async {
-    if (_activeDiscoveryRun == null) return;
-    
-    setState(() => _isDiscoveryStopping = true);
-    
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      await service.stopJobQueueRun(_activeDiscoveryRun!.runId);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stopping discovery...')),
-        );
-        
-        // Keep polling until stopped
-        while (mounted && _activeDiscoveryRun != null) {
-          await Future.delayed(const Duration(seconds: 1));
-          final status = await service.getJobQueueRunStatus(runId: _activeDiscoveryRun!.runId);
-          if (status == null || status.done) {
-            setState(() {
-              _activeDiscoveryRun = status;
-              _isDiscoveryStopping = false;
-            });
-            break;
-          }
-          setState(() => _activeDiscoveryRun = status);
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Discovery stopped')),
-        );
-        _loadStats();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isDiscoveryStopping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error stopping: $e')),
-        );
-      }
-    }
-  }
-
-  /// View repair report in dialog.
-  Future<void> _viewRepairReport() async {
-    final runId = _repairRun?.runId;
-    if (runId == null) return;
-
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final items = await service.fetchRepairRunItems(runId);
-      
-      if (mounted) {
-        _showRepairReportDialog(items);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading report: $e')),
-        );
-      }
-    }
-  }
-
-  void _showRepairReportDialog(List<RepairRunItem> items) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: AppColors.surface,
-        child: Container(
-          width: 600,
-          constraints: const BoxConstraints(maxHeight: 500),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.article_outlined, color: AppColors.accent),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Repair Report',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: Icon(Icons.close, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Summary
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildReportStat(
-                      'Total',
-                      items.length.toString(),
-                      AppColors.textPrimary,
-                    ),
-                    _buildReportStat(
-                      'Fixed',
-                      items.where((e) => e.isFixed).length.toString(),
-                      AppColors.success,
-                    ),
-                    _buildReportStat(
-                      'Skipped',
-                      items.where((e) => !e.isFixed).length.toString(),
-                      AppColors.warning,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Items list
-              Expanded(
-                child: ListView.builder(
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: item.isFixed 
-                              ? AppColors.success.withValues(alpha: 0.3)
-                              : AppColors.border,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: item.isFixed 
-                                      ? AppColors.success.withValues(alpha: 0.1)
-                                      : AppColors.warning.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  item.stateCode,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: item.isFixed ? AppColors.success : AppColors.warning,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                item.fieldLabel,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              const Spacer(),
-                              Icon(
-                                item.isFixed ? Icons.check_circle : Icons.help_outline,
-                                size: 16,
-                                color: item.isFixed ? AppColors.success : AppColors.warning,
-                              ),
-                            ],
-                          ),
-                          if (item.newUrl != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'New: ${item.newUrl}',
-                              style: TextStyle(fontSize: 11, color: AppColors.success),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                          if (item.message != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              item.message!,
-                              style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
-                            ),
-                          ],
-                          Text(
-                            'Crawled ${item.pagesCrawled} pages, ${item.candidatesFound} candidates',
-                            style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReportStat(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRepairProgressStat(String label, int value, Color color) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          '$label: $value',
-          style: TextStyle(
-            fontSize: 11,
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
-  
-  /// Truncate skip reason for display.
-  String _truncateReason(String reason) {
-    if (reason.length <= 25) return reason;
-    // Truncate and clean up
-    var short = reason.substring(0, 25);
-    if (short.contains(':')) {
-      short = short.split(':').first;
-    }
-    return '$short...';
-  }
-
-  Future<void> _resetData() async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => _ResetOptionsDialog(),
-    );
-    
-    if (result == null || !mounted) return;
-    
-    // Show confirmation with RESET code
-    final controller = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: Row(
-          children: [
-            Icon(Icons.warning_rounded, color: AppColors.error),
-            const SizedBox(width: 8),
-            Text('Confirm ${result.replaceAll('_', ' ').toUpperCase()}'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _getResetDescription(result),
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'Type RESET to confirm',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text == 'RESET') {
-                Navigator.pop(context, true);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Type RESET to confirm')),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed != true || !mounted) return;
-    
-    try {
-      setState(() => _isLoading = true);
-      
-      // IMPORTANT: Clear all active run states BEFORE reset
-      // This stops polling and prevents 404 errors after runs are deleted
-      _clearAllRunStates();
-      
-      final service = ref.read(regulationsServiceProvider);
-      Map<String, dynamic> resetResult;
-      String successMessage;
-      
-      // Use the appropriate reset function based on type
-      if (result == 'full') {
-        // Full reset: delete all portal links and reseed from official roots
-        resetResult = await service.resetFull(confirmCode: 'RESET');
-        final results = resetResult['results'] as Map<String, dynamic>?;
-        final deleted = results?['portal_rows_deleted'] ?? 0;
-        final inserted = results?['portal_rows_inserted'] ?? 0;
-        successMessage = 'Full reset complete. Run GPT Discovery to repopulate portal links.';
-      } else if (result == 'verification') {
-        // Verification reset: clear flags only
-        resetResult = await service.resetVerification(confirmCode: 'RESET');
-        final results = resetResult['results'] as Map<String, dynamic>?;
-        final updated = results?['portal_rows_updated'] ?? 0;
-        successMessage = 'Verification reset: $updated rows cleared. Run Verify to re-check links.';
-      } else {
-        // Extracted reset: use legacy method
-        resetResult = await service.resetData(type: result, confirmCode: 'RESET');
-        successMessage = 'Reset complete';
-      }
-      
-      if (mounted) {
-        setState(() => _isLoading = false);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(successMessage),
-            backgroundColor: AppColors.success,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        
-        // Immediately reload stats to show updated counts
-        await _loadStats();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Reset failed: $e')),
-        );
-      }
-    }
-  }
-  
-  String _getResetDescription(String type) {
-    switch (type) {
-      case 'verification':
-        return 'This will clear all verification flags, status codes, and timestamps.\n\n'
-               'All discovered URLs will remain intact.\n'
-               'Use this to re-run link verification from scratch.';
-      case 'extracted':
-        return 'This will clear:\n'
-               '• All job queue data (runs, jobs, events)\n'
-               '• All extracted regulations data\n'
-               '• All verification status\n\n'
-               'Portal URLs and official roots will be preserved.';
-      case 'full':
-        return 'This will DELETE all portal link rows and RESEED from official roots.\n\n'
-               'All data will be cleared:\n'
-               '• All discovered URLs\n'
-               '• All verification status\n'
-               '• All job queue data\n'
-               '• All extracted regulations\n\n'
-               'Only the 50 state codes from official roots will remain.';
-      default:
-        return 'Unknown reset type';
-    }
-  }
-
-  // Legacy method kept for compatibility
-  Future<void> _resetDataLegacy() async {
-    final controller = TextEditingController();
-    
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: Row(
-          children: [
-            Icon(Icons.warning_rounded, color: AppColors.error),
-            const SizedBox(width: 8),
-            const Text('Reset Regulations Data'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This will clear all portal link verification status. '
-              'Official roots will NOT be deleted.',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Type RESET to confirm:',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: 'RESET',
-                border: OutlineInputBorder(),
-              ),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text == 'RESET') {
-                Navigator.pop(context, true);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-
-    controller.dispose();
-
-    if (confirmed == true) {
-      try {
-        final service = ref.read(regulationsServiceProvider);
-        await service.resetVerificationStatus();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Verification status reset'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          _loadStats();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-      }
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              _buildHeader(),
-              
-              // Content
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _error != null
-                        ? _buildError()
-                        : _buildContent(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => context.pop(),
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: AppColors.textPrimary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Regulations Admin',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  'Manage official portal links',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _loadStats,
-            icon: const Icon(Icons.refresh_rounded),
-            color: AppColors.textSecondary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
-            const SizedBox(height: 16),
-            Text(
-              'Failed to load stats',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error ?? 'Unknown error',
-              style: TextStyle(color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadStats,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Overview Section
-          _buildSectionHeader('Overview'),
-          const SizedBox(height: 12),
-          _buildOverviewCards(),
-          
-          const SizedBox(height: 32),
-          
-          // Actions Section
-          _buildSectionHeader('Actions'),
-          const SizedBox(height: 12),
-          _buildActionsCard(),
-          
-          const SizedBox(height: 32),
-          
-          // Broken Links Section (always visible)
-          _buildBrokenLinksSection(),
-          const SizedBox(height: 32),
-          
-          // Danger Zone
-          _buildDangerZone(),
-          
-          const SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-        color: AppColors.textPrimary,
-      ),
-    );
-  }
-
-  Widget _buildOverviewCards() {
-    return Column(
-      children: [
-        // Row 1: Roots + Portal Rows
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
-                icon: Icons.account_tree_rounded,
-                label: 'Official Roots',
-                value: '${_stats.rootsCount}/50',
-                color: _stats.rootsCount == 50 ? AppColors.success : AppColors.warning,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.table_rows_rounded,
-                label: 'Portal Rows',
-                value: '${_stats.portalRowsCount}/50',
-                color: _stats.portalRowsCount == 50 ? AppColors.success : AppColors.warning,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Row 2: Fields Filled + Verified
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
-                icon: Icons.link_rounded,
-                label: 'Fields Filled',
-                value: '${_stats.filledFieldsCount}/${_stats.totalPossibleFields}',
-                color: AppColors.info,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.verified_rounded,
-                label: 'Fields Verified',
-                value: '${_stats.verifiedFieldsCount}/${_stats.totalPossibleFields}',
-                color: AppColors.success,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Row 3: PDF Sources + Extractable States
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
-                icon: Icons.picture_as_pdf_rounded,
-                label: 'PDF Sources',
-                value: '${_stats.pdfFieldsCount}',
-                color: _stats.pdfFieldsCount > 0 ? AppColors.info : AppColors.textTertiary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.auto_awesome_rounded,
-                label: 'Extractable',
-                value: '${_stats.extractableStatesCount}/50',
-                color: _stats.extractableStatesCount > 0 ? AppColors.accent : AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Row 4: Broken Links
-        _StatCard(
-          icon: Icons.link_off_rounded,
-          label: 'Broken Links',
-          value: '${_stats.brokenCount}',
-          color: _stats.brokenCount > 0 ? AppColors.error : AppColors.success,
-        ),
-        // Missing states warning
-        if (_stats.missingStateCodes.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _buildMissingStatesCard(),
-        ],
-        // Last verified
-        if (_stats.lastVerifiedAt != null) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.schedule_rounded, size: 16, color: AppColors.textSecondary),
-                const SizedBox(width: 8),
-                Text(
-                  'Last verified: ${_formatDate(_stats.lastVerifiedAt!)}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
   
-  Widget _buildMissingStatesCard() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.warning_rounded, size: 16, color: AppColors.warning),
-              const SizedBox(width: 8),
-              Text(
-                'Missing Portal Rows: ${_stats.missingStateCodes.length}',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.warning,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'States: ${_stats.missingStateCodes.join(", ")}',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _fixMissingStates,
-              icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
-              label: const Text('Fix Now'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.warning,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Future<void> _fixMissingStates() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      final inserted = await service.ensurePortalRows();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(inserted.isEmpty 
-                ? 'No missing states found' 
-                : 'Added ${inserted.length} missing state(s): ${inserted.join(", ")}'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        _loadStats(); // Refresh stats
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  Widget _buildActionsCard() {
-    // Check if there are any portal URLs to work with
-    final hasPortalUrls = _stats.filledFieldsCount > 0;
-    final hasBrokenLinks = _brokenLinks.isNotEmpty;
+  Future<void> _loadStats() async {
+    setState(() => _isLoading = true);
     
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ====== GPT-GUIDED DISCOVERY SECTION (Always enabled - creates URLs) ======
-          _buildDiscoverySection(),
-          
-          const SizedBox(height: 16),
-          const Divider(),
-          const SizedBox(height: 16),
-          
-          // ====== EXTRACT FACTS SECTION ======
-          _buildExtractionSection(),
-          
-          const SizedBox(height: 16),
-          const Divider(),
-          const SizedBox(height: 16),
-          
-          // ====== VERIFY PORTAL LINKS SECTION ======
-          Text(
-            'Verify Portal Links',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            hasPortalUrls
-                ? 'Server-side verification with timeout & retry. Safe to navigate away.'
-                : 'No portal URLs to verify. Run GPT Discovery first.',
-            style: TextStyle(
-              fontSize: 13,
-              color: hasPortalUrls ? AppColors.textSecondary : AppColors.warning,
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (_isVerifying) ...[
-            // Progress bar with actual progress value
-            LinearProgressIndicator(
-              value: _currentRun?.progress,
-              backgroundColor: AppColors.border,
-              valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
-            ),
-            const SizedBox(height: 12),
-            // Progress text with counts
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _verifyProgress ?? 'Verifying...',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      if (_currentRun != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_currentRun!.okCount} OK • ${_currentRun!.brokenCount} broken',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                // Cancel button
-                TextButton.icon(
-                  onPressed: _isCanceling ? null : _cancelVerification,
-                  icon: Icon(
-                    Icons.cancel_outlined,
-                    size: 18,
-                    color: _isCanceling ? AppColors.textTertiary : AppColors.error,
-                  ),
-                  label: Text(
-                    _isCanceling ? 'Canceling...' : 'Cancel',
-                    style: TextStyle(
-                      color: _isCanceling ? AppColors.textTertiary : AppColors.error,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ] else
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: hasPortalUrls ? _verifyAllLinks : null,
-                icon: const Icon(Icons.verified_rounded),
-                label: Text(hasPortalUrls ? 'Verify All Links' : 'Nothing to Verify (0 URLs)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: hasPortalUrls ? AppColors.accent : AppColors.textTertiary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          
-          // ====== AUTO-FIX BROKEN LINKS SECTION ======
-          if (!_isVerifying) ...[
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            Text(
-              'Auto-Fix Broken Links',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              hasBrokenLinks
-                  ? 'Attempts conservative fixes: HTTP→HTTPS, trailing slash, redirect canonicalization.'
-                  : 'No broken links detected. Run Verify first to find broken links.',
-              style: TextStyle(
-                fontSize: 13,
-                color: hasBrokenLinks ? AppColors.textSecondary : AppColors.textTertiary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_isRepairing)
-              Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.warning),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Repairing broken links...',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              )
-            else ...[
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: hasBrokenLinks ? _repairBrokenLinks : null,
-                  icon: const Icon(Icons.auto_fix_high_rounded),
-                  label: Text(hasBrokenLinks 
-                      ? 'Auto-Fix ${_brokenLinks.length} Broken Links' 
-                      : 'No Broken Links'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: hasBrokenLinks ? AppColors.warning : AppColors.textTertiary,
-                    side: BorderSide(color: hasBrokenLinks 
-                        ? AppColors.warning.withValues(alpha: 0.5)
-                        : AppColors.textTertiary.withValues(alpha: 0.3)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              if (_lastRepairResult != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Last repair: ${_lastRepairResult!.repaired} fixed, ${_lastRepairResult!.stillBroken} still broken',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _lastRepairResult!.repaired > 0 
-                              ? AppColors.success 
-                              : AppColors.textSecondary,
-                        ),
-                      ),
-                      if (_lastRepairResult!.details.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        ...(_lastRepairResult!.details.take(5).map((d) => Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '${d.state} ${d.field}: ${d.actionLabel}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                        ))),
-                        if (_lastRepairResult!.details.length > 5)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '... and ${_lastRepairResult!.details.length - 5} more',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontStyle: FontStyle.italic,
-                                color: AppColors.textTertiary,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ],
-            
-            // Discovery Repair section
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            Text(
-              'Official Discovery Repair',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Crawls official state domains to find replacement URLs for broken links.',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_repairRun != null && _repairRun!.isRunning) ...[
-              // Running state with progress
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Running Discovery Repair...',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.info,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Progress bar
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: _repairRun!.progress,
-                        backgroundColor: AppColors.border,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
-                        minHeight: 8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Progress: ${_repairRun!.progressPercent}%',
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                        Text(
-                          _repairRun!.progressText,
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _buildRepairProgressStat('Fixed', _repairRun!.fixedCount, AppColors.success),
-                        const SizedBox(width: 12),
-                        _buildRepairProgressStat('Skipped', _repairRun!.skippedCount, AppColors.warning),
-                        const SizedBox(width: 12),
-                        _buildRepairProgressStat('Errors', _repairRun!.errorCount, AppColors.error),
-                      ],
-                    ),
-                    if (_repairRun!.lastStateCode != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Current: ${_repairRun!.lastStateCode}',
-                        style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
-                      ),
-                    ],
-                    // Show skip reasons distribution
-                    if (_repairRun!.skipReasons != null && _repairRun!.skipReasons!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      const Divider(height: 1),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Skip reasons:',
-                        style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
-                      ),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: _repairRun!.skipReasons!.entries.map((e) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.warning.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '${_truncateReason(e.key)}: ${e.value}',
-                              style: TextStyle(fontSize: 9, color: AppColors.textSecondary),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: _isRepairCanceling ? null : _cancelRepairRun,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.warning,
-                          side: BorderSide(color: AppColors.warning),
-                        ),
-                        child: Text(_isRepairCanceling ? 'Canceling...' : 'Cancel'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ] else ...[
-              // Start button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _startRepairRun,
-                  icon: const Icon(Icons.travel_explore_rounded),
-                  label: const Text('Repair via Official Discovery'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.info,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              // Show completed run summary
-              if (_repairRun != null && _repairRun!.isComplete) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _repairRun!.fixedCount > 0 
-                          ? AppColors.success.withValues(alpha: 0.3)
-                          : AppColors.border,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            _repairRun!.fixedCount > 0 
-                                ? Icons.check_circle_outline 
-                                : Icons.info_outline,
-                            size: 16,
-                            color: _repairRun!.fixedCount > 0 
-                                ? AppColors.success 
-                                : AppColors.textSecondary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Discovery complete: ${_repairRun!.fixedCount} fixed, ${_repairRun!.skippedCount} skipped',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: _repairRun!.fixedCount > 0 
-                                  ? AppColors.success 
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          TextButton.icon(
-                            onPressed: _viewRepairReport,
-                            icon: Icon(Icons.article_outlined, size: 16, color: AppColors.accent),
-                            label: Text(
-                              'View Full Report',
-                              style: TextStyle(fontSize: 12, color: AppColors.accent),
-                            ),
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          TextButton.icon(
-                            onPressed: _viewRepairHistory,
-                            icon: Icon(Icons.history_rounded, size: 16, color: AppColors.textSecondary),
-                            label: Text(
-                              'Repair History',
-                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                            ),
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-            
-            // Full Rebuild section
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            Text(
-              'Full Rebuild (Keep Official Roots)',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.warning,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Resets all portal sub-links to null, then runs GPT discovery for all 50 states. Official PDF roots are preserved.',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: (_repairRun != null && _repairRun!.isRunning) ? null : _showRebuildDialog,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Rebuild Portal Links'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.warning,
-                  side: BorderSide(color: AppColors.warning),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-            
-            // ====== RECORD HIGHLIGHTS SECTION ======
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            _buildRecordHighlightsAdminSection(),
-            
-          ],
-        ],
-      ),
-    );
-  }
-  
-  /// Build the Record Highlights admin section
-  Widget _buildRecordHighlightsAdminSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.emoji_events_rounded, size: 18, color: AppColors.accent),
-            const SizedBox(width: 8),
-            Text(
-              'State Record Highlights',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Premium content showing state record buck and bass data with photos and stories.',
-          style: TextStyle(
-            fontSize: 13,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        
-        // Info card about current status with detailed stats
-        FutureBuilder<Map<String, dynamic>>(
-          future: _getRecordHighlightsStats(),
-          builder: (context, snapshot) {
-            final stats = snapshot.data ?? {'total': 0, 'high_quality': 0, 'buck_verified': 0, 'bass_verified': 0};
-            final total = stats['total'] as int? ?? 0;
-            final highQuality = stats['high_quality'] as int? ?? 0;
-            final buckVerified = stats['buck_verified'] as int? ?? 0;
-            final bassVerified = stats['bass_verified'] as int? ?? 0;
-            final verifiedPhotos = buckVerified + bassVerified;
-            final maxPhotos = total * 2;
-            final missingPhotos = maxPhotos - verifiedPhotos;
-            
-            final hasAllData = total >= 50;
-            final hasVerifiedPhotos = verifiedPhotos > 0;
-            
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: hasAllData 
-                    ? AppColors.success.withValues(alpha: 0.08)
-                    : AppColors.info.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: hasAllData 
-                      ? AppColors.success.withValues(alpha: 0.3)
-                      : AppColors.info.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        hasAllData ? Icons.check_circle : Icons.info_outline,
-                        size: 16,
-                        color: hasAllData ? AppColors.success : AppColors.info,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        hasAllData ? 'All 50 States Have Record Data' : 'Record Coverage',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: hasAllData ? AppColors.success : AppColors.info,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: [
-                      _buildStatPill('States', '$total/50', total >= 50),
-                      _buildStatPill('Verified Photos', '$verifiedPhotos', hasVerifiedPhotos),
-                      _buildStatPill('Missing Photos', '$missingPhotos', false),
-                      _buildStatPill('High Quality Data', '$highQuality', highQuality >= 25),
-                    ],
-                  ),
-                  if (missingPhotos > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Photos require GPT verification from official sources. "Photo unavailable" shown when unverified.',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: AppColors.textTertiary,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        
-        // Action buttons row
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _viewRecordHighlights,
-                icon: const Icon(Icons.visibility_rounded, size: 16),
-                label: const Text('View Records'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accent,
-                  side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _refreshRecordPhotos,
-                icon: const Icon(Icons.photo_library_rounded, size: 16),
-                label: const Text('Refresh Photos'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.info,
-                  side: BorderSide(color: AppColors.info.withValues(alpha: 0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-  
-  /// Build a stat pill widget
-  Widget _buildStatPill(String label, String value, bool isGood) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: isGood 
-            ? AppColors.success.withValues(alpha: 0.15)
-            : AppColors.surfaceHover,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: isGood ? AppColors.success : AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  /// Get record highlights stats
-  Future<Map<String, dynamic>> _getRecordHighlightsStats() async {
     try {
       final service = ref.read(regulationsServiceProvider);
       final client = service.client;
-      if (client == null) return {'total': 0, 'high_quality': 0, 'buck_verified': 0, 'bass_verified': 0};
+      if (client == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
       
+      // Load record stats
       final response = await client
           .from('state_record_highlights')
-          .select('state_code, data_quality, buck_photo_url, bass_photo_url, buck_photo_verified, bass_photo_verified');
+          .select('state_code, data_quality, buck_photo_verified, bass_photo_verified, buck_story_summary, bass_story_summary');
       
-      final total = (response as List).length;
-      final highQuality = response.where((r) => r['data_quality'] == 'high').length;
-      // Only count VERIFIED photos, not just any photo URL
-      final buckVerified = response.where((r) => r['buck_photo_verified'] == true).length;
-      final bassVerified = response.where((r) => r['bass_photo_verified'] == true).length;
+      final rows = response as List;
+      final total = rows.length;
+      final buckVerified = rows.where((r) => r['buck_photo_verified'] == true).length;
+      final bassVerified = rows.where((r) => r['bass_photo_verified'] == true).length;
+      final highQuality = rows.where((r) => r['data_quality'] == 'high').length;
+      final withBuckStory = rows.where((r) => r['buck_story_summary'] != null).length;
+      final withBassStory = rows.where((r) => r['bass_story_summary'] != null).length;
       
-      return {
-        'total': total,
-        'high_quality': highQuality,
-        'buck_verified': buckVerified,
-        'bass_verified': bassVerified,
-      };
+      if (mounted) {
+        setState(() {
+          _stats = _RecordStats(
+            totalStates: total,
+            buckPhotosVerified: buckVerified,
+            bassPhotosVerified: bassVerified,
+            highQualityData: highQuality,
+            withBuckStory: withBuckStory,
+            withBassStory: withBassStory,
+          );
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      return {'total': 0, 'high_quality': 0, 'buck_verified': 0, 'bass_verified': 0};
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
   
-  /// View all record highlights
-  void _viewRecordHighlights() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Navigate to any state page to see the record highlights with photos.'),
-        backgroundColor: AppColors.info,
-      ),
-    );
+  Future<void> _checkForActiveRun() async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final client = service.client;
+      if (client == null) return;
+      
+      final response = await client
+          .from('record_photo_seed_runs')
+          .select()
+          .inFilter('status', ['queued', 'running'])
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (response != null && mounted) {
+        setState(() {
+          _activeRun = _PhotoSeedRun.fromJson(response);
+        });
+        _startPolling();
+        _loadRecentEvents(response['id']);
+      }
+    } catch (e) {
+      debugPrint('Error checking for active run: $e');
+    }
   }
   
-  /// Refresh record photos via strict GPT-verified Edge Function
-  Future<void> _refreshRecordPhotos() async {
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollRunStatus());
+  }
+  
+  Future<void> _pollRunStatus() async {
+    if (_activeRun == null) {
+      _pollTimer?.cancel();
+      return;
+    }
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final client = service.client;
+      if (client == null) return;
+      
+      final response = await client
+          .from('record_photo_seed_runs')
+          .select()
+          .eq('id', _activeRun!.id)
+          .single();
+      
+      final run = _PhotoSeedRun.fromJson(response);
+      
+      if (mounted) {
+        setState(() => _activeRun = run);
+        
+        if (!run.isActive) {
+          _pollTimer?.cancel();
+          _loadStats(); // Refresh stats when done
+        }
+      }
+      
+      _loadRecentEvents(run.id);
+    } catch (e) {
+      debugPrint('Error polling run status: $e');
+    }
+  }
+  
+  Future<void> _loadRecentEvents(String runId) async {
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final client = service.client;
+      if (client == null) return;
+      
+      final response = await client
+          .from('record_photo_seed_events')
+          .select()
+          .eq('run_id', runId)
+          .order('created_at', ascending: false)
+          .limit(15);
+      
+      if (mounted) {
+        setState(() {
+          _recentEvents = (response as List)
+              .map((e) => _SeedEvent.fromJson(e))
+              .toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading events: $e');
+    }
+  }
+  
+  Future<void> _startPhotoSeeding() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Seed Verified Photos?'),
-        content: const Text(
-          'This will attempt to find and verify ACTUAL record photos from official sources using GPT. '
-          'Only photos that pass GPT verification will be stored.\n\n'
-          'Photos that cannot be verified will show "Photo unavailable" with a source link.',
+        backgroundColor: AppColors.surface,
+        title: const Text('Start Photo Verification?', style: TextStyle(color: AppColors.textPrimary)),
+        content: Text(
+          'This will attempt to find and verify ACTUAL record photos from official sources using GPT.\n\n'
+          'Only photos that pass strict verification will be stored. Others will show "Photo unavailable".',
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.info),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
             child: const Text('Start Verification'),
           ),
         ],
@@ -2336,2076 +200,672 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     if (confirmed != true) return;
     
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Starting GPT photo verification... This may take several minutes.'),
-          backgroundColor: AppColors.info,
-          duration: Duration(seconds: 15),
-        ),
-      );
-      
       final service = ref.read(regulationsServiceProvider);
       final client = service.client;
       if (client == null) throw Exception('Not connected');
       
-      // Call the strict GPT-verified Edge Function
-      final response = await client.functions.invoke(
-        'seed-record-photos-strict',
-        body: {'mode': 'missing', 'limit': 10}, // Process 10 states at a time
-      );
+      // Create a new run
+      final runResponse = await client
+          .from('record_photo_seed_runs')
+          .insert({
+            'status': 'queued',
+            'total_targets': 100,
+            'processed': 0,
+            'verified': 0,
+            'missing': 0,
+            'failed': 0,
+          })
+          .select()
+          .single();
       
-      if (mounted) {
-        final data = response.data as Map<String, dynamic>?;
-        final buckVerified = data?['buck_verified'] ?? 0;
-        final bassVerified = data?['bass_verified'] ?? 0;
-        final buckMissing = data?['buck_missing'] ?? 0;
-        final bassMissing = data?['bass_missing'] ?? 0;
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Verification complete: ${buckVerified + bassVerified} verified, '
-              '${buckMissing + bassMissing} could not be verified from sources.',
-            ),
-            backgroundColor: buckVerified + bassVerified > 0 ? AppColors.success : AppColors.warning,
-          ),
-        );
-        
-        setState(() {}); // Refresh stats
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error during verification: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-  
-  Widget _buildExtractionSection() {
-    final hasExtractableSources = _stats.hasExtractableSources;
-    final hasPdfSources = _stats.hasPdfSources;
-    
-    // Build helper text based on available sources
-    String helperText;
-    if (hasExtractableSources) {
-      if (hasPdfSources) {
-        helperText = 'Extract from ${_stats.extractableStatesCount} states (${_stats.pdfFieldsCount} PDFs). Parses PDFs on server.';
-      } else {
-        helperText = 'Extract from ${_stats.extractableStatesCount} states. Only publishes when confidence >= 85%.';
-      }
-    } else {
-      helperText = 'No portal URLs to extract from. Run GPT Discovery first.';
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.accent),
-            const SizedBox(width: 8),
-            Text(
-              'Extract Facts (Deer/Turkey)',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            if (hasPdfSources) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'PDF',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.info,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          helperText,
-          style: TextStyle(
-            fontSize: 13,
-            color: hasExtractableSources ? AppColors.textSecondary : AppColors.warning,
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Worker health indicator (same worker handles extraction)
-        _buildWorkerHealthIndicator(),
-        const SizedBox(height: 12),
-        
-        if (_activeExtractionRun != null && _activeExtractionRun!.isRunning) ...[
-          // Progress bar
-          LinearProgressIndicator(
-            value: _activeExtractionRun!.progress,
-            backgroundColor: AppColors.border,
-            valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
-          ),
-          const SizedBox(height: 12),
-          // Derived status badge based on worker health + run progress
-          _buildDerivedStatusBadgeFor(_activeExtractionRun),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_activeExtractionRun!.progressDone}/${_activeExtractionRun!.progressTotal} jobs',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _activeExtractionRun!.summaryLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    // Show status: either "Extracting: XX" or status label
-                    Text(
-                      _activeExtractionRun!.hasStoppableJobs
-                          ? (_activeExtractionRun!.lastState != null
-                              ? '${_activeExtractionRun!.tier.toUpperCase()} • Extracting: ${_activeExtractionRun!.lastState}'
-                              : '${_activeExtractionRun!.tier.toUpperCase()} • Starting...')
-                          : '${_activeExtractionRun!.tier.toUpperCase()} • ${_activeExtractionRun!.statusLabel}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Only show Stop button if there are stoppable jobs
-              if (_activeExtractionRun!.hasStoppableJobs)
-                TextButton.icon(
-                  onPressed: _isExtractionStopping ? null : _stopExtractionRun,
-                  icon: Icon(
-                    Icons.stop_circle_outlined,
-                    size: 18,
-                    color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
-                  ),
-                  label: Text(
-                    _isExtractionStopping ? 'Stopping...' : 'Stop',
-                    style: TextStyle(
-                      color: _isExtractionStopping ? AppColors.textTertiary : AppColors.error,
-                    ),
-                  ),
-                )
-              else
-                // Show "finishing" indicator when no stoppable jobs
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.textTertiary),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Finishing...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ] else ...[
-          // Results display (if completed)
-          if (_activeExtractionRun != null && _activeExtractionRun!.done) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _activeExtractionRun!.wasStopped 
-                      ? AppColors.warning.withValues(alpha: 0.3)
-                      : AppColors.border,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _activeExtractionRun!.wasStopped 
-                            ? Icons.stop_circle_outlined 
-                            : Icons.check_circle_outline, 
-                        size: 16, 
-                        color: _activeExtractionRun!.wasStopped 
-                            ? AppColors.warning 
-                            : AppColors.success,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _activeExtractionRun!.wasStopped 
-                            ? 'Extraction stopped' 
-                            : 'Extraction complete',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _activeExtractionRun!.wasStopped 
-                              ? AppColors.warning 
-                              : AppColors.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _activeExtractionRun!.summaryLabel,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          
-          // Start buttons row
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: hasExtractableSources ? () => _startExtractionRun(tier: 'basic') : null,
-                  icon: const Icon(Icons.auto_awesome_rounded),
-                  label: Text(hasExtractableSources ? 'Extract Facts Now' : 'Run Discovery First'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: hasExtractableSources ? AppColors.accent : AppColors.textTertiary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                height: 44,
-                child: OutlinedButton.icon(
-                  onPressed: hasExtractableSources ? () => _startExtractionRun(tier: 'pro') : null,
-                  icon: Icon(Icons.bolt, size: 16, color: hasExtractableSources ? AppColors.accent : AppColors.textTertiary),
-                  label: Text(
-                    'PRO',
-                    style: TextStyle(
-                      color: hasExtractableSources ? AppColors.accent : AppColors.textTertiary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: hasExtractableSources 
-                        ? AppColors.accent.withValues(alpha: 0.5)
-                        : AppColors.textTertiary.withValues(alpha: 0.3)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-  
-  Widget _buildDiscoverySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.travel_explore_rounded, size: 18, color: AppColors.accent),
-            const SizedBox(width: 8),
-            Text(
-              'GPT-Guided Discovery',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Smart crawler guided by GPT to find portal links. Crawls 40-80 pages per state, validates strictly.',
-          style: TextStyle(
-            fontSize: 13,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Worker health indicator
-        _buildWorkerHealthIndicator(),
-        const SizedBox(height: 12),
-        
-        if (_activeDiscoveryRun != null && _activeDiscoveryRun!.isRunning) ...[
-          // Progress bar
-          LinearProgressIndicator(
-            value: _activeDiscoveryRun!.progress,
-            backgroundColor: AppColors.border,
-            valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
-          ),
-          const SizedBox(height: 12),
-          // Derived status badge based on worker health + run progress
-          _buildDerivedStatusBadge(),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Done: ${_activeDiscoveryRun!.progressDone}/${_activeDiscoveryRun!.progressTotal} states',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // Show detailed counts
-                    Builder(
-                      builder: (context) {
-                        final jobs = _activeDiscoveryRun!.jobs;
-                        final parts = <String>[];
-                        if ((jobs['queued'] ?? 0) > 0) parts.add('Queued: ${jobs['queued']}');
-                        if ((jobs['running'] ?? 0) > 0) parts.add('Running: ${jobs['running']}');
-                        if ((jobs['failed'] ?? 0) > 0) parts.add('Failed: ${jobs['failed']}');
-                        if ((jobs['skipped'] ?? 0) > 0) parts.add('Skipped: ${jobs['skipped']}');
-                        
-                        return Text(
-                          parts.isEmpty ? 'Processing...' : parts.join(' • '),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        );
-                      },
-                    ),
-                    // Show status: either "Crawling: XX" or "Finishing..." or status label
-                    Text(
-                      _activeDiscoveryRun!.hasStoppableJobs
-                          ? (_activeDiscoveryRun!.lastState != null
-                              ? '${_activeDiscoveryRun!.tier.toUpperCase()} • Crawling: ${_activeDiscoveryRun!.lastState}'
-                              : '${_activeDiscoveryRun!.tier.toUpperCase()} • Starting...')
-                          : '${_activeDiscoveryRun!.tier.toUpperCase()} • ${_activeDiscoveryRun!.statusLabel}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Show Stop and Resume buttons
-              if (_activeDiscoveryRun!.hasStoppableJobs) ...[
-                TextButton.icon(
-                  onPressed: _isDiscoveryStopping ? null : _stopDiscoveryRun,
-                  icon: Icon(
-                    Icons.stop_circle_outlined,
-                    size: 18,
-                    color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
-                  ),
-                  label: Text(
-                    _isDiscoveryStopping ? 'Stopping...' : 'Stop',
-                    style: TextStyle(
-                      color: _isDiscoveryStopping ? AppColors.textTertiary : AppColors.error,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _resumeDiscoveryRun,
-                  icon: const Icon(
-                    Icons.play_arrow_rounded,
-                    size: 18,
-                  ),
-                  label: const Text('Resume'),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _requeueDiscoveryRun,
-                  icon: const Icon(
-                    Icons.refresh,
-                    size: 18,
-                  ),
-                  label: const Text('Unstick'),
-                ),
-              ]
-              else
-                // Show "finishing" indicator when no stoppable jobs
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.textTertiary),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Finishing...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ] else ...[
-          // Results display (if completed)
-          if (_activeDiscoveryRun != null && _activeDiscoveryRun!.done) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _activeDiscoveryRun!.wasStopped 
-                      ? AppColors.warning.withValues(alpha: 0.3)
-                      : AppColors.border,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _activeDiscoveryRun!.wasStopped 
-                            ? Icons.stop_circle_outlined 
-                            : Icons.check_circle_outline, 
-                        size: 16, 
-                        color: _activeDiscoveryRun!.wasStopped 
-                            ? AppColors.warning 
-                            : AppColors.success,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _activeDiscoveryRun!.wasStopped 
-                            ? 'Discovery stopped' 
-                            : 'Discovery complete',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _activeDiscoveryRun!.wasStopped 
-                              ? AppColors.warning 
-                              : AppColors.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _activeDiscoveryRun!.summaryLabel,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Show Resume and Unstick buttons if stopped but not completed
-            if (_activeDiscoveryRun!.wasStopped && !_activeDiscoveryRun!.allJobsTerminal)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _resumeDiscoveryRun,
-                        icon: const Icon(Icons.play_arrow_rounded),
-                        label: const Text('Resume'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _requeueDiscoveryRun,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Unstick'),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-          
-          // Start buttons row
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _startDiscoveryRun(tier: 'basic'),
-                  icon: const Icon(Icons.travel_explore_rounded),
-                  label: const Text('Run GPT Discovery'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                height: 44,
-                child: OutlinedButton.icon(
-                  onPressed: () => _startDiscoveryRun(tier: 'pro'),
-                  icon: Icon(Icons.bolt, size: 16, color: AppColors.accent),
-                  label: Text(
-                    'PRO',
-                    style: TextStyle(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-  
-  /// Show repair history modal with undo functionality.
-  Future<void> _viewRepairHistory() async {
-    final service = ref.read(regulationsServiceProvider);
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => _RepairHistoryDialog(service: service),
-    );
-  }
-  
-  /// Show rebuild confirmation dialog.
-  Future<void> _showRebuildDialog() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => _RebuildConfirmDialog(),
-    );
-    
-    if (confirmed == true && mounted) {
-      await _executeRebuild();
-    }
-  }
-  
-  /// Execute full rebuild: reset portal links then run GPT discovery.
-  Future<void> _executeRebuild() async {
-    try {
-      final service = ref.read(regulationsServiceProvider);
+      final run = _PhotoSeedRun.fromJson(runResponse);
       
-      // Step 1: Reset portal links
-      setState(() => _verifyProgress = 'Resetting portal links...');
-      await service.resetPortalLinks(confirmCode: 'RESET', preserveLocks: true);
-      
-      if (!mounted) return;
-      
-      // Step 2: Start full rebuild GPT discovery
-      setState(() => _verifyProgress = 'Starting GPT discovery for all states...');
-      final run = await service.startRepairRun(fullRebuild: true);
-      
-      if (!mounted) return;
       setState(() {
-        _repairRun = run;
-        _verifyProgress = null;
+        _activeRun = run;
+        _recentEvents = [];
       });
       
-      // Poll for progress
-      _pollRepairRun(run.runId, fullRebuild: true);
+      _startPolling();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Full rebuild started. GPT is discovering portal links...'),
-          backgroundColor: AppColors.info,
-        ),
+      // Trigger the Edge Function
+      await client.functions.invoke(
+        'seed-record-photos-strict',
+        body: {'runId': run.id, 'mode': 'missing', 'limit': 50},
       );
+      
     } catch (e) {
       if (mounted) {
-        setState(() => _verifyProgress = null);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Rebuild failed: $e'),
+            content: Text('Error starting verification: $e'),
             backgroundColor: AppColors.error,
           ),
         );
       }
+    }
+  }
+  
+  Future<void> _stopPhotoSeeding() async {
+    if (_activeRun == null) return;
+    
+    try {
+      final service = ref.read(regulationsServiceProvider);
+      final client = service.client;
+      if (client == null) return;
+      
+      await client
+          .from('record_photo_seed_runs')
+          .update({'status': 'stopping'})
+          .eq('id', _activeRun!.id);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stopping verification...'), backgroundColor: AppColors.warning),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error stopping run: $e');
     }
   }
 
-  Widget _buildBrokenLinksSection() {
-    final hasBrokenLinks = _brokenLinks.isNotEmpty;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: hasBrokenLinks ? () => setState(() => _showBrokenLinks = !_showBrokenLinks) : null,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(context),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildContent(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => context.pop(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  hasBrokenLinks ? Icons.warning_amber_rounded : Icons.check_circle_outline,
-                  size: 18,
-                  color: hasBrokenLinks ? AppColors.error : AppColors.success,
-                ),
-                const SizedBox(width: 8),
                 Text(
-                  hasBrokenLinks 
-                      ? 'Broken Links (${_brokenLinks.length})'
-                      : 'No Broken Links',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: hasBrokenLinks ? AppColors.error : AppColors.success,
-                  ),
+                  'Records Admin',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                 ),
-                const Spacer(),
-                if (hasBrokenLinks)
-                  Icon(
-                    _showBrokenLinks ? Icons.expand_less : Icons.expand_more,
-                    color: AppColors.textSecondary,
-                  ),
+                Text(
+                  'Manage state record data & photos',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),
-        ),
-        if (!hasBrokenLinks) ...[
-          const SizedBox(height: 8),
-          Text(
-            _stats.filledFieldsCount > 0
-                ? 'All portal links are healthy. Run Verify to check again.'
-                : 'No portal links to check. Run GPT Discovery first.',
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
+          IconButton(
+            onPressed: _loadStats,
+            icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
           ),
         ],
-        if (_showBrokenLinks && hasBrokenLinks) ...[
-          const SizedBox(height: 12),
-          // Group broken links by state
-          ..._buildGroupedBrokenLinks(),
-        ],
-      ],
+      ),
     );
   }
-
-  /// Build broken links grouped by state with expandable details.
-  List<Widget> _buildGroupedBrokenLinks() {
-    // Group by state
-    final grouped = <String, List<_BrokenLink>>{};
-    for (final link in _brokenLinks) {
-      grouped.putIfAbsent(link.stateCode, () => []).add(link);
-    }
-    
-    final states = grouped.keys.toList()..sort();
-    
-    return states.map((stateCode) {
-      final links = grouped[stateCode]!;
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: EdgeInsets.zero,
-          leading: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.error.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              stateCode,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.error,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          title: Text(
-            '${links.length} broken link${links.length == 1 ? '' : 's'}',
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          children: links.map((link) => _buildBrokenLinkItem(link)).toList(),
-        ),
-      );
-    }).toList();
-  }
-
-  Widget _buildBrokenLinkItem(_BrokenLink link) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.border),
-        ),
+  
+  Widget _buildContent() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenPadding,
+        0,
+        AppSpacing.screenPadding,
+        AppSpacing.screenPadding,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Stats overview
+          _buildStatsSection(),
+          const SizedBox(height: AppSpacing.xl),
+          
+          // Photo seeding section
+          _buildPhotoSeedingSection(),
+          const SizedBox(height: AppSpacing.xl),
+          
+          // Advanced tools (collapsed)
+          _buildAdvancedSection(),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildStatsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.insights_rounded, size: 20, color: AppColors.accent),
+            const SizedBox(width: 8),
+            const Text(
+              'Record Data Overview',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        
+        // Stats grid
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Column(
             children: [
-              Expanded(
-                child: Text(
-                  link.field,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+              Row(
+                children: [
+                  Expanded(child: _StatTile(
+                    label: 'States with Data',
+                    value: '${_stats.totalStates}/50',
+                    isGood: _stats.totalStates >= 50,
+                    icon: Icons.map_rounded,
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: _StatTile(
+                    label: 'High Quality',
+                    value: '${_stats.highQualityData}',
+                    isGood: _stats.highQualityData >= 25,
+                    icon: Icons.star_rounded,
+                  )),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  link.statusLabel,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.error,
-                    fontFamily: 'monospace',
-                  ),
-                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _StatTile(
+                    label: 'Buck Photos Verified',
+                    value: '${_stats.buckPhotosVerified}/50',
+                    isGood: _stats.buckPhotosVerified > 0,
+                    icon: Icons.photo_camera_rounded,
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: _StatTile(
+                    label: 'Bass Photos Verified',
+                    value: '${_stats.bassPhotosVerified}/50',
+                    isGood: _stats.bassPhotosVerified > 0,
+                    icon: Icons.photo_camera_rounded,
+                  )),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _StatTile(
+                    label: 'Buck Stories',
+                    value: '${_stats.withBuckStory}/50',
+                    isGood: _stats.withBuckStory >= 50,
+                    icon: Icons.auto_stories_rounded,
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: _StatTile(
+                    label: 'Bass Stories',
+                    value: '${_stats.withBassStory}/50',
+                    isGood: _stats.withBassStory >= 50,
+                    icon: Icons.auto_stories_rounded,
+                  )),
+                ],
               ),
             ],
           ),
-          if (link.url != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              link.url!,
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textTertiary,
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildPhotoSeedingSection() {
+    final run = _activeRun;
+    final hasActiveRun = run != null && run.isActive;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.image_search_rounded, size: 20, color: AppColors.info),
+            const SizedBox(width: 8),
+            const Text(
+              'Photo Verification Pipeline',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Uses GPT to find and verify actual record photos from official sources.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        
+        // Progress tracker (when running)
+        if (hasActiveRun)
+          _buildProgressTracker(run)
+        else
+          _buildStartButton(),
+        
+        // Recent events log
+        if (_recentEvents.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          _buildEventsLog(),
+        ],
+      ],
+    );
+  }
+  
+  Widget _buildStartButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _startPhotoSeeding,
+        icon: const Icon(Icons.play_arrow_rounded),
+        label: const Text('Start Photo Verification'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.info,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildProgressTracker(_PhotoSeedRun run) {
+    final progress = run.totalTargets > 0 ? run.processed / run.totalTargets : 0.0;
+    final isRunning = run.status == 'running';
+    final isStopping = run.status == 'stopping';
+    
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: isRunning ? AppColors.info.withValues(alpha: 0.3) : AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Status row
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isRunning ? AppColors.success : (isStopping ? AppColors.warning : AppColors.textTertiary),
+                ),
               ),
+              const SizedBox(width: 8),
+              Text(
+                run.status.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isRunning ? AppColors.success : AppColors.textSecondary,
+                ),
+              ),
+              const Spacer(),
+              if (run.currentState != null)
+                Text(
+                  'Processing: ${run.currentState} (${run.currentPhase ?? "..."})',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: AppColors.surfaceHover,
+              valueColor: AlwaysStoppedAnimation(isRunning ? AppColors.info : AppColors.textTertiary),
+              minHeight: 8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          // Counters
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${run.processed}/${run.totalTargets} processed',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              Row(
+                children: [
+                  _CounterChip(label: 'Verified', value: run.verified, color: AppColors.success),
+                  const SizedBox(width: 8),
+                  _CounterChip(label: 'Missing', value: run.missing, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  _CounterChip(label: 'Failed', value: run.failed, color: AppColors.error),
+                ],
+              ),
+            ],
+          ),
+          
+          // Last message
+          if (run.lastMessage != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              run.lastMessage!,
+              style: TextStyle(fontSize: 11, color: AppColors.textTertiary, fontStyle: FontStyle.italic),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
-          if (link.error != null && link.error!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              link.error!,
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.error,
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton.icon(
-                onPressed: () => _editBrokenLink(link),
-                icon: Icon(Icons.edit_rounded, size: 14, color: AppColors.accent),
-                label: Text(
-                  'Edit URL',
-                  style: TextStyle(fontSize: 12, color: AppColors.accent),
-                ),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Show dialog to manually edit a broken link URL.
-  Future<void> _editBrokenLink(_BrokenLink link) async {
-    final controller = TextEditingController(text: link.url ?? '');
-    
-    final newUrl = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(
-          'Edit ${link.field} URL',
-          style: TextStyle(color: AppColors.textPrimary),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'State: ${link.stateCode}',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            ),
+          
+          // Stop button
+          if (isRunning) ...[
             const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'URL',
-                hintText: 'https://...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _stopPhotoSeeding,
+                icon: const Icon(Icons.stop_rounded, size: 18),
+                label: const Text('Stop'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.3)),
                 ),
               ),
-              maxLines: 3,
-              style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter the correct official URL. This will reset verification status.',
-              style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
-            child: const Text('Save'),
-          ),
         ],
       ),
     );
-    
-    if (newUrl != null && newUrl.isNotEmpty && newUrl != link.url) {
-      try {
-        final service = ref.read(regulationsServiceProvider);
-        await service.updatePortalLinkUrl(
-          stateCode: link.stateCode,
-          field: link.field,
-          newUrl: newUrl,
-        );
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('URL updated for ${link.stateCode} ${link.field}'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          _loadStats(); // Reload to refresh broken links
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-      }
-    }
   }
-
-  Widget _buildDangerZone() {
+  
+  Widget _buildEventsLog() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      constraints: const BoxConstraints(maxHeight: 200),
       decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        color: AppColors.surfaceHover,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.warning_rounded, size: 18, color: AppColors.error),
-              const SizedBox(width: 8),
-              Text(
-                'Danger Zone',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.error,
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(Icons.history_rounded, size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 6),
+                Text(
+                  'Recent Activity',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Reset various levels of data. Official root URLs are always preserved.',
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: _resetData,
-            icon: const Icon(Icons.restart_alt_rounded),
-            label: const Text('Reset Data...'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.error,
-              side: BorderSide(color: AppColors.error.withOpacity(0.5)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    
-    return '${date.month}/${date.day}/${date.year}';
-  }
-
-  /// Build derived status badge showing combined run+worker state.
-  Widget _buildDerivedStatusBadge() {
-    return _buildDerivedStatusBadgeFor(_activeDiscoveryRun);
-  }
-
-  /// Build derived status badge for any run type showing combined run+worker state.
-  Widget _buildDerivedStatusBadgeFor(AdminRunStatus? run) {
-    final health = _workerHealth;
-    
-    // Determine derived state
-    String label;
-    Color color;
-    IconData icon;
-    
-    if (run == null) {
-      return const SizedBox.shrink();
-    }
-    
-    final isCompleted = run.progressDone >= run.progressTotal && run.progressTotal > 0;
-    final wasStopped = run.status == 'stopped' || run.status == 'stopping';
-    final hasQueuedJobs = (run.jobs['queued'] ?? 0) > 0;
-    
-    if (isCompleted) {
-      label = 'Completed (${run.progressDone}/${run.progressTotal})';
-      color = AppColors.success;
-      icon = Icons.check_circle;
-    } else if (wasStopped) {
-      label = 'Stopped (${run.progressDone}/${run.progressTotal})';
-      color = AppColors.textSecondary;
-      icon = Icons.stop_circle;
-    } else if (health == null) {
-      label = 'Running (${run.progressDone}/${run.progressTotal}) — checking worker...';
-      color = AppColors.info;
-      icon = Icons.hourglass_empty;
-    } else if (health.isOffline) {
-      label = 'Worker Offline — ${health.statusLabel}';
-      color = AppColors.error;
-      icon = Icons.cloud_off;
-    } else if (health.isStalled && hasQueuedJobs) {
-      final mins = (health.secondsSinceProgress / 60).floor();
-      label = 'Stalled (${run.progressDone}/${run.progressTotal}) — no progress for ${mins}m';
-      color = AppColors.warning;
-      icon = Icons.pause_circle_filled;
-    } else {
-      // Running normally
-      final runningCount = run.jobs['running'] ?? 0;
-      if (runningCount > 0) {
-        label = 'Running (${run.progressDone}/${run.progressTotal}) — $runningCount active';
-      } else if (hasQueuedJobs) {
-        label = 'Running (${run.progressDone}/${run.progressTotal}) — claiming jobs...';
-      } else {
-        label = 'Running (${run.progressDone}/${run.progressTotal})';
-      }
-      color = AppColors.success;
-      icon = Icons.play_circle_filled;
-    }
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              itemCount: _recentEvents.length,
+              itemBuilder: (ctx, i) {
+                final event = _recentEvents[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        event.eventType == 'verified' ? Icons.check_circle_outline :
+                        event.eventType == 'missing' ? Icons.help_outline :
+                        event.eventType == 'failed' ? Icons.error_outline :
+                        Icons.info_outline,
+                        size: 14,
+                        color: event.eventType == 'verified' ? AppColors.success :
+                               event.eventType == 'missing' ? AppColors.warning :
+                               event.eventType == 'failed' ? AppColors.error :
+                               AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${event.stateCode ?? ""} ${event.recordType ?? ""}: ${event.message ?? event.eventType}',
+                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
   }
-
-  /// Build worker health indicator widget with enhanced status.
-  Widget _buildWorkerHealthIndicator() {
-    final health = _workerHealth;
-    
-    // Determine color based on state
-    Color stateColor;
-    IconData stateIcon;
-    if (health == null) {
-      stateColor = AppColors.textTertiary;
-      stateIcon = Icons.help_outline;
-    } else {
-      switch (health.state) {
-        case WorkerState.running:
-          stateColor = AppColors.success;
-          stateIcon = Icons.check_circle_outline;
-          break;
-        case WorkerState.stalled:
-          stateColor = AppColors.warning;
-          stateIcon = Icons.warning_amber_rounded;
-          break;
-        case WorkerState.offline:
-          stateColor = AppColors.error;
-          stateIcon = Icons.error_outline;
-          break;
-        case WorkerState.unknown:
-          stateColor = AppColors.textTertiary;
-          stateIcon = Icons.help_outline;
-          break;
-      }
-    }
-    
-    return Row(
+  
+  Widget _buildAdvancedSection() {
+    return ExpansionTile(
+      title: Row(
+        children: [
+          Icon(Icons.settings_rounded, size: 18, color: AppColors.textTertiary),
+          const SizedBox(width: 8),
+          Text(
+            'Advanced Tools',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(top: 8),
       children: [
-        // Main health badge (tappable to refresh)
-        Expanded(
-          child: GestureDetector(
-            onTap: _checkWorkerHealth,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: stateColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: stateColor.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(stateIcon, size: 14, color: stateColor),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      health == null ? 'Worker: checking...' : 'Worker: ${health.statusLabel}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: stateColor,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.refresh, size: 12, color: AppColors.textTertiary),
-                ],
-              ),
-            ),
-          ),
+        Text(
+          'Legacy link discovery and repair tools have been deprecated. '
+          'The app now uses a single canonical official link per state.',
+          style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
         ),
-        // Stop button (always visible when worker is running)
-        if (health != null && health.isHealthy) ...[
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 28,
-            child: TextButton.icon(
-              onPressed: _stopWorker,
-              icon: const Icon(Icons.stop_circle_outlined, size: 14),
-              label: const Text('Stop'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.warning,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-        ],
-        // Restart button when offline or stalled
-        if (health != null && (health.isOffline || health.isStalled)) ...[
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 28,
-            child: TextButton.icon(
-              onPressed: _restartWorker,
-              icon: const Icon(Icons.restart_alt, size: 14),
-              label: const Text('Restart'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.error,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
-
-  /// Issue restart command to worker.
-  Future<void> _restartWorker() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Restart Worker?'),
-        content: const Text(
-          'This will send a restart command to the worker. '
-          'The worker will exit and systemd will restart it automatically.\n\n'
-          'Active jobs will be lost and requeued.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Restart'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      await service.issueWorkerCommand('restart');
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Restart command sent. Worker will restart shortly.'),
-            backgroundColor: AppColors.info,
-          ),
-        );
-        
-        // Refresh health after a delay
-        await Future.delayed(const Duration(seconds: 3));
-        _checkWorkerHealth();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
-  /// Issue stop command to worker (graceful shutdown, no restart).
-  Future<void> _stopWorker() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Stop Worker?'),
-        content: const Text(
-          'This will send a STOP command to all workers. '
-          'Workers will finish current jobs and exit gracefully.\n\n'
-          'Workers will NOT restart automatically. '
-          'Use this to pause processing.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
-            child: const Text('Stop Workers'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final service = ref.read(regulationsServiceProvider);
-      await service.issueWorkerCommand('stop');
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Stop command sent. Workers will shut down after finishing current jobs.'),
-            backgroundColor: AppColors.warning,
-          ),
-        );
-        
-        // Refresh health after a delay
-        await Future.delayed(const Duration(seconds: 5));
-        _checkWorkerHealth();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
 }
 
-// ============================================================================
-// MODELS
-// ============================================================================
+// === DATA CLASSES ===
 
-class _AdminStats {
-  const _AdminStats({
-    this.rootsCount = 0,
-    this.portalRowsCount = 0,
-    this.filledFieldsCount = 0,
-    this.verifiedFieldsCount = 0,
-    this.pdfFieldsCount = 0,
-    this.miscRelatedCount = 0,
-    this.extractableStatesCount = 0,
-    this.brokenCount = 0,
-    this.missingStateCodes = const [],
-    this.lastVerifiedAt,
+class _RecordStats {
+  const _RecordStats({
+    this.totalStates = 0,
+    this.buckPhotosVerified = 0,
+    this.bassPhotosVerified = 0,
+    this.highQualityData = 0,
+    this.withBuckStory = 0,
+    this.withBassStory = 0,
   });
-
-  final int rootsCount;
-  final int portalRowsCount;
-  final int filledFieldsCount;
-  final int verifiedFieldsCount;
-  final int pdfFieldsCount;
-  final int miscRelatedCount;
-  final int extractableStatesCount;
-  final int brokenCount;
-  final List<String> missingStateCodes;
-  final DateTime? lastVerifiedAt;
-
-  /// Total possible fields (9 per state * 50 states = 450)
-  int get totalPossibleFields => rootsCount * 9;
   
-  /// Whether all states have portal rows
-  bool get allStatesHavePortalRows => portalRowsCount >= rootsCount;
-  
-  /// True if any extractable sources exist (HTML, PDF, or misc)
-  bool get hasExtractableSources => extractableStatesCount > 0;
-  
-  /// True if we have PDF sources
-  bool get hasPdfSources => pdfFieldsCount > 0;
-
-  factory _AdminStats.fromMap(Map<String, dynamic> map) {
-    return _AdminStats(
-      rootsCount: map['roots_count'] ?? 0,
-      portalRowsCount: map['portal_rows_count'] ?? 0,
-      filledFieldsCount: map['filled_fields_count'] ?? 0,
-      verifiedFieldsCount: map['verified_fields_count'] ?? 0,
-      pdfFieldsCount: map['pdf_fields_count'] ?? 0,
-      miscRelatedCount: map['misc_related_count'] ?? 0,
-      extractableStatesCount: map['extractable_states_count'] ?? 0,
-      brokenCount: map['broken_count'] ?? 0,
-      missingStateCodes: (map['missing_state_codes'] as List?)
-          ?.map((e) => e as String)
-          .toList() ?? [],
-      lastVerifiedAt: map['last_verified_at'] != null
-          ? DateTime.tryParse(map['last_verified_at'])
-          : null,
-    );
-  }
+  final int totalStates;
+  final int buckPhotosVerified;
+  final int bassPhotosVerified;
+  final int highQualityData;
+  final int withBuckStory;
+  final int withBassStory;
 }
 
-class _BrokenLink {
-  const _BrokenLink({
-    required this.stateCode,
-    required this.field,
-    this.url,
-    this.status,
-    this.error,
+class _PhotoSeedRun {
+  const _PhotoSeedRun({
+    required this.id,
+    required this.status,
+    this.totalTargets = 100,
+    this.processed = 0,
+    this.verified = 0,
+    this.missing = 0,
+    this.failed = 0,
+    this.currentState,
+    this.currentPhase,
+    this.lastMessage,
   });
-
-  final String stateCode;
-  final String field;
-  final String? url;
-  final int? status;
-  final String? error;
-
-  factory _BrokenLink.fromMap(Map<String, dynamic> map) {
-    return _BrokenLink(
-      stateCode: map['state_code'] ?? '',
-      field: map['field'] ?? '',
-      url: map['url'] as String?,
-      status: map['status'],
-      error: map['error'],
-    );
-  }
   
-  String get statusLabel {
-    if (status == null) return 'Timeout/Error';
-    if (status == 404) return '404 Not Found';
-    if (status == 403) return '403 Forbidden';
-    if (status == 500) return '500 Server Error';
-    if (status! >= 500) return '$status Server Error';
-    return 'HTTP $status';
-  }
+  final String id;
+  final String status;
+  final int totalTargets;
+  final int processed;
+  final int verified;
+  final int missing;
+  final int failed;
+  final String? currentState;
+  final String? currentPhase;
+  final String? lastMessage;
+  
+  bool get isActive => status == 'queued' || status == 'running' || status == 'stopping';
+  
+  factory _PhotoSeedRun.fromJson(Map<String, dynamic> json) => _PhotoSeedRun(
+    id: json['id'] as String,
+    status: json['status'] as String,
+    totalTargets: json['total_targets'] as int? ?? 100,
+    processed: json['processed'] as int? ?? 0,
+    verified: json['verified'] as int? ?? 0,
+    missing: json['missing'] as int? ?? 0,
+    failed: json['failed'] as int? ?? 0,
+    currentState: json['current_state'] as String?,
+    currentPhase: json['current_phase'] as String?,
+    lastMessage: json['last_message'] as String?,
+  );
 }
 
-// ============================================================================
-// WIDGETS
-// ============================================================================
+class _SeedEvent {
+  const _SeedEvent({
+    required this.id,
+    required this.eventType,
+    this.stateCode,
+    this.recordType,
+    this.message,
+  });
+  
+  final String id;
+  final String eventType;
+  final String? stateCode;
+  final String? recordType;
+  final String? message;
+  
+  factory _SeedEvent.fromJson(Map<String, dynamic> json) => _SeedEvent(
+    id: json['id'] as String,
+    eventType: json['event_type'] as String,
+    stateCode: json['state_code'] as String?,
+    recordType: json['record_type'] as String?,
+    message: json['message'] as String?,
+  );
+}
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
+// === WIDGETS ===
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
     required this.label,
     required this.value,
-    required this.color,
+    required this.icon,
+    this.isGood = false,
   });
-
-  final IconData icon;
+  
   final String label;
   final String value;
-  final Color color;
-
+  final IconData icon;
+  final bool isGood;
+  
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        color: isGood ? AppColors.success.withValues(alpha: 0.08) : AppColors.surfaceHover,
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: color),
-              const Spacer(),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Dialog showing repair history with undo functionality.
-class _RepairHistoryDialog extends StatefulWidget {
-  const _RepairHistoryDialog({required this.service});
-  
-  final RegulationsService service;
-  
-  @override
-  State<_RepairHistoryDialog> createState() => _RepairHistoryDialogState();
-}
-
-class _RepairHistoryDialogState extends State<_RepairHistoryDialog> {
-  bool _isLoading = true;
-  List<RepairAuditRecord> _repairs = [];
-  String? _error;
-  String? _undoingId;
-  
-  @override
-  void initState() {
-    super.initState();
-    _loadRepairs();
-  }
-  
-  Future<void> _loadRepairs() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    
-    try {
-      final repairs = await widget.service.fetchRecentRepairs(limit: 50);
-      if (mounted) {
-        setState(() {
-          _repairs = repairs;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
-  }
-  
-  Future<void> _undoRepair(RepairAuditRecord repair) async {
-    setState(() => _undoingId = repair.id);
-    
-    try {
-      await widget.service.undoRepair(repair.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Undone: ${repair.stateCode} ${repair.fieldLabel}'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        _loadRepairs(); // Refresh list
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Undo failed: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-        setState(() => _undoingId = null);
-      }
-    }
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppColors.surface,
-      child: Container(
-        width: 600,
-        constraints: const BoxConstraints(maxHeight: 500),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.history_rounded, color: AppColors.accent),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Repair History',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.close, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            
-            // Content
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? Center(
-                          child: Text(
-                            _error!,
-                            style: TextStyle(color: AppColors.error),
-                          ),
-                        )
-                      : _repairs.isEmpty
-                          ? Center(
-                              child: Text(
-                                'No repair history yet',
-                                style: TextStyle(color: AppColors.textSecondary),
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(8),
-                              itemCount: _repairs.length,
-                              itemBuilder: (ctx, idx) => _buildRepairItem(_repairs[idx]),
-                            ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildRepairItem(RepairAuditRecord repair) {
-    final isUndoing = _undoingId == repair.id;
-    
-    Color statusColor;
-    IconData statusIcon;
-    switch (repair.status) {
-      case 'fixed':
-        statusColor = AppColors.success;
-        statusIcon = Icons.check_circle;
-        break;
-      case 'undone':
-        statusColor = AppColors.warning;
-        statusIcon = Icons.undo;
-        break;
-      case 'skipped':
-        statusColor = AppColors.textTertiary;
-        statusIcon = Icons.skip_next;
-        break;
-      default:
-        statusColor = AppColors.textSecondary;
-        statusIcon = Icons.info_outline;
-    }
-    
-    return Card(
-      color: AppColors.background,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header row
-            Row(
+          Icon(icon, size: 20, color: isGood ? AppColors.success : AppColors.textTertiary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(statusIcon, size: 16, color: statusColor),
-                const SizedBox(width: 8),
                 Text(
-                  '${repair.stateCode} • ${repair.fieldLabel}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
+                  label,
+                  style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    repair.status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
-                    ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: isGood ? AppColors.success : AppColors.textPrimary,
                   ),
                 ),
               ],
             ),
-            
-            // Confidence + reason
-            if (repair.confidence != null && repair.confidence! > 0) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _ConfidenceBadge(confidence: repair.confidence!),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      repair.gptReason ?? repair.message ?? '',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            
-            // URLs
-            if (repair.newUrl != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.link, size: 12, color: AppColors.textTertiary),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      repair.newUrl!,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: AppColors.accent,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            
-            // Validation info
-            if (repair.validationReason != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Validation: ${repair.validationReason}',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: repair.validationPassed == true 
-                      ? AppColors.success 
-                      : AppColors.textTertiary,
-                ),
-              ),
-            ],
-            
-            // Undo button for fixed repairs
-            if (repair.canUndo) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: isUndoing ? null : () => _undoRepair(repair),
-                  icon: isUndoing
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(Icons.undo, size: 14),
-                  label: Text(isUndoing ? 'Undoing...' : 'Undo This Repair'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.warning,
-                    side: BorderSide(color: AppColors.warning.withValues(alpha: 0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                ),
-              ),
-            ],
-            
-            // Timestamp
-            if (repair.repairedAt != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                _formatTime(repair.repairedAt!),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-  
-  String _formatTime(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else {
-      return '${diff.inDays}d ago';
-    }
-  }
-}
-
-/// Badge showing GPT confidence level.
-class _ConfidenceBadge extends StatelessWidget {
-  const _ConfidenceBadge({required this.confidence});
-  
-  final int confidence;
-  
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    if (confidence >= 75) {
-      color = AppColors.success;
-    } else if (confidence >= 50) {
-      color = AppColors.warning;
-    } else {
-      color = AppColors.error;
-    }
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        '$confidence%',
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-/// Dialog to choose reset type.
-class _ResetOptionsDialog extends StatelessWidget {
-  const _ResetOptionsDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: Row(
-        children: [
-          Icon(Icons.warning_rounded, color: AppColors.warning),
-          const SizedBox(width: 8),
-          const Text('Reset Data'),
+          ),
         ],
       ),
-      content: SizedBox(
-        width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Choose what to reset:',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            
-            // Reset Verification Only
-            _ResetOptionTile(
-              title: 'Reset Verification Only',
-              subtitle: 'Clear verification flags and status codes. '
-                       'All discovered URLs remain intact.',
-              icon: Icons.verified_outlined,
-              color: AppColors.info,
-              onTap: () => Navigator.pop(context, 'verification'),
-            ),
-            const SizedBox(height: 12),
-            
-            // Reset Extracted Data
-            _ResetOptionTile(
-              title: 'Reset Extracted Data',
-              subtitle: 'Clear job queue, extracted regulations, and verification. '
-                       'Keep discovered URLs and official roots.',
-              icon: Icons.delete_sweep_outlined,
-              color: AppColors.warning,
-              onTap: () => Navigator.pop(context, 'extracted'),
-            ),
-            const SizedBox(height: 12),
-            
-            // Full Reset
-            _ResetOptionTile(
-              title: 'Full Reset (Reseed Portal Links)',
-              subtitle: 'DELETE all portal rows and RESEED from official roots. '
-                       'Guarantees clean slate with no stale data.',
-              icon: Icons.restore_outlined,
-              color: AppColors.error,
-              onTap: () => Navigator.pop(context, 'full'),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-      ],
     );
   }
 }
 
-class _ResetOptionTile extends StatelessWidget {
-  const _ResetOptionTile({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
+class _CounterChip extends StatelessWidget {
+  const _CounterChip({
+    required this.label,
+    required this.value,
     required this.color,
-    required this.onTap,
   });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
+  
+  final String label;
+  final int value;
   final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: color.withValues(alpha: 0.05),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: color),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Dialog to confirm full rebuild with RESET confirmation.
-class _RebuildConfirmDialog extends StatefulWidget {
-  const _RebuildConfirmDialog();
-  
-  @override
-  State<_RebuildConfirmDialog> createState() => _RebuildConfirmDialogState();
-}
-
-class _RebuildConfirmDialogState extends State<_RebuildConfirmDialog> {
-  final _controller = TextEditingController();
-  bool _isValid = false;
-  
-  @override
-  void initState() {
-    super.initState();
-    _controller.addListener(() {
-      setState(() {
-        _isValid = _controller.text.trim().toUpperCase() == 'RESET';
-      });
-    });
-  }
-  
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
   
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: Row(
-        children: [
-          Icon(Icons.warning_rounded, color: AppColors.warning),
-          const SizedBox(width: 8),
-          Text(
-            'Rebuild Portal Links',
-            style: TextStyle(color: AppColors.textPrimary),
-          ),
-        ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
       ),
-      content: SizedBox(
-        width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'This action will:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildBullet('Reset ALL portal sub-links to Unavailable'),
-                  _buildBullet('Run GPT discovery for all 50 states'),
-                  _buildBullet('Keep official PDF roots intact'),
-                  _buildBullet('Preserve locked field settings'),
-                  const SizedBox(height: 8),
-                  Text(
-                    'This may take several minutes.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Type RESET to confirm:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'RESET',
-                hintStyle: TextStyle(color: AppColors.textTertiary),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppColors.warning),
-                ),
-                filled: true,
-                fillColor: AppColors.background,
-              ),
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(
-            'Cancel',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ),
-        ElevatedButton(
-          onPressed: _isValid ? () => Navigator.of(context).pop(true) : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.warning,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: AppColors.border,
-            disabledForegroundColor: AppColors.textTertiary,
-          ),
-          child: const Text('Rebuild'),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildBullet(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, bottom: 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('• ', style: TextStyle(color: AppColors.warning)),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
+          Text(
+            '$value',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: color),
           ),
         ],
       ),

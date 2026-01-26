@@ -689,6 +689,11 @@ class StateRecordHighlights {
     this.bassSourceName,
     this.bassPhotoVerified,
     this.bassPhotoEvidenceText,
+    // Quotes (optional short pull-quotes)
+    this.buckQuoteText,
+    this.buckQuoteSourceUrl,
+    this.bassQuoteText,
+    this.bassQuoteSourceUrl,
     // Metadata
     this.dataQuality,
   });
@@ -727,6 +732,12 @@ class StateRecordHighlights {
   final String? bassSourceName;
   final bool? bassPhotoVerified;
   final String? bassPhotoEvidenceText;
+  
+  // Quotes (optional short pull-quotes)
+  final String? buckQuoteText;
+  final String? buckQuoteSourceUrl;
+  final String? bassQuoteText;
+  final String? bassQuoteSourceUrl;
   
   // Metadata
   final String? dataQuality;
@@ -772,6 +783,11 @@ class StateRecordHighlights {
       bassSourceName: json['bass_source_name'] as String?,
       bassPhotoVerified: json['bass_photo_verified'] as bool?,
       bassPhotoEvidenceText: json['bass_photo_evidence_text'] as String?,
+      // Quotes
+      buckQuoteText: json['buck_quote_text'] as String?,
+      buckQuoteSourceUrl: json['buck_quote_source_url'] as String?,
+      bassQuoteText: json['bass_quote_text'] as String?,
+      bassQuoteSourceUrl: json['bass_quote_source_url'] as String?,
       // Metadata
       dataQuality: json['data_quality'] as String?,
     );
