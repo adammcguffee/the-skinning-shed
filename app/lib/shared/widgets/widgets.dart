@@ -10,6 +10,7 @@ export 'app_skeleton.dart';
 export 'app_surface.dart';
 export 'app_top_bar.dart';
 export 'banner_header.dart';
+export 'page_header.dart';
 
 // Shared utilities
 export 'animated_entry.dart';

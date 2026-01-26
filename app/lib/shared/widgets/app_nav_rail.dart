@@ -34,12 +34,12 @@ class AppNavRail extends StatelessWidget {
         bottom: true,
         child: Column(
           children: [
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.xl + 4),
 
             // Logo/Brand mark - clickable to go Home
             _buildBrandMark(context),
 
-            const SizedBox(height: AppSpacing.xxxl),
+            const SizedBox(height: AppSpacing.xxxl + 8),
 
             // Navigation items - scrollable if needed
             Expanded(
@@ -123,7 +123,7 @@ class _NavItemState extends State<_NavItem> {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-        vertical: AppSpacing.xs,
+        vertical: AppSpacing.xs + 2,
         horizontal: AppSpacing.sm,
       ),
       child: MouseRegion(
@@ -132,7 +132,7 @@ class _NavItemState extends State<_NavItem> {
         child: Tooltip(
           message: widget.destination.label,
           preferBelow: false,
-          waitDuration: const Duration(milliseconds: 500),
+          waitDuration: const Duration(milliseconds: 400),
           decoration: BoxDecoration(
             color: AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
@@ -147,17 +147,30 @@ class _NavItemState extends State<_NavItem> {
             onTap: widget.onTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
               width: 48,
               height: 48,
               decoration: BoxDecoration(
                 color: widget.isSelected
-                    ? AppColors.accent.withValues(alpha: 0.15)
+                    ? AppColors.accent.withValues(alpha: 0.18)
                     : _isHovered
                         ? AppColors.surfaceHover
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                 border: widget.isSelected
-                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.3))
+                    ? Border.all(
+                        color: AppColors.accent.withValues(alpha: 0.4),
+                        width: 1.5,
+                      )
+                    : null,
+                boxShadow: widget.isSelected
+                    ? [
+                        BoxShadow(
+                          color: AppColors.accent.withValues(alpha: 0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
                     : null,
               ),
               child: Stack(

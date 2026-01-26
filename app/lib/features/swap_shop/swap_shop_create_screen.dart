@@ -141,10 +141,14 @@ class _SwapShopCreateScreenState extends ConsumerState<SwapShopCreateScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMessage = e.toString().contains('Upload failed')
+            ? 'Upload failed. Please check your connection and try again.'
+            : 'Error creating listing. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error creating listing: $e'),
+            content: Text(errorMessage),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -159,34 +163,32 @@ class _SwapShopCreateScreenState extends ConsumerState<SwapShopCreateScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text('Create Listing'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: AppButtonPrimary(
-              label: 'Post',
-              onPressed: _isSubmitting ? null : _submit,
-              isLoading: _isSubmitting,
-              size: AppButtonSize.small,
-            ),
-          ),
-        ],
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundGradient,
         ),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        child: Column(
+          children: [
+            PageHeader(
+              title: 'Create Listing',
+              subtitle: 'Swap Shop',
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.sm),
+                  child: AppButtonPrimary(
+                    label: 'Post',
+                    onPressed: _isSubmitting ? null : _submit,
+                    isLoading: _isSubmitting,
+                    size: AppButtonSize.small,
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
               // Photos section
               _SectionHeader(title: 'Photos', subtitle: 'Up to 6 photos'),
@@ -576,6 +578,8 @@ class _ContactMethodChip extends StatelessWidget {
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected ? AppColors.primary : AppColors.textSecondary,
+              ),
+                ],
               ),
             ),
           ],

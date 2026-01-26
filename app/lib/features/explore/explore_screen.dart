@@ -205,28 +205,24 @@ class _SpeciesGrid extends StatelessWidget {
         name: 'Whitetail Deer',
         icon: Icons.nature_rounded,
         color: AppColors.categoryDeer,
-        count: 1247,
         imageHint: 'deer',
       ),
       _SpeciesData(
         name: 'Turkey',
         icon: Icons.egg_rounded,
         color: AppColors.categoryTurkey,
-        count: 856,
         imageHint: 'turkey',
       ),
       _SpeciesData(
         name: 'Largemouth Bass',
         icon: Icons.water_rounded,
         color: AppColors.categoryBass,
-        count: 623,
         imageHint: 'bass',
       ),
       _SpeciesData(
         name: 'Other Game',
         icon: Icons.forest_rounded,
         color: AppColors.categoryOtherGame,
-        count: 412,
         imageHint: 'game',
       ),
     ];
@@ -254,14 +250,12 @@ class _SpeciesData {
     required this.name,
     required this.icon,
     required this.color,
-    required this.count,
     required this.imageHint,
   });
 
   final String name;
   final IconData icon;
   final Color color;
-  final int count;
   final String imageHint;
 }
 
@@ -392,27 +386,23 @@ class _SpeciesCardState extends State<_SpeciesCard> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: AppSpacing.xxs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: widget.data.color.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                          ),
-                          child: Text(
-                            '${widget.data.count} posts',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: widget.data.color,
-                            ),
-                          ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xxs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: widget.data.color.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                      ),
+                      child: Text(
+                        'Browse',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: widget.data.color,
                         ),
-                      ],
+                      ),
                     ),
                   ],
                 ),

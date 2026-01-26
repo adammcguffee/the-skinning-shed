@@ -203,12 +203,15 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.surface,
-          surfaceTintColor: Colors.transparent,
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
+        body: Column(
+          children: [
+            PageHeader(title: 'Loading...', subtitle: 'Swap Shop'),
+            const Expanded(
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -216,15 +219,18 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
     if (_error != null || _listing == null) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.surface,
-          surfaceTintColor: Colors.transparent,
-        ),
-        body: Center(
-          child: AppErrorState(
-            message: _error ?? 'Listing not found',
-            onRetry: _loadListing,
-          ),
+        body: Column(
+          children: [
+            PageHeader(title: 'Error', subtitle: 'Swap Shop'),
+            Expanded(
+              child: Center(
+                child: AppErrorState(
+                  message: _error ?? 'Listing not found',
+                  onRetry: _loadListing,
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -253,6 +259,19 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
               onPressed: () => context.pop(),
             ),
             actions: [
+              // Home button
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
+                ),
+                onPressed: () => context.go('/feed'),
+                tooltip: 'Home',
+              ),
               IconButton(
                 icon: Container(
                   padding: const EdgeInsets.all(8),

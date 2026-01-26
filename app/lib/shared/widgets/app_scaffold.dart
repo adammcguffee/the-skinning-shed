@@ -77,6 +77,11 @@ class AppScaffold extends ConsumerWidget {
       label: 'Messages',
     ),
     AppNavDestination(
+      icon: Icons.swap_horiz_outlined,
+      selectedIcon: Icons.swap_horiz_rounded,
+      label: 'Swap Shop',
+    ),
+    AppNavDestination(
       icon: Icons.cloud_outlined,
       selectedIcon: Icons.cloud_rounded,
       label: 'Weather',
@@ -104,7 +109,7 @@ class AppScaffold extends ConsumerWidget {
       final index = entry.key;
       final dest = entry.value;
       
-      // Add badge to Messages (index 4)
+      // Add badge to Messages (index 4, unchanged)
       if (index == 4 && unreadCount > 0) {
         return AppNavDestination(
           icon: dest.icon,

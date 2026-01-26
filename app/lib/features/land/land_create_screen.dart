@@ -153,10 +153,14 @@ class _LandCreateScreenState extends ConsumerState<LandCreateScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMessage = e.toString().contains('Upload failed')
+            ? 'Upload failed. Please check your connection and try again.'
+            : 'Error creating listing. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error creating listing: $e'),
+            content: Text(errorMessage),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -171,34 +175,32 @@ class _LandCreateScreenState extends ConsumerState<LandCreateScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text('List Land'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: AppButtonPrimary(
-              label: 'Post',
-              onPressed: _isSubmitting ? null : _submit,
-              isLoading: _isSubmitting,
-              size: AppButtonSize.small,
-            ),
-          ),
-        ],
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundGradient,
         ),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        child: Column(
+          children: [
+            PageHeader(
+              title: 'List Land',
+              subtitle: _listingType == 'lease' ? 'For Lease' : 'For Sale',
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.sm),
+                  child: AppButtonPrimary(
+                    label: 'Post',
+                    onPressed: _isSubmitting ? null : _submit,
+                    isLoading: _isSubmitting,
+                    size: AppButtonSize.small,
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.screenPadding),
             children: [
               // Type selection - only show if NOT pre-specified via initialMode
               if (widget.initialMode == null) ...[
@@ -717,10 +719,12 @@ class _PhotoThumbnail extends StatelessWidget {
                 size: 16,
                 color: Colors.white,
               ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

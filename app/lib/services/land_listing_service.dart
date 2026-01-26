@@ -330,20 +330,31 @@ class LandListingService {
         final photo = photos[i];
         final bytes = await photo.readAsBytes();
         final ext = photo.name.split('.').last.toLowerCase();
-        final path = 'land/$listingId/${i}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        final path = '$userId/$listingId/${i}_${DateTime.now().millisecondsSinceEpoch}.$ext';
 
-        await _client.storage.from('images').uploadBinary(
-              path,
-              bytes,
-              fileOptions: FileOptions(contentType: 'image/$ext'),
-            );
+        try {
+          await _client.storage.from('land_photos').uploadBinary(
+                path,
+                bytes,
+                fileOptions: FileOptions(contentType: 'image/$ext', upsert: false),
+              );
 
-        // Insert photo record
-        await _client.from('land_photos').insert({
-          'listing_id': listingId,
-          'storage_path': path,
-          'sort_order': i,
-        });
+          // Insert photo record
+          await _client.from('land_photos').insert({
+            'listing_id': listingId,
+            'storage_path': path,
+            'sort_order': i,
+          });
+        } catch (e) {
+          // Log error but continue with other photos
+          if (kDebugMode) {
+            debugPrint('Error uploading land listing photo $i: $e');
+          }
+          // Re-throw on first photo failure to show user error
+          if (i == 0) {
+            throw Exception('Upload failed. Please check your connection and try again.');
+          }
+        }
       }
     }
 
@@ -357,7 +368,7 @@ class LandListingService {
 
   /// Get public URL for a photo.
   String getPhotoUrl(String path) {
-    return _client.storage.from('images').getPublicUrl(path);
+    return _client.storage.from('land_photos').getPublicUrl(path);
   }
 }
 

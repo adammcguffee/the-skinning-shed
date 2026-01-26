@@ -104,10 +104,11 @@ int _getIndexFromLocation(String location) {
   if (location.startsWith('/trophy-wall')) return 2;
   if (location.startsWith('/land')) return 3;
   if (location.startsWith('/messages')) return 4;
-  if (location.startsWith('/weather')) return 5;
-  if (location.startsWith('/research')) return 6;
-  if (location.startsWith('/regulations')) return 7;
-  if (location.startsWith('/settings')) return 8;
+  if (location.startsWith('/swap-shop')) return 5;
+  if (location.startsWith('/weather')) return 6;
+  if (location.startsWith('/research')) return 7;
+  if (location.startsWith('/regulations')) return 8;
+  if (location.startsWith('/settings')) return 9;
   return 0; // Feed is default
 }
 
@@ -199,6 +200,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           
+          // Swap Shop
+          GoRoute(
+            path: '/swap-shop',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: SwapShopScreen(),
+            ),
+          ),
+          
           // Settings
           GoRoute(
             path: '/settings',
@@ -263,11 +272,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PostScreen(),
       ),
       
-      // Swap Shop
-      GoRoute(
-        path: '/swap-shop',
-        builder: (context, state) => const SwapShopScreen(),
-      ),
+      // Swap Shop create/detail (outside shell - full screen)
       GoRoute(
         path: '/swap-shop/create',
         builder: (context, state) => const SwapShopCreateScreen(),
