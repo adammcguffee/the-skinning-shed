@@ -372,8 +372,8 @@ class _ProfileHeader extends ConsumerWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Avatar with accent ring
-                  _buildAvatar(ref),
+                  // Avatar with accent ring (clickable for own profile)
+                  _buildAvatar(context, ref),
                   const SizedBox(width: AppSpacing.lg),
 
                   // Info
@@ -487,7 +487,7 @@ class _ProfileHeader extends ConsumerWidget {
     );
   }
   
-  Widget _buildAvatar(WidgetRef ref) {
+  Widget _buildAvatar(BuildContext context, WidgetRef ref) {
     final avatarPath = profile?.avatarPath;
     Widget avatarContent;
     
@@ -517,7 +517,7 @@ class _ProfileHeader extends ConsumerWidget {
       );
     }
     
-    return Container(
+    Widget avatar = Container(
       width: isWide ? 100 : 80,
       height: isWide ? 100 : 80,
       decoration: BoxDecoration(
@@ -531,9 +531,50 @@ class _ProfileHeader extends ConsumerWidget {
           shape: BoxShape.circle,
           color: AppColors.surface,
         ),
+        clipBehavior: Clip.antiAlias,
         child: avatarContent,
       ),
     );
+    
+    // Make avatar clickable for own profile
+    if (isOwnProfile) {
+      return Stack(
+        children: [
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => context.push('/profile/edit'),
+              child: avatar,
+            ),
+          ),
+          // Camera badge
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: GestureDetector(
+              onTap: () => context.push('/profile/edit'),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.surface, width: 2),
+                  boxShadow: AppColors.shadowCard,
+                ),
+                child: const Icon(
+                  Icons.camera_alt_rounded,
+                  size: 14,
+                  color: AppColors.textInverse,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    
+    return avatar;
   }
   
   void _showFollowersList(
@@ -669,14 +710,11 @@ class _EditProfileButtonState extends State<_EditProfileButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          showComingSoonModal(
-            context: context,
-            feature: 'Edit Profile',
-            description: 'Customize your profile with avatar, bio, home location, and hunting preferences.',
-            icon: Icons.edit_rounded,
-          );
+          // Navigate to profile edit screen
+          context.push('/profile/edit');
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),

@@ -22,6 +22,7 @@ import '../features/settings/settings_screen.dart';
 import '../features/swap_shop/swap_shop_create_screen.dart';
 import '../features/swap_shop/swap_shop_detail_screen.dart';
 import '../features/swap_shop/swap_shop_screen.dart';
+import '../features/trophy_wall/profile_edit_screen.dart';
 import '../features/trophy_wall/trophy_detail_screen.dart';
 import '../features/trophy_wall/trophy_wall_screen.dart';
 import '../features/weather/weather_screen.dart';
@@ -98,10 +99,13 @@ final authNotifierProvider = ChangeNotifierProvider<AuthNotifier>((ref) {
   return AuthNotifier(service);
 });
 
-/// Helper to get current index from location
+/// Helper to get current index from location.
+/// Indices match _destinationsBase in app_scaffold.dart:
+/// 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
+/// 5=SwapShop, 6=Weather, 7=Research, 8=Regulations, 9=Settings
 int _getIndexFromLocation(String location) {
   if (location.startsWith('/explore')) return 1;
-  if (location.startsWith('/trophy-wall')) return 2;
+  if (location.startsWith('/trophy-wall') || location.startsWith('/profile')) return 2;
   if (location.startsWith('/land')) return 3;
   if (location.startsWith('/messages')) return 4;
   if (location.startsWith('/swap-shop')) return 5;
@@ -310,6 +314,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['id']!;
           return TrophyWallScreen(userId: id);
         },
+      ),
+      
+      // Profile edit
+      GoRoute(
+        path: '/profile/edit',
+        builder: (context, state) => const ProfileEditScreen(),
       ),
       
       // Land detail

@@ -287,6 +287,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
               ),
           ],
         ),
+        actions: [
+          // Home button
+          IconButton(
+            icon: const Icon(Icons.home_rounded),
+            tooltip: 'Home',
+            onPressed: () => context.go('/'),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(

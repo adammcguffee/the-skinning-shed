@@ -276,36 +276,35 @@ class _PostScreenState extends ConsumerState<PostScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text('Post Trophy'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: AppButtonPrimary(
-              label: 'Post',
-              onPressed: _isSubmitting ? null : _submit,
-              isLoading: _isSubmitting,
-              size: AppButtonSize.small,
-            ),
-          ),
-        ],
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundGradient,
         ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(AppSpacing.screenPadding),
+        child: Column(
+          children: [
+            PageHeader(
+              title: 'Post Trophy',
+              subtitle: 'Share your harvest',
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.sm),
+                  child: AppButtonPrimary(
+                    label: 'Post',
+                    onPressed: _isSubmitting ? null : _submit,
+                    isLoading: _isSubmitting,
+                    size: AppButtonSize.small,
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: Form(
+                    key: _formKey,
+                    child: ListView(
+                      padding: const EdgeInsets.all(AppSpacing.screenPadding),
                 children: [
                   // Photo section
                   _PhotoSection(
@@ -464,11 +463,14 @@ class _PostScreenState extends ConsumerState<PostScreen> {
                     isExpanded: true,
                     size: AppButtonSize.large,
                   ),
-                  const SizedBox(height: AppSpacing.xxxxl),
-                ],
+                      const SizedBox(height: AppSpacing.xxxxl),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
+          ],
         ),
       ),
     );

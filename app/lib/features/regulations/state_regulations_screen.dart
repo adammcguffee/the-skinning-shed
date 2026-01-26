@@ -135,6 +135,22 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
               child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textSecondary),
             ),
           ),
+          const SizedBox(width: AppSpacing.sm),
+          
+          // Home button
+          GestureDetector(
+            onTap: () => context.go('/'),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: const Icon(Icons.home_rounded, size: 20, color: AppColors.textSecondary),
+            ),
+          ),
           const SizedBox(width: AppSpacing.md),
           
           // Title
