@@ -8,11 +8,12 @@ import 'package:shed/services/regulations_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// 🦌 STATE REGULATIONS & RECORDS SCREEN - 2026 PREMIUM
+/// 🦌 STATE REGULATIONS & RECORDS - 2026 PREMIUM
 /// 
-/// Clean, focused view showing:
+/// Clean, focused, intentional design:
 /// - ONE official regulations portal link
-/// - State record highlights (buck + bass)
+/// - State record highlights with square hero images
+/// - Story-first content layout
 class StateRegulationsScreen extends ConsumerStatefulWidget {
   const StateRegulationsScreen({
     super.key,
@@ -51,7 +52,6 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
       final service = ref.read(regulationsServiceProvider);
       final stateCode = _normalizedStateCode;
       
-      // Load portal links, official root URL, and record highlights
       final portalLinks = await service.fetchPortalLinks(stateCode);
       final officialRoot = await service.getOfficialRootUrl(stateCode);
       
@@ -101,13 +101,13 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         child: SafeArea(
           child: Column(
             children: [
-              _buildHeader(context, stateName),
+              _buildHeroHeader(context, stateName),
               Expanded(
                 child: _isLoading
                     ? _buildLoadingState()
                     : _error != null
                         ? AppErrorState(message: _error!, onRetry: _loadData)
-                        : _buildContent(),
+                        : _buildContent(context),
               ),
             ],
           ),
@@ -116,8 +116,8 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     );
   }
   
-  Widget _buildHeader(BuildContext context, String stateName) {
-    return Padding(
+  Widget _buildHeroHeader(BuildContext context, String stateName) {
+    return Container(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Row(
         children: [
@@ -125,8 +125,8 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           GestureDetector(
             onTap: () => context.pop(),
             child: Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -145,27 +145,23 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
                 Text(
                   stateName,
                   style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
+                    letterSpacing: -0.5,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   'Regulations & Records',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                     color: AppColors.textSecondary,
                   ),
                 ),
               ],
             ),
-          ),
-          
-          // Refresh button
-          IconButton(
-            onPressed: _loadData,
-            icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
-            tooltip: 'Refresh',
           ),
         ],
       ),
@@ -178,32 +174,34 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
       child: Column(
         children: List.generate(3, (i) => Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.md),
-          child: AppCardSkeleton(aspectRatio: i == 0 ? 4 : 2.5),
+          child: AppCardSkeleton(aspectRatio: i == 0 ? 4 : 1.5),
         )),
       ),
     );
   }
   
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
     final agencyName = _portalLinks?.agencyName ?? 'State Wildlife Agency';
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 720;
     
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenPadding,
         0,
         AppSpacing.screenPadding,
-        AppSpacing.screenPadding,
+        AppSpacing.screenPadding + 24,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // === OFFICIAL PORTAL CARD ===
+          // === OFFICIAL PORTAL CARD (PRIMARY CTA) ===
           _buildOfficialPortalCard(agencyName),
           
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.xl + 8),
           
           // === STATE RECORDS SECTION ===
-          _buildRecordsSection(),
+          _buildRecordsSection(isWide),
         ],
       ),
     );
@@ -215,13 +213,21 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
     return GestureDetector(
       onTap: hasUrl ? () => _openUrl(_officialRootUrl!) : null,
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.lg + 4),
         decoration: BoxDecoration(
           gradient: hasUrl ? AppColors.accentGradient : null,
           color: hasUrl ? null : AppColors.surface,
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
           border: hasUrl ? null : Border.all(color: AppColors.borderSubtle),
-          boxShadow: hasUrl ? AppColors.shadowCard : null,
+          boxShadow: hasUrl
+              ? [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           children: [
@@ -244,50 +250,46 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'OFFICIAL REGULATIONS',
+                    'OFFICIAL REGULATIONS PORTAL',
                     style: TextStyle(
                       fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: hasUrl ? Colors.white.withValues(alpha: 0.7) : AppColors.textTertiary,
+                      fontWeight: FontWeight.w700,
+                      color: hasUrl ? Colors.white.withValues(alpha: 0.8) : AppColors.textTertiary,
                       letterSpacing: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     agencyName,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 17,
                       fontWeight: FontWeight.w700,
                       color: hasUrl ? Colors.white : AppColors.textPrimary,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    hasUrl ? 'Tap to visit official site →' : 'Link not available',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: hasUrl ? Colors.white.withValues(alpha: 0.8) : AppColors.textTertiary,
-                    ),
-                  ),
                 ],
               ),
             ),
+            const SizedBox(width: AppSpacing.sm),
+            if (hasUrl)
+              Icon(
+                Icons.open_in_new_rounded,
+                color: Colors.white.withValues(alpha: 0.7),
+                size: 22,
+              ),
           ],
         ),
       ),
     );
   }
   
-  Widget _buildRecordsSection() {
+  Widget _buildRecordsSection(bool isWide) {
     final records = _recordHighlights;
     final hasBuck = records?.hasBuckRecord ?? false;
     final hasBass = records?.hasBassRecord ?? false;
-    
-    if (!hasBuck && !hasBass) {
-      return _buildNoRecordsPlaceholder();
-    }
+    final stateName = _state?.name ?? widget.stateCode;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,73 +297,155 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
         // Section header
         Row(
           children: [
-            Icon(Icons.emoji_events_rounded, size: 20, color: AppColors.accent),
-            const SizedBox(width: 8),
-            const Text(
-              'State Records',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: Icon(Icons.emoji_events_rounded, size: 18, color: AppColors.accent),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'State Records',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Official record highlights',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ],
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Official state record highlights',
-          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
         
-        // Buck record card
-        if (hasBuck) ...[
-          _RecordCard(
-            type: 'buck',
-            title: records!.buckTitle ?? 'State Record Buck',
-            species: records.buckSpecies,
-            primaryStat: records.buckScoreText ?? records.buckWeightText,
-            primaryLabel: records.buckScoreText != null ? 'Score' : 'Weight',
-            personName: records.buckHunterName,
-            personLabel: 'Hunter',
-            dateText: records.buckDateText,
-            locationText: records.buckLocationText,
-            methodText: records.buckWeapon,
-            photoUrl: records.buckPhotoUrl,
-            photoVerified: records.buckPhotoVerified ?? false,
-            storySummary: records.buckStorySummary,
-            sourceUrl: records.buckSourceUrl,
-            sourceName: records.buckSourceName,
-            quoteText: null, // TODO: records.buckQuoteText
-            accentColor: const Color(0xFF8B4513),
-            icon: Icons.nature_people_rounded,
-            onSourceTap: () => _openUrl(records.buckSourceUrl),
-          ),
-          const SizedBox(height: AppSpacing.md),
-        ],
-        
-        // Bass record card
-        if (hasBass)
-          _RecordCard(
-            type: 'bass',
-            title: records!.bassTitle ?? 'State Record Bass',
-            species: records.bassSpecies,
-            primaryStat: records.bassWeightText,
-            primaryLabel: 'Weight',
-            personName: records.bassAnglerName,
-            personLabel: 'Angler',
-            dateText: records.bassDateText,
-            locationText: records.bassLocationText,
-            methodText: records.bassMethod,
-            photoUrl: records.bassPhotoUrl,
-            photoVerified: records.bassPhotoVerified ?? false,
-            storySummary: records.bassStorySummary,
-            sourceUrl: records.bassSourceUrl,
-            sourceName: records.bassSourceName,
-            quoteText: null, // TODO: records.bassQuoteText
-            accentColor: const Color(0xFF1E88E5),
-            icon: Icons.water_rounded,
-            onSourceTap: () => _openUrl(records.bassSourceUrl),
+        // Records layout
+        if (!hasBuck && !hasBass)
+          _buildNoRecordsPlaceholder()
+        else if (isWide)
+          // Desktop: Two-column layout
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasBuck)
+                Expanded(
+                  child: _RecordCard(
+                    type: 'buck',
+                    title: '$stateName State Record Whitetail',
+                    species: records?.buckSpecies,
+                    primaryStat: records?.buckScoreText ?? records?.buckWeightText,
+                    primaryLabel: records?.buckScoreText != null ? 'Score' : 'Weight',
+                    personName: records?.buckHunterName,
+                    personLabel: 'Hunter',
+                    dateText: records?.buckDateText,
+                    locationText: records?.buckLocationText,
+                    methodText: records?.buckWeapon,
+                    photoUrl: records?.buckPhotoUrl,
+                    photoVerified: records?.buckPhotoVerified ?? false,
+                    storySummary: records?.buckStorySummary,
+                    sourceUrl: records?.buckSourceUrl,
+                    sourceName: records?.buckSourceName,
+                    accentColor: const Color(0xFF8B4513),
+                    icon: Icons.nature_people_rounded,
+                    onSourceTap: () => _openUrl(records?.buckSourceUrl),
+                  ),
+                )
+              else
+                const Expanded(child: SizedBox()),
+              if (hasBuck && hasBass) const SizedBox(width: AppSpacing.md),
+              if (hasBass)
+                Expanded(
+                  child: _RecordCard(
+                    type: 'bass',
+                    title: '$stateName State Record Largemouth Bass',
+                    species: records?.bassSpecies,
+                    primaryStat: records?.bassWeightText,
+                    primaryLabel: 'Weight',
+                    personName: records?.bassAnglerName,
+                    personLabel: 'Angler',
+                    dateText: records?.bassDateText,
+                    locationText: records?.bassLocationText,
+                    methodText: records?.bassMethod,
+                    photoUrl: records?.bassPhotoUrl,
+                    photoVerified: records?.bassPhotoVerified ?? false,
+                    storySummary: records?.bassStorySummary,
+                    sourceUrl: records?.bassSourceUrl,
+                    sourceName: records?.bassSourceName,
+                    accentColor: const Color(0xFF1565C0),
+                    icon: Icons.water_rounded,
+                    onSourceTap: () => _openUrl(records?.bassSourceUrl),
+                  ),
+                )
+              else
+                const Expanded(child: SizedBox()),
+            ],
+          )
+        else
+          // Mobile: Stack vertically
+          Column(
+            children: [
+              if (hasBuck)
+                _RecordCard(
+                  type: 'buck',
+                  title: '$stateName State Record Whitetail',
+                  species: records?.buckSpecies,
+                  primaryStat: records?.buckScoreText ?? records?.buckWeightText,
+                  primaryLabel: records?.buckScoreText != null ? 'Score' : 'Weight',
+                  personName: records?.buckHunterName,
+                  personLabel: 'Hunter',
+                  dateText: records?.buckDateText,
+                  locationText: records?.buckLocationText,
+                  methodText: records?.buckWeapon,
+                  photoUrl: records?.buckPhotoUrl,
+                  photoVerified: records?.buckPhotoVerified ?? false,
+                  storySummary: records?.buckStorySummary,
+                  sourceUrl: records?.buckSourceUrl,
+                  sourceName: records?.buckSourceName,
+                  accentColor: const Color(0xFF8B4513),
+                  icon: Icons.nature_people_rounded,
+                  onSourceTap: () => _openUrl(records?.buckSourceUrl),
+                ),
+              if (hasBuck && hasBass) ...[
+                const SizedBox(height: AppSpacing.md),
+                // Subtle divider between cards on mobile
+                Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  color: AppColors.borderSubtle,
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
+              if (hasBass)
+                _RecordCard(
+                  type: 'bass',
+                  title: '$stateName State Record Largemouth Bass',
+                  species: records?.bassSpecies,
+                  primaryStat: records?.bassWeightText,
+                  primaryLabel: 'Weight',
+                  personName: records?.bassAnglerName,
+                  personLabel: 'Angler',
+                  dateText: records?.bassDateText,
+                  locationText: records?.bassLocationText,
+                  methodText: records?.bassMethod,
+                  photoUrl: records?.bassPhotoUrl,
+                  photoVerified: records?.bassPhotoVerified ?? false,
+                  storySummary: records?.bassStorySummary,
+                  sourceUrl: records?.bassSourceUrl,
+                  sourceName: records?.bassSourceName,
+                  accentColor: const Color(0xFF1565C0),
+                  icon: Icons.water_rounded,
+                  onSourceTap: () => _openUrl(records?.bassSourceUrl),
+                ),
+            ],
           ),
       ],
     );
@@ -380,7 +464,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           Icon(Icons.emoji_events_outlined, size: 48, color: AppColors.textTertiary),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'State Records Coming Soon',
+            'Record Data Coming Soon',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -389,7 +473,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'Record buck and bass data for this state will be added.',
+            'Trophy highlights for this state will be added.',
             style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
             textAlign: TextAlign.center,
           ),
@@ -399,7 +483,7 @@ class _StateRegulationsScreenState extends ConsumerState<StateRegulationsScreen>
   }
 }
 
-/// Premium record card with expandable story summary
+/// Premium record card with SQUARE hero image and story-first content
 class _RecordCard extends StatefulWidget {
   const _RecordCard({
     required this.type,
@@ -417,7 +501,6 @@ class _RecordCard extends StatefulWidget {
     this.storySummary,
     this.sourceUrl,
     this.sourceName,
-    this.quoteText,
     required this.accentColor,
     required this.icon,
     this.onSourceTap,
@@ -438,7 +521,6 @@ class _RecordCard extends StatefulWidget {
   final String? storySummary;
   final String? sourceUrl;
   final String? sourceName;
-  final String? quoteText;
   final Color accentColor;
   final IconData icon;
   final VoidCallback? onSourceTap;
@@ -447,8 +529,8 @@ class _RecordCard extends StatefulWidget {
   State<_RecordCard> createState() => _RecordCardState();
 }
 
-class _RecordCardState extends State<_RecordCard> {
-  bool _isExpanded = false;
+class _RecordCardState extends State<_RecordCard> with SingleTickerProviderStateMixin {
+  bool _isExpanded = true; // Default expanded to show story
   
   bool get _hasPhoto => widget.photoUrl != null && widget.photoUrl!.isNotEmpty && widget.photoVerified;
   bool get _hasStory => widget.storySummary != null && widget.storySummary!.isNotEmpty;
@@ -458,173 +540,127 @@ class _RecordCardState extends State<_RecordCard> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         border: Border.all(color: AppColors.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Photo or placeholder header
-          _buildHeader(),
+          // SQUARE hero image
+          _buildHeroImage(),
           
-          // Stats row
+          // Title below image
+          _buildTitleSection(),
+          
+          // Stats chips
           _buildStats(),
           
-          // Expanded content (story + source)
-          if (_isExpanded) _buildExpandedContent(),
+          // Expandable content (story + source)
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: _buildExpandedContent(),
+          ),
         ],
       ),
     );
   }
   
-  Widget _buildHeader() {
-    if (_hasPhoto) {
-      return _buildPhotoHeader();
-    }
-    return _buildPlaceholderHeader();
-  }
-  
-  Widget _buildPhotoHeader() {
-    return Container(
-      height: 160,
-      width: double.infinity,
+  Widget _buildHeroImage() {
+    return AspectRatio(
+      aspectRatio: 1.0, // SQUARE
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            widget.photoUrl!,
-            fit: BoxFit.cover,
-            errorBuilder: (ctx, err, stack) => _buildPlaceholderHeader(),
-            loadingBuilder: (ctx, child, progress) {
-              if (progress == null) return child;
-              return Container(
-                color: AppColors.surfaceHover,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(widget.accentColor),
+          if (_hasPhoto)
+            Image.network(
+              widget.photoUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (ctx, err, stack) => _buildPlaceholderImage(),
+              loadingBuilder: (ctx, child, progress) {
+                if (progress == null) return child;
+                return Container(
+                  color: widget.accentColor.withValues(alpha: 0.08),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(widget.accentColor),
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          // Gradient overlay
+                );
+              },
+            )
+          else
+            _buildPlaceholderImage(),
+          
+          // Gradient overlay at bottom for readability
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
             child: Container(
-              height: 80,
+              height: 100,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
                 ),
               ),
             ),
           ),
-          // Title on photo
+          
+          // Expand/collapse button
           Positioned(
-            bottom: 12,
-            left: 16,
-            right: 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
-                  ),
-                ),
-                if (widget.species != null)
-                  Text(
-                    widget.species!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.9),
-                      shadows: const [Shadow(blurRadius: 4, color: Colors.black54)],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // Expand button
-          Positioned(
-            top: 8,
-            right: 8,
-            child: _buildExpandButton(light: true),
+            top: 12,
+            right: 12,
+            child: _buildExpandButton(),
           ),
         ],
       ),
     );
   }
   
-  Widget _buildPlaceholderHeader() {
+  Widget _buildPlaceholderImage() {
     return Container(
-      constraints: const BoxConstraints(minHeight: 90),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: widget.accentColor.withValues(alpha: 0.08),
-      ),
-      child: Stack(
+      color: widget.accentColor.withValues(alpha: 0.08),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Background icon (centered, doesn't affect layout)
-          Positioned.fill(
-            child: Center(
-              child: Icon(widget.icon, size: 48, color: widget.accentColor.withValues(alpha: 0.12)),
-            ),
+          Icon(
+            widget.icon,
+            size: 56,
+            color: widget.accentColor.withValues(alpha: 0.25),
           ),
-          // Content - use intrinsic height
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.surface.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top row: badge + expand button
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.photo_camera_outlined, size: 11, color: AppColors.textTertiary),
-                          const SizedBox(width: 4),
-                          Text('Photo unavailable', style: TextStyle(fontSize: 9, color: AppColors.textTertiary)),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    _buildExpandButton(light: false),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Title (constrained to avoid overflow)
+                Icon(Icons.photo_camera_outlined, size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 6),
                 Text(
-                  widget.title,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  'Photo unavailable',
+                  style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
                 ),
-                if (widget.species != null)
-                  Text(
-                    widget.species!,
-                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
               ],
             ),
           ),
@@ -633,27 +669,57 @@ class _RecordCardState extends State<_RecordCard> {
     );
   }
   
-  Widget _buildExpandButton({required bool light}) {
+  Widget _buildExpandButton() {
     return GestureDetector(
       onTap: () => setState(() => _isExpanded = !_isExpanded),
       child: Container(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: light ? Colors.black.withValues(alpha: 0.4) : AppColors.surfaceHover,
-          borderRadius: BorderRadius.circular(6),
+          color: Colors.black.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
           _isExpanded ? Icons.expand_less : Icons.expand_more,
-          color: light ? Colors.white : AppColors.textSecondary,
+          color: Colors.white,
           size: 20,
         ),
       ),
     );
   }
   
+  Widget _buildTitleSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.3,
+            ),
+          ),
+          if (widget.species != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              widget.species!,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
   Widget _buildStats() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -684,100 +750,68 @@ class _RecordCardState extends State<_RecordCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const SizedBox(height: 16),
         const Divider(height: 1, color: AppColors.borderSubtle),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Story summary
-              if (_hasStory) ...[
-                Row(
-                  children: [
-                    Icon(Icons.auto_stories_rounded, size: 16, color: widget.accentColor),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Story',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
+              // STORY SECTION (IMPORTANT - ALWAYS VISIBLE)
+              Row(
+                children: [
+                  Icon(Icons.auto_stories_rounded, size: 18, color: widget.accentColor),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Story',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (_hasStory)
                 Text(
                   widget.storySummary!,
                   style: TextStyle(
                     fontSize: 14,
-                    height: 1.5,
+                    height: 1.6,
                     color: AppColors.textSecondary,
                   ),
-                ),
-                const SizedBox(height: 16),
-              ] else ...[
+                )
+              else
                 Text(
-                  'Summary coming soon.',
+                  'Story details for this record are being compiled from official sources.',
                   style: TextStyle(
                     fontSize: 13,
-                    fontStyle: FontStyle.italic,
+                    height: 1.5,
                     color: AppColors.textTertiary,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
-                const SizedBox(height: 16),
-              ],
               
-              // Quote (if available)
-              if (widget.quoteText != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: widget.accentColor.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border(
-                      left: BorderSide(color: widget.accentColor, width: 3),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '"${widget.quoteText}"',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      if (widget.sourceName != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '— ${widget.sourceName}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
+              const SizedBox(height: 20),
               
               // Source button
               if (widget.sourceUrl != null)
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
+                  child: TextButton.icon(
                     onPressed: widget.onSourceTap,
-                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                    label: Text(widget.sourceName ?? 'View Source'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: widget.accentColor,
-                      side: BorderSide(color: widget.accentColor.withValues(alpha: 0.3)),
+                    icon: Icon(Icons.open_in_new_rounded, size: 16, color: widget.accentColor),
+                    label: Text(
+                      'View Source',
+                      style: TextStyle(color: widget.accentColor),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: widget.accentColor.withValues(alpha: 0.08),
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -809,7 +843,7 @@ class _StatChip extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: (color ?? AppColors.accent).withValues(alpha: 0.1),
+          color: (color ?? AppColors.accent).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: (color ?? AppColors.accent).withValues(alpha: 0.2)),
         ),
@@ -820,7 +854,7 @@ class _StatChip extends StatelessWidget {
               label.toUpperCase(),
               style: TextStyle(
                 fontSize: 9,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: color ?? AppColors.accent,
                 letterSpacing: 0.5,
               ),
@@ -829,8 +863,8 @@ class _StatChip extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
                 color: color ?? AppColors.accent,
               ),
             ),

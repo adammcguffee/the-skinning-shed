@@ -6,9 +6,12 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/regulations_service.dart';
 
-/// 🛡️ REGULATIONS & RECORDS ADMIN - 2026 PREMIUM
+/// 🛡️ RECORDS ADMIN - 2026 PREMIUM
 /// 
-/// Clean admin interface for managing state records and photos.
+/// Clean, purposeful admin control center:
+/// - Record Data Overview
+/// - Photo Verification Pipeline
+/// - No clutter, no unused legacy tools
 class RegulationsAdminScreen extends ConsumerStatefulWidget {
   const RegulationsAdminScreen({super.key});
 
@@ -49,7 +52,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         return;
       }
       
-      // Load record stats
       final response = await client
           .from('state_record_highlights')
           .select('state_code, data_quality, buck_photo_verified, bass_photo_verified, buck_story_summary, bass_story_summary');
@@ -137,7 +139,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         
         if (!run.isActive) {
           _pollTimer?.cancel();
-          _loadStats(); // Refresh stats when done
+          _loadStats();
         }
       }
       
@@ -158,7 +160,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           .select()
           .eq('run_id', runId)
           .order('created_at', ascending: false)
-          .limit(15);
+          .limit(20);
       
       if (mounted) {
         setState(() {
@@ -177,11 +179,12 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Start Photo Verification?', style: TextStyle(color: AppColors.textPrimary)),
         content: Text(
-          'This will attempt to find and verify ACTUAL record photos from official sources using GPT.\n\n'
-          'Only photos that pass strict verification will be stored. Others will show "Photo unavailable".',
-          style: TextStyle(color: AppColors.textSecondary),
+          'This will find and verify record photos from official sources.\n\n'
+          'Only photos that pass strict verification will be stored.',
+          style: TextStyle(color: AppColors.textSecondary, height: 1.5),
         ),
         actions: [
           TextButton(
@@ -190,8 +193,11 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
-            child: const Text('Start Verification'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Start'),
           ),
         ],
       ),
@@ -204,7 +210,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final client = service.client;
       if (client == null) throw Exception('Not connected');
       
-      // Create a new run
       final runResponse = await client
           .from('record_photo_seed_runs')
           .insert({
@@ -227,7 +232,6 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       
       _startPolling();
       
-      // Trigger the Edge Function
       await client.functions.invoke(
         'seed-record-photos-strict',
         body: {'runId': run.id, 'mode': 'missing', 'limit': 50},
@@ -237,7 +241,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error starting verification: $e'),
+            content: Text('Error: $e'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -260,7 +264,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stopping verification...'), backgroundColor: AppColors.warning),
+          const SnackBar(content: Text('Stopping...'), backgroundColor: AppColors.warning),
         );
       }
     } catch (e) {
@@ -291,15 +295,15 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   }
   
   Widget _buildHeader(BuildContext context) {
-    return Padding(
+    return Container(
       padding: const EdgeInsets.all(AppSpacing.screenPadding),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => context.pop(),
             child: Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -309,13 +313,13 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             ),
           ),
           const SizedBox(width: AppSpacing.md),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Records Admin',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                 ),
                 Text(
                   'Manage state record data & photos',
@@ -327,6 +331,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           IconButton(
             onPressed: _loadStats,
             icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+            tooltip: 'Refresh stats',
           ),
         ],
       ),
@@ -339,104 +344,98 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         AppSpacing.screenPadding,
         0,
         AppSpacing.screenPadding,
-        AppSpacing.screenPadding,
+        AppSpacing.screenPadding + 24,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Stats overview
           _buildStatsSection(),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.xl + 8),
           
           // Photo seeding section
           _buildPhotoSeedingSection(),
-          const SizedBox(height: AppSpacing.xl),
-          
-          // Advanced tools (collapsed)
-          _buildAdvancedSection(),
         ],
       ),
     );
   }
   
   Widget _buildStatsSection() {
+    final totalPhotos = _stats.buckPhotosVerified + _stats.bassPhotosVerified;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.insights_rounded, size: 20, color: AppColors.accent),
-            const SizedBox(width: 8),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.insights_rounded, size: 18, color: AppColors.accent),
+            ),
+            const SizedBox(width: 12),
             const Text(
               'Record Data Overview',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.md),
         
-        // Stats grid
+        // Summary card
         Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: BoxDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             border: Border.all(color: AppColors.borderSubtle),
           ),
           child: Column(
             children: [
+              // Main summary row
               Row(
                 children: [
-                  Expanded(child: _StatTile(
-                    label: 'States with Data',
-                    value: '${_stats.totalStates}/50',
-                    isGood: _stats.totalStates >= 50,
-                    icon: Icons.map_rounded,
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: _StatTile(
-                    label: 'High Quality',
-                    value: '${_stats.highQualityData}',
-                    isGood: _stats.highQualityData >= 25,
-                    icon: Icons.star_rounded,
-                  )),
+                  Expanded(
+                    child: _BigStatTile(
+                      label: 'Verified Photos',
+                      value: '$totalPhotos / 100',
+                      icon: Icons.photo_camera_rounded,
+                      color: totalPhotos >= 80 ? AppColors.success : AppColors.info,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _BigStatTile(
+                      label: 'States with Data',
+                      value: '${_stats.totalStates} / 50',
+                      icon: Icons.map_rounded,
+                      color: _stats.totalStates >= 50 ? AppColors.success : AppColors.info,
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: _StatTile(
-                    label: 'Buck Photos Verified',
-                    value: '${_stats.buckPhotosVerified}/50',
-                    isGood: _stats.buckPhotosVerified > 0,
-                    icon: Icons.photo_camera_rounded,
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: _StatTile(
-                    label: 'Bass Photos Verified',
-                    value: '${_stats.bassPhotosVerified}/50',
-                    isGood: _stats.bassPhotosVerified > 0,
-                    icon: Icons.photo_camera_rounded,
-                  )),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: _StatTile(
-                    label: 'Buck Stories',
-                    value: '${_stats.withBuckStory}/50',
-                    isGood: _stats.withBuckStory >= 50,
-                    icon: Icons.auto_stories_rounded,
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: _StatTile(
-                    label: 'Bass Stories',
-                    value: '${_stats.withBassStory}/50',
-                    isGood: _stats.withBassStory >= 50,
-                    icon: Icons.auto_stories_rounded,
-                  )),
-                ],
+              const SizedBox(height: 16),
+              
+              // Breakdown
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHover,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _MiniStat(label: 'Buck Photos', value: '${_stats.buckPhotosVerified}/50'),
+                    _MiniStat(label: 'Bass Photos', value: '${_stats.bassPhotosVerified}/50'),
+                    _MiniStat(label: 'Buck Stories', value: '${_stats.withBuckStory}/50'),
+                    _MiniStat(label: 'Bass Stories', value: '${_stats.withBassStory}/50'),
+                  ],
+                ),
               ),
             ],
           ),
@@ -454,22 +453,37 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       children: [
         Row(
           children: [
-            Icon(Icons.image_search_rounded, size: 20, color: AppColors.info),
-            const SizedBox(width: 8),
-            const Text(
-              'Photo Verification Pipeline',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.info.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.image_search_rounded, size: 18, color: AppColors.info),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Photo Verification Pipeline',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          'Uses GPT to find and verify actual record photos from official sources.',
+          'Finds and verifies actual record photos from official sources.',
           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.md),
         
-        // Progress tracker (when running)
+        // Progress tracker or start button
         if (hasActiveRun)
           _buildProgressTracker(run)
         else
@@ -494,7 +508,8 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.info,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
@@ -506,64 +521,78 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     final isStopping = run.status == 'stopping';
     
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: isRunning ? AppColors.info.withValues(alpha: 0.3) : AppColors.borderSubtle),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(
+          color: isRunning ? AppColors.info.withValues(alpha: 0.4) : AppColors.borderSubtle,
+          width: isRunning ? 1.5 : 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Status row
+          // Status row with live indicator
           Row(
             children: [
               Container(
-                width: 10,
-                height: 10,
+                width: 12,
+                height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isRunning ? AppColors.success : (isStopping ? AppColors.warning : AppColors.textTertiary),
+                  boxShadow: isRunning
+                      ? [BoxShadow(color: AppColors.success.withValues(alpha: 0.5), blurRadius: 8)]
+                      : null,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Text(
-                run.status.toUpperCase(),
+                isRunning ? 'RUNNING' : (isStopping ? 'STOPPING...' : run.status.toUpperCase()),
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                   color: isRunning ? AppColors.success : AppColors.textSecondary,
+                  letterSpacing: 0.5,
                 ),
               ),
               const Spacer(),
               if (run.currentState != null)
-                Text(
-                  'Processing: ${run.currentState} (${run.currentPhase ?? "..."})',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Processing ${run.currentState} — ${run.currentPhase ?? "..."}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.info),
+                  ),
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           
           // Progress bar
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: progress,
               backgroundColor: AppColors.surfaceHover,
               valueColor: AlwaysStoppedAnimation(isRunning ? AppColors.info : AppColors.textTertiary),
-              minHeight: 8,
+              minHeight: 10,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           
           // Counters
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${run.processed}/${run.totalTargets} processed',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                '${run.processed} / ${run.totalTargets} processed',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
               ),
               Row(
                 children: [
@@ -577,20 +606,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
             ],
           ),
           
-          // Last message
-          if (run.lastMessage != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              run.lastMessage!,
-              style: TextStyle(fontSize: 11, color: AppColors.textTertiary, fontStyle: FontStyle.italic),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-          
           // Stop button
           if (isRunning) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -599,8 +617,37 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                 label: const Text('Stop'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.error,
-                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.3)),
+                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
+              ),
+            ),
+          ],
+          
+          // Completion summary
+          if (!run.isActive && run.processed > 0) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, size: 20, color: AppColors.success),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Verified photos: ${run.verified} / ${run.processed}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -611,90 +658,41 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
   
   Widget _buildEventsLog() {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 200),
+      constraints: const BoxConstraints(maxHeight: 240),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHover,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             child: Row(
               children: [
-                Icon(Icons.history_rounded, size: 14, color: AppColors.textTertiary),
-                const SizedBox(width: 6),
+                Icon(Icons.history_rounded, size: 16, color: AppColors.textTertiary),
+                const SizedBox(width: 8),
                 Text(
                   'Recent Activity',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                 ),
               ],
             ),
           ),
+          const Divider(height: 1, color: AppColors.borderSubtle),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              padding: const EdgeInsets.all(8),
               itemCount: _recentEvents.length,
               itemBuilder: (ctx, i) {
                 final event = _recentEvents[i];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        event.eventType == 'verified' ? Icons.check_circle_outline :
-                        event.eventType == 'missing' ? Icons.help_outline :
-                        event.eventType == 'failed' ? Icons.error_outline :
-                        Icons.info_outline,
-                        size: 14,
-                        color: event.eventType == 'verified' ? AppColors.success :
-                               event.eventType == 'missing' ? AppColors.warning :
-                               event.eventType == 'failed' ? AppColors.error :
-                               AppColors.textTertiary,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '${event.stateCode ?? ""} ${event.recordType ?? ""}: ${event.message ?? event.eventType}',
-                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
+                return _EventRow(event: event);
               },
             ),
           ),
         ],
       ),
-    );
-  }
-  
-  Widget _buildAdvancedSection() {
-    return ExpansionTile(
-      title: Row(
-        children: [
-          Icon(Icons.settings_rounded, size: 18, color: AppColors.textTertiary),
-          const SizedBox(width: 8),
-          Text(
-            'Advanced Tools',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: const EdgeInsets.only(top: 8),
-      children: [
-        Text(
-          'Legacy link discovery and repair tools have been deprecated. '
-          'The app now uses a single canonical official link per state.',
-          style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
-        ),
-      ],
     );
   }
 }
@@ -786,52 +784,78 @@ class _SeedEvent {
 
 // === WIDGETS ===
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
+class _BigStatTile extends StatelessWidget {
+  const _BigStatTile({
     required this.label,
     required this.value,
     required this.icon,
-    this.isGood = false,
+    required this.color,
   });
   
   final String label;
   final String value;
   final IconData icon;
-  final bool isGood;
+  final Color color;
   
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isGood ? AppColors.success.withValues(alpha: 0.08) : AppColors.surfaceHover,
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: isGood ? AppColors.success : AppColors.textTertiary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: isGood ? AppColors.success : AppColors.textPrimary,
-                  ),
-                ),
-              ],
+          Icon(icon, size: 24, color: color),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({required this.label, required this.value});
+  
+  final String label;
+  final String value;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
+        ),
+      ],
     );
   }
 }
@@ -850,22 +874,82 @@ class _CounterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             '$value',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color),
           ),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(fontSize: 10, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventRow extends StatelessWidget {
+  const _EventRow({required this.event});
+  
+  final _SeedEvent event;
+  
+  @override
+  Widget build(BuildContext context) {
+    final isVerified = event.eventType == 'verified';
+    final isMissing = event.eventType == 'missing';
+    final isFailed = event.eventType == 'failed';
+    
+    final icon = isVerified
+        ? Icons.check_circle_outline
+        : isMissing
+            ? Icons.remove_circle_outline
+            : isFailed
+                ? Icons.error_outline
+                : Icons.info_outline;
+    
+    final color = isVerified
+        ? AppColors.success
+        : isMissing
+            ? AppColors.warning
+            : isFailed
+                ? AppColors.error
+                : AppColors.textTertiary;
+    
+    // Human-readable message
+    String message;
+    if (isVerified) {
+      message = '${event.stateCode} ${event.recordType} photo verified';
+    } else if (isMissing) {
+      message = '${event.stateCode} ${event.recordType} — no photo found';
+    } else if (isFailed) {
+      message = '${event.stateCode} ${event.recordType} — verification failed';
+    } else {
+      message = event.message ?? event.eventType;
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
