@@ -89,7 +89,7 @@ class AppScaffold extends ConsumerWidget {
     AppNavDestination(
       icon: Icons.map_outlined,
       selectedIcon: Icons.map_rounded,
-      label: 'Regulations',
+      label: 'Regs & Records',
     ),
     AppNavDestination(
       icon: Icons.settings_outlined,
@@ -659,7 +659,7 @@ class _MoreSheet extends StatelessWidget {
             ),
             _MoreSheetItem(
               icon: Icons.gavel_outlined,
-              label: 'Regulations',
+              label: 'Regs & Records',
               isSelected: false,
               onTap: () {
                 Navigator.pop(context);

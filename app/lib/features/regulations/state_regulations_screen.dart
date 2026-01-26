@@ -567,28 +567,32 @@ class _RecordCardState extends State<_RecordCard> {
   
   Widget _buildPlaceholderHeader() {
     return Container(
-      height: 100,
+      constraints: const BoxConstraints(minHeight: 90),
       width: double.infinity,
       decoration: BoxDecoration(
         color: widget.accentColor.withValues(alpha: 0.08),
       ),
       child: Stack(
         children: [
-          // Background icon
-          Center(
-            child: Icon(widget.icon, size: 56, color: widget.accentColor.withValues(alpha: 0.12)),
+          // Background icon (centered, doesn't affect layout)
+          Positioned.fill(
+            child: Center(
+              child: Icon(widget.icon, size: 48, color: widget.accentColor.withValues(alpha: 0.12)),
+            ),
           ),
-          // Content
+          // Content - use intrinsic height
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Top row: badge + expand button
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Photo unavailable badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(4),
@@ -596,12 +600,9 @@ class _RecordCardState extends State<_RecordCard> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.photo_camera_outlined, size: 12, color: AppColors.textTertiary),
+                          Icon(Icons.photo_camera_outlined, size: 11, color: AppColors.textTertiary),
                           const SizedBox(width: 4),
-                          Text(
-                            'Photo unavailable',
-                            style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
-                          ),
+                          Text('Photo unavailable', style: TextStyle(fontSize: 9, color: AppColors.textTertiary)),
                         ],
                       ),
                     ),
@@ -609,19 +610,20 @@ class _RecordCardState extends State<_RecordCard> {
                     _buildExpandButton(light: false),
                   ],
                 ),
-                const Spacer(),
+                const SizedBox(height: 8),
+                // Title (constrained to avoid overflow)
                 Text(
                   widget.title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 if (widget.species != null)
                   Text(
                     widget.species!,
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
               ],
             ),

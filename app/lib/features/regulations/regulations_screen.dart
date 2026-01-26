@@ -63,8 +63,8 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
         // Top bar (web only)
         if (isWide)
           AppTopBar(
-            title: 'Regulations',
-            subtitle: 'Seasons & Limits by State',
+            title: 'Regulations & Records',
+            subtitle: 'Official portal + state record highlights',
           ),
 
         // Content
@@ -77,12 +77,12 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
                 // Mobile header
                 if (!isWide) ...[
                   Text(
-                    'Regulations',
+                    'Regulations & Records',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Tap a state to view seasons & limits',
+                    'Official portal + state record highlights',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                     ),
