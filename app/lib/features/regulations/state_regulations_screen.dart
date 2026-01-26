@@ -2427,7 +2427,7 @@ class _RecordHighlightCardState extends State<_RecordHighlightCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Photo banner (if available)
+          // Photo banner (if available) OR "Photo unavailable" placeholder
           if (hasPhoto)
             Container(
               height: 140,
@@ -2528,6 +2528,90 @@ class _RecordHighlightCardState extends State<_RecordHighlightCard> {
                           size: 20,
                         ),
                       ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            // "Photo unavailable" placeholder with source link
+            Container(
+              height: 100,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: widget.accentColor.withValues(alpha: 0.08),
+                border: Border(
+                  bottom: BorderSide(color: AppColors.borderSubtle),
+                ),
+              ),
+              child: Stack(
+                children: [
+                  // Background pattern
+                  Center(
+                    child: Icon(
+                      widget.icon,
+                      size: 56,
+                      color: widget.accentColor.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  // Content
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.photo_camera_outlined, size: 12, color: AppColors.textTertiary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Photo unavailable',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textTertiary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => setState(() => _isExpanded = !_isExpanded),
+                              child: Icon(
+                                _isExpanded ? Icons.expand_less : Icons.expand_more,
+                                color: AppColors.textTertiary,
+                                size: 20,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Text(
+                          widget.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        if (widget.species != null)
+                          Text(
+                            widget.species!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],

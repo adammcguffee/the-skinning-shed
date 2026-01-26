@@ -2128,25 +2128,27 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
         FutureBuilder<Map<String, dynamic>>(
           future: _getRecordHighlightsStats(),
           builder: (context, snapshot) {
-            final stats = snapshot.data ?? {'total': 0, 'high_quality': 0, 'buck_photos': 0, 'bass_photos': 0};
+            final stats = snapshot.data ?? {'total': 0, 'high_quality': 0, 'buck_verified': 0, 'bass_verified': 0};
             final total = stats['total'] as int? ?? 0;
             final highQuality = stats['high_quality'] as int? ?? 0;
-            final buckPhotos = stats['buck_photos'] as int? ?? 0;
-            final bassPhotos = stats['bass_photos'] as int? ?? 0;
-            final totalPhotos = buckPhotos + bassPhotos;
+            final buckVerified = stats['buck_verified'] as int? ?? 0;
+            final bassVerified = stats['bass_verified'] as int? ?? 0;
+            final verifiedPhotos = buckVerified + bassVerified;
             final maxPhotos = total * 2;
+            final missingPhotos = maxPhotos - verifiedPhotos;
             
-            final isComplete = total >= 50 && totalPhotos >= 100;
+            final hasAllData = total >= 50;
+            final hasVerifiedPhotos = verifiedPhotos > 0;
             
             return Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isComplete 
+                color: hasAllData 
                     ? AppColors.success.withValues(alpha: 0.08)
                     : AppColors.info.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isComplete 
+                  color: hasAllData 
                       ? AppColors.success.withValues(alpha: 0.3)
                       : AppColors.info.withValues(alpha: 0.2),
                 ),
@@ -2157,31 +2159,43 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
                   Row(
                     children: [
                       Icon(
-                        isComplete ? Icons.check_circle : Icons.info_outline,
+                        hasAllData ? Icons.check_circle : Icons.info_outline,
                         size: 16,
-                        color: isComplete ? AppColors.success : AppColors.info,
+                        color: hasAllData ? AppColors.success : AppColors.info,
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        isComplete ? 'All 50 States Complete!' : 'Record Coverage',
+                        hasAllData ? 'All 50 States Have Record Data' : 'Record Coverage',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: isComplete ? AppColors.success : AppColors.info,
+                          color: hasAllData ? AppColors.success : AppColors.info,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 16,
+                    spacing: 12,
                     runSpacing: 8,
                     children: [
                       _buildStatPill('States', '$total/50', total >= 50),
-                      _buildStatPill('Photos', '$totalPhotos/$maxPhotos', totalPhotos >= maxPhotos),
-                      _buildStatPill('High Quality', '$highQuality', highQuality >= 25),
+                      _buildStatPill('Verified Photos', '$verifiedPhotos', hasVerifiedPhotos),
+                      _buildStatPill('Missing Photos', '$missingPhotos', false),
+                      _buildStatPill('High Quality Data', '$highQuality', highQuality >= 25),
                     ],
                   ),
+                  if (missingPhotos > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Photos require GPT verification from official sources. "Photo unavailable" shown when unverified.',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textTertiary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             );
@@ -2261,25 +2275,26 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     try {
       final service = ref.read(regulationsServiceProvider);
       final client = service.client;
-      if (client == null) return {'total': 0, 'high_quality': 0, 'buck_photos': 0, 'bass_photos': 0};
+      if (client == null) return {'total': 0, 'high_quality': 0, 'buck_verified': 0, 'bass_verified': 0};
       
       final response = await client
           .from('state_record_highlights')
-          .select('state_code, data_quality, buck_photo_url, bass_photo_url');
+          .select('state_code, data_quality, buck_photo_url, bass_photo_url, buck_photo_verified, bass_photo_verified');
       
       final total = (response as List).length;
       final highQuality = response.where((r) => r['data_quality'] == 'high').length;
-      final buckPhotos = response.where((r) => r['buck_photo_url'] != null).length;
-      final bassPhotos = response.where((r) => r['bass_photo_url'] != null).length;
+      // Only count VERIFIED photos, not just any photo URL
+      final buckVerified = response.where((r) => r['buck_photo_verified'] == true).length;
+      final bassVerified = response.where((r) => r['bass_photo_verified'] == true).length;
       
       return {
         'total': total,
         'high_quality': highQuality,
-        'buck_photos': buckPhotos,
-        'bass_photos': bassPhotos,
+        'buck_verified': buckVerified,
+        'bass_verified': bassVerified,
       };
     } catch (e) {
-      return {'total': 0, 'high_quality': 0, 'buck_photos': 0, 'bass_photos': 0};
+      return {'total': 0, 'high_quality': 0, 'buck_verified': 0, 'bass_verified': 0};
     }
   }
   
@@ -2293,15 +2308,16 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     );
   }
   
-  /// Refresh record photos via Edge Function
+  /// Refresh record photos via strict GPT-verified Edge Function
   Future<void> _refreshRecordPhotos() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Refresh Record Photos?'),
+        title: const Text('Seed Verified Photos?'),
         content: const Text(
-          'This will check for any missing photos and attempt to download them. '
-          'Photos that already exist will not be changed.',
+          'This will attempt to find and verify ACTUAL record photos from official sources using GPT. '
+          'Only photos that pass GPT verification will be stored.\n\n'
+          'Photos that cannot be verified will show "Photo unavailable" with a source link.',
         ),
         actions: [
           TextButton(
@@ -2311,7 +2327,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.info),
-            child: const Text('Refresh'),
+            child: const Text('Start Verification'),
           ),
         ],
       ),
@@ -2322,9 +2338,9 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Refreshing photos... This may take a minute.'),
+          content: Text('Starting GPT photo verification... This may take several minutes.'),
           backgroundColor: AppColors.info,
-          duration: Duration(seconds: 10),
+          duration: Duration(seconds: 15),
         ),
       );
       
@@ -2332,20 +2348,26 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       final client = service.client;
       if (client == null) throw Exception('Not connected');
       
-      // Call the Edge Function
+      // Call the strict GPT-verified Edge Function
       final response = await client.functions.invoke(
-        'seed-record-photos',
-        body: {'mode': 'missing', 'limit': 50},
+        'seed-record-photos-strict',
+        body: {'mode': 'missing', 'limit': 10}, // Process 10 states at a time
       );
       
       if (mounted) {
         final data = response.data as Map<String, dynamic>?;
-        final uploaded = (data?['buck_uploaded'] ?? 0) + (data?['bass_uploaded'] ?? 0);
+        final buckVerified = data?['buck_verified'] ?? 0;
+        final bassVerified = data?['bass_verified'] ?? 0;
+        final buckMissing = data?['buck_missing'] ?? 0;
+        final bassMissing = data?['bass_missing'] ?? 0;
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Photo refresh complete: $uploaded new photos uploaded.'),
-            backgroundColor: AppColors.success,
+            content: Text(
+              'Verification complete: ${buckVerified + bassVerified} verified, '
+              '${buckMissing + bassMissing} could not be verified from sources.',
+            ),
+            backgroundColor: buckVerified + bassVerified > 0 ? AppColors.success : AppColors.warning,
           ),
         );
         
@@ -2355,7 +2377,7 @@ class _RegulationsAdminScreenState extends ConsumerState<RegulationsAdminScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error refreshing photos: $e'),
+            content: Text('Error during verification: $e'),
             backgroundColor: AppColors.error,
           ),
         );

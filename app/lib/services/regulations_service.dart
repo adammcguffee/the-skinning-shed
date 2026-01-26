@@ -672,6 +672,8 @@ class StateRecordHighlights {
     this.buckStorySummary,
     this.buckSourceUrl,
     this.buckSourceName,
+    this.buckPhotoVerified,
+    this.buckPhotoEvidenceText,
     // Bass fields
     this.bassTitle,
     this.bassSpecies,
@@ -685,6 +687,8 @@ class StateRecordHighlights {
     this.bassStorySummary,
     this.bassSourceUrl,
     this.bassSourceName,
+    this.bassPhotoVerified,
+    this.bassPhotoEvidenceText,
     // Metadata
     this.dataQuality,
   });
@@ -705,6 +709,8 @@ class StateRecordHighlights {
   final String? buckStorySummary;
   final String? buckSourceUrl;
   final String? buckSourceName;
+  final bool? buckPhotoVerified;
+  final String? buckPhotoEvidenceText;
   
   // Bass record
   final String? bassTitle;
@@ -719,6 +725,8 @@ class StateRecordHighlights {
   final String? bassStorySummary;
   final String? bassSourceUrl;
   final String? bassSourceName;
+  final bool? bassPhotoVerified;
+  final String? bassPhotoEvidenceText;
   
   // Metadata
   final String? dataQuality;
@@ -747,6 +755,8 @@ class StateRecordHighlights {
       buckStorySummary: json['buck_story_summary'] as String?,
       buckSourceUrl: json['buck_source_url'] as String?,
       buckSourceName: json['buck_source_name'] as String?,
+      buckPhotoVerified: json['buck_photo_verified'] as bool?,
+      buckPhotoEvidenceText: json['buck_photo_evidence_text'] as String?,
       // Bass
       bassTitle: json['bass_title'] as String?,
       bassSpecies: json['bass_species'] as String?,
@@ -760,6 +770,8 @@ class StateRecordHighlights {
       bassStorySummary: json['bass_story_summary'] as String?,
       bassSourceUrl: json['bass_source_url'] as String?,
       bassSourceName: json['bass_source_name'] as String?,
+      bassPhotoVerified: json['bass_photo_verified'] as bool?,
+      bassPhotoEvidenceText: json['bass_photo_evidence_text'] as String?,
       // Metadata
       dataQuality: json['data_quality'] as String?,
     );
