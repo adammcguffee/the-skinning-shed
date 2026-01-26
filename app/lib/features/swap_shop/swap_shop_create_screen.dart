@@ -349,8 +349,11 @@ class _SwapShopCreateScreenState extends ConsumerState<SwapShopCreateScreen> {
               ),
 
               const SizedBox(height: 100),
-            ],
-          ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -578,8 +581,6 @@ class _ContactMethodChip extends StatelessWidget {
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected ? AppColors.primary : AppColors.textSecondary,
-              ),
-                ],
               ),
             ),
           ],

@@ -401,7 +401,10 @@ class _LandCreateScreenState extends ConsumerState<LandCreateScreen> {
 
               const SizedBox(height: 100),
             ],
-          ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -719,12 +722,10 @@ class _PhotoThumbnail extends StatelessWidget {
                 size: 16,
                 color: Colors.white,
               ),
-                ],
-              ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
