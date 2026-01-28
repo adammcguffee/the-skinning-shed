@@ -17,6 +17,10 @@ on:
       - main
   workflow_dispatch:  # Allow manual trigger
 
+# Required for peaceiris/actions-gh-pages to push to vercel-dist branch
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
