@@ -11,48 +11,146 @@ This guide covers deploying The Skinning Shed to production for **Web, iOS, and 
 | **Android** | Application ID: `com.theskinning.shed` |
 
 **Domain Registrar:** Namecheap  
-**Web Hosting:** Vercel (recommended)  
+**Web Hosting:** Vercel (static deploy from `vercel-dist` branch)  
+**CI/CD:** GitHub Actions  
 **Backend:** Supabase
 
 ---
 
-# PART 1: WEB DEPLOYMENT
+# PART 1: WEB DEPLOYMENT (GitHub Actions → Vercel)
 
-## Step 1: Deploy to Vercel
+## Architecture
 
-### Option A: Deploy via Vercel CLI
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Navigate to app directory
-cd app
-
-# Build Flutter web with production credentials
-flutter build web --release \
-  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzcmxocnlkY2V0cHNwbWRwaGZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMjYzMTUsImV4cCI6MjA4NDcwMjMxNX0.NI9dxnyHfOj9Ck5VVKnnCE7TxUwrImZ5TI3BjlYT1kQ
-
-# Deploy to Vercel
-cd build/web
-vercel --prod
+```
+┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│  Push to main   │ ───▶ │  GitHub Actions  │ ───▶ │  vercel-dist    │
+│  (source code)  │      │  (Flutter build) │      │  (static files) │
+└─────────────────┘      └──────────────────┘      └────────┬────────┘
+                                                            │
+                                                            ▼
+                                                   ┌─────────────────┐
+                                                   │     Vercel      │
+                                                   │ (auto-deploys)  │
+                                                   └─────────────────┘
 ```
 
-### Option B: Deploy via Vercel Dashboard
+**How it works:**
+1. You push code to `main` branch
+2. GitHub Actions automatically builds Flutter web
+3. Built files are pushed to `vercel-dist` branch
+4. Vercel auto-deploys from `vercel-dist` (no Flutter needed on Vercel!)
+
+---
+
+## Step 1: Set Up GitHub Secrets
+
+Go to **GitHub → Repository → Settings → Secrets and variables → Actions → New repository secret**
+
+Add these secrets:
+
+| Secret Name | Value |
+|-------------|-------|
+| `SUPABASE_URL` | `https://ssrlhrydcetpspmdphfo.supabase.co` |
+| `SUPABASE_ANON_KEY` | Your Supabase anon key (starts with `eyJ...`) |
+
+> ⚠️ **Never commit these values to git!** The workflow reads them from GitHub Secrets.
+
+---
+
+## Step 2: Connect Vercel to `vercel-dist` Branch
+
+### Option A: New Project (Recommended)
 
 1. Go to https://vercel.com/new
-2. Import from GitHub (or upload build/web folder)
-3. Set Framework Preset to "Other"
-4. Output Directory: `app/build/web`
-5. Deploy
+2. Import your GitHub repository
+3. **IMPORTANT:** In "Configure Project":
+   - **Branch:** Select `vercel-dist` (not `main`)
+   - **Framework Preset:** `Other`
+   - **Build Command:** Leave empty (no build needed)
+   - **Output Directory:** `.` (root of branch)
+   - **Install Command:** Leave empty
+4. Click Deploy
 
-### Add Custom Domain in Vercel
+### Option B: Existing Project
+
+1. Go to Vercel Dashboard → Your Project → Settings → Git
+2. Change **Production Branch** to `vercel-dist`
+3. Set **Build & Output Settings:**
+   - Build Command: (leave empty)
+   - Output Directory: `.`
+   - Install Command: (leave empty)
+4. Trigger a redeployment
+
+---
+
+## Step 3: Add Custom Domain in Vercel
 
 1. Go to Project Settings → Domains
 2. Add `theskinningshed.com`
 3. Add `www.theskinningshed.com`
 4. Note the CNAME/A records Vercel shows
+
+---
+
+## Step 4: Trigger First Build
+
+Push any commit to `main`, or manually trigger the workflow:
+
+```bash
+# Option 1: Push to main
+git commit --allow-empty -m "trigger build"
+git push origin main
+
+# Option 2: Manual trigger
+# Go to GitHub → Actions → "Build Flutter Web" → Run workflow
+```
+
+The workflow will:
+1. Build Flutter web with your Supabase credentials
+2. Push built files to `vercel-dist` branch
+3. Vercel auto-deploys within ~30 seconds
+
+---
+
+## How Updates Flow
+
+```
+1. Developer pushes to main
+           ↓
+2. GitHub Actions detects push
+           ↓
+3. Workflow runs (~2-3 minutes):
+   - Checkout code
+   - Setup Flutter
+   - flutter pub get
+   - flutter build web --release --dart-define=...
+   - Push build/web/* to vercel-dist branch
+           ↓
+4. Vercel detects vercel-dist update
+           ↓
+5. Vercel deploys static files (~30 seconds)
+           ↓
+6. Site is live at theskinningshed.com
+```
+
+---
+
+## Manual Build (Alternative)
+
+If you need to deploy manually without GitHub Actions:
+
+```bash
+cd app
+
+# Build Flutter web
+flutter build web --release \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<your-key>
+
+# Deploy directly to Vercel
+cd build/web
+npx vercel --prod
+```
 
 ---
 

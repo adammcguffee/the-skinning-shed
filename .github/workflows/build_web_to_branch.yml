@@ -1,0 +1,131 @@
+# Build Flutter Web and Deploy to vercel-dist branch
+# 
+# This workflow:
+# 1. Builds Flutter web on push to main
+# 2. Publishes built files to the `vercel-dist` branch
+# 3. Vercel auto-deploys from that branch (no Flutter needed on Vercel)
+#
+# Required GitHub Secrets:
+# - SUPABASE_URL: https://ssrlhrydcetpspmdphfo.supabase.co
+# - SUPABASE_ANON_KEY: Your Supabase anonymous key (starts with eyJ...)
+
+name: Build Flutter Web
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: 'stable'
+          cache: true
+
+      # 3. Verify Flutter installation
+      - name: Flutter version
+        run: flutter --version
+
+      # 4. Get dependencies
+      - name: Get dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # 5. Build Flutter web (release mode with Supabase config)
+      - name: Build Flutter web
+        working-directory: app
+        run: |
+          flutter build web --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      # 6. Copy vercel.json to build output (adjusted for static deploy)
+      - name: Prepare Vercel config
+        run: |
+          cat > app/build/web/vercel.json << 'EOF'
+          {
+            "$schema": "https://openapi.vercel.sh/vercel.json",
+            "cleanUrls": true,
+            "trailingSlash": false,
+            "headers": [
+              {
+                "source": "/.well-known/apple-app-site-association",
+                "headers": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ]
+              },
+              {
+                "source": "/.well-known/assetlinks.json",
+                "headers": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ]
+              },
+              {
+                "source": "/sitemap.xml",
+                "headers": [
+                  { "key": "Content-Type", "value": "application/xml" }
+                ]
+              },
+              {
+                "source": "/(.*)",
+                "headers": [
+                  { "key": "X-Content-Type-Options", "value": "nosniff" },
+                  { "key": "X-Frame-Options", "value": "DENY" },
+                  { "key": "X-XSS-Protection", "value": "1; mode=block" },
+                  { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+                ]
+              },
+              {
+                "source": "/assets/(.*)",
+                "headers": [
+                  { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+                ]
+              },
+              {
+                "source": "/icons/(.*)",
+                "headers": [
+                  { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+                ]
+              }
+            ],
+            "rewrites": [
+              {
+                "source": "/((?!assets|icons|favicon|flutter|main|manifest|canvaskit|\\.well-known|robots\\.txt|sitemap\\.xml|humans\\.txt|security\\.txt).*)",
+                "destination": "/index.html"
+              }
+            ],
+            "redirects": [
+              {
+                "source": "/index.html",
+                "destination": "/",
+                "permanent": true
+              }
+            ]
+          }
+          EOF
+
+      # 7. List build output (for debugging)
+      - name: List build output
+        run: ls -la app/build/web/
+
+      # 8. Deploy to vercel-dist branch
+      - name: Deploy to vercel-dist branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./app/build/web
+          publish_branch: vercel-dist
+          force_orphan: true  # Keep the branch clean (no history)
+          commit_message: "Deploy Flutter web build from ${{ github.sha }}"
