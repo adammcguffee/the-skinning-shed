@@ -2,6 +2,8 @@ name: shed
 description: "The Skinning Shed - Premium hunting & fishing community"
 publish_to: 'none'
 
+# Production version: major.minor.patch+buildNumber
+# Increment buildNumber for each release
 version: 1.0.0+1
 
 environment:

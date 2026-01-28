@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Shed</string>
+	<string>The Skinning Shed</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>shed</string>
+	<string>Skinning Shed</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,5 +45,19 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Photo Library Permission (for trophy/profile photos) -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>The Skinning Shed needs access to your photo library to upload trophy photos, profile pictures, and listing images.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>The Skinning Shed needs permission to save photos to your library.</string>
+	
+	<!-- Camera Permission (for taking trophy photos) -->
+	<key>NSCameraUsageDescription</key>
+	<string>The Skinning Shed needs camera access to take trophy photos and profile pictures directly.</string>
+	
+	<!-- Location Permission (optional, for weather features) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>The Skinning Shed uses your location to show local weather conditions for hunting and fishing.</string>
 </dict>
 </plist>

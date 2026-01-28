@@ -2,13 +2,21 @@
 
 ## Overview
 
-This guide covers deploying The Skinning Shed to production at `https://theskinningshed.com`.
+This guide covers deploying The Skinning Shed to production for **Web, iOS, and Android**.
+
+| Platform | Domain/Identifier |
+|----------|-------------------|
+| **Web** | https://theskinningshed.com |
+| **iOS** | Bundle ID: `com.theskinning.shed` |
+| **Android** | Application ID: `com.theskinning.shed` |
 
 **Domain Registrar:** Namecheap  
-**Recommended Hosting:** Vercel (free tier supports custom domains, automatic HTTPS)  
-**Backend:** Supabase (already configured)
+**Web Hosting:** Vercel (recommended)  
+**Backend:** Supabase
 
 ---
+
+# PART 1: WEB DEPLOYMENT
 
 ## Step 1: Deploy to Vercel
 
@@ -39,15 +47,12 @@ vercel --prod
 4. Output Directory: `app/build/web`
 5. Deploy
 
-After deployment, Vercel will provide a URL like:
-- `the-skinning-shed.vercel.app` (or similar)
-
 ### Add Custom Domain in Vercel
 
 1. Go to Project Settings → Domains
 2. Add `theskinningshed.com`
 3. Add `www.theskinningshed.com`
-4. Note the CNAME/A records Vercel shows you
+4. Note the CNAME/A records Vercel shows
 
 ---
 
@@ -55,39 +60,22 @@ After deployment, Vercel will provide a URL like:
 
 ### DNS Records to Add
 
-Go to Namecheap → Domain List → Manage → Advanced DNS
+Go to **Namecheap → Domain List → Manage → Advanced DNS**
 
 **Delete any existing A, AAAA, or CNAME records for @ and www first.**
 
-Then add these records:
-
 | Type | Host | Value | TTL |
 |------|------|-------|-----|
-| A | @ | `76.76.21.21` | Automatic |
-| CNAME | www | `cname.vercel-dns.com` | Automatic |
+| **A** | `@` | `76.76.21.21` | Automatic |
+| **CNAME** | `www` | `cname.vercel-dns.com` | Automatic |
 
-> **Note:** The A record IP `76.76.21.21` is Vercel's anycast IP. Vercel will provide this when you add your domain.
+> The A record IP `76.76.21.21` is Vercel's anycast IP. Use exact values from Vercel dashboard if different.
 
-### Alternative: If Vercel provides different records
+### Redirect Strategy
 
-Vercel may provide:
-- Different IP for A record
-- A specific CNAME target
-
-**Always use the exact values Vercel shows in their dashboard.**
-
-### Redirect Configuration
-
-**Recommended:** Root domain (`theskinningshed.com`) as primary
-
-In Vercel Dashboard → Project → Settings → Domains:
-- Set `theskinningshed.com` as primary
+**Root domain as primary** (recommended):
+- In Vercel Dashboard → Domains → Set `theskinningshed.com` as primary
 - Enable "Redirect www to non-www"
-
-This ensures:
-- `www.theskinningshed.com` → redirects to `theskinningshed.com`
-- All traffic uses the clean root domain
-- SEO benefits from single canonical URL
 
 ---
 
@@ -95,12 +83,9 @@ This ensures:
 
 ### Auth Settings (Dashboard → Authentication → URL Configuration)
 
-Update these settings in the Supabase Dashboard:
-
 | Setting | Value |
 |---------|-------|
 | Site URL | `https://theskinningshed.com` |
-| Redirect URLs | See list below |
 
 **Redirect URLs (one per line):**
 ```
@@ -108,117 +93,263 @@ https://theskinningshed.com
 https://theskinningshed.com/**
 https://www.theskinningshed.com
 https://www.theskinningshed.com/**
+com.theskinning.shed://callback
 http://localhost:3000
 http://localhost:3000/**
 ```
 
-> Keep localhost entries for development!
-
-### Email Templates (if using email auth)
-
-Update any hardcoded URLs in email templates:
-- Dashboard → Authentication → Email Templates
-- Replace any `localhost` or old URLs with `https://theskinningshed.com`
-
-### Storage CORS (Already Public)
-
-All storage buckets are already public. No CORS changes needed for:
-- avatars
-- trophy_photos
-- land_photos
-- swap_shop_photos
-- ad_share
-- record_photos
+> Keep localhost for dev, `com.theskinning.shed://callback` for mobile OAuth.
 
 ---
 
-## Step 4: Environment Variables
+# PART 2: iOS DEPLOYMENT
 
-### For CI/CD or Vercel Environment Variables
+## iOS Configuration Summary
 
-If deploying via Vercel's git integration, set these env vars in Vercel Dashboard:
+| Setting | Value |
+|---------|-------|
+| Bundle ID | `com.theskinning.shed` |
+| Display Name | `The Skinning Shed` |
+| Version | `1.0.0` (from pubspec.yaml) |
+| Build Number | `1` (increment for each release) |
+| Min iOS Version | `13.0` |
 
-| Variable | Value |
-|----------|-------|
-| `SUPABASE_URL` | `https://ssrlhrydcetpspmdphfo.supabase.co` |
-| `SUPABASE_ANON_KEY` | `eyJhbGciOiJI...` (full key) |
+## iOS Permissions (Info.plist)
 
-### Build Command (if using Vercel git integration)
+Already configured:
+- ✅ `NSPhotoLibraryUsageDescription` — Photo library access for uploads
+- ✅ `NSPhotoLibraryAddUsageDescription` — Save photos to library
+- ✅ `NSCameraUsageDescription` — Camera for trophy photos
+- ✅ `NSLocationWhenInUseUsageDescription` — Location for weather
+
+## iOS Build Commands
 
 ```bash
+cd app
+
+# Debug build (simulator)
+flutter build ios --debug
+
+# Release build (requires Mac + Xcode + Apple Developer account)
+flutter build ios --release \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<your-key>
+
+# Archive for App Store (run in Xcode after flutter build)
+# Xcode → Product → Archive
+```
+
+## iOS Deep Links (Optional)
+
+To enable Universal Links (opening theskinningshed.com URLs in the app):
+
+1. Add Associated Domains capability in Xcode:
+   - Target → Signing & Capabilities → + Capability → Associated Domains
+   - Add: `applinks:theskinningshed.com`
+
+2. Host `apple-app-site-association` file at:
+   `https://theskinningshed.com/.well-known/apple-app-site-association`
+
+   ```json
+   {
+     "applinks": {
+       "apps": [],
+       "details": [
+         {
+           "appID": "TEAMID.com.theskinning.shed",
+           "paths": ["*"]
+         }
+       ]
+     }
+   }
+   ```
+
+   Replace `TEAMID` with your Apple Developer Team ID.
+
+---
+
+# PART 3: ANDROID DEPLOYMENT
+
+## Android Configuration Summary
+
+| Setting | Value |
+|---------|-------|
+| Application ID | `com.theskinning.shed` |
+| App Name | `The Skinning Shed` |
+| Version Name | `1.0.0` (from pubspec.yaml) |
+| Version Code | `1` (increment for each release) |
+| Min SDK | `21` (Android 5.0) |
+| Target SDK | `34` (Android 14) |
+
+## Android Permissions (AndroidManifest.xml)
+
+Already configured:
+- ✅ `INTERNET` — API calls
+- ✅ `ACCESS_FINE_LOCATION` — GPS for weather
+- ✅ `ACCESS_COARSE_LOCATION` — Network location
+
+Photo/camera permissions are handled by Flutter plugins automatically.
+
+## Android Deep Links
+
+Already configured in AndroidManifest.xml:
+- ✅ `https://theskinningshed.com/*`
+- ✅ `https://www.theskinningshed.com/*`
+- ✅ `com.theskinning.shed://callback` (OAuth)
+
+## Android Build Commands
+
+```bash
+cd app
+
+# Debug APK
+flutter build apk --debug
+
+# Release APK
+flutter build apk --release \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<your-key>
+
+# Release App Bundle (for Play Store)
+flutter build appbundle --release \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<your-key>
+```
+
+## Android Signing (Production)
+
+For Play Store release, create a signing config:
+
+1. Generate keystore:
+   ```bash
+   keytool -genkey -v -keystore ~/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   ```
+
+2. Create `android/key.properties` (DO NOT commit to git):
+   ```properties
+   storePassword=<password>
+   keyPassword=<password>
+   keyAlias=upload
+   storeFile=/path/to/upload-keystore.jks
+   ```
+
+3. Update `android/app/build.gradle.kts` to use the keystore for release builds.
+
+---
+
+# PART 4: ENVIRONMENT CONFIGURATION
+
+## Environment Variables
+
+All platforms use `--dart-define` for build-time configuration:
+
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anonymous/public key |
+
+## Build Commands by Platform
+
+### Web
+```bash
 flutter build web --release \
-  --dart-define=SUPABASE_URL=$SUPABASE_URL \
-  --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<key>
+```
+
+### Android
+```bash
+flutter build appbundle --release \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<key>
+```
+
+### iOS
+```bash
+flutter build ios --release \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<key>
+```
+
+## Local Development
+
+```bash
+flutter run -d chrome \
+  --dart-define=SUPABASE_URL=https://ssrlhrydcetpspmdphfo.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<key>
 ```
 
 ---
 
-## Step 5: Verification Checklist
+# VERIFICATION CHECKLISTS
 
-After DNS propagates (usually 5-30 minutes, up to 48 hours):
+## Web Verification
 
-### URLs to Test
+After DNS propagates:
 
-- [ ] `https://theskinningshed.com` — loads app
-- [ ] `https://www.theskinningshed.com` — redirects to root
-- [ ] `https://theskinningshed.com/trophy-wall` — deep link works
-- [ ] `https://theskinningshed.com/swap-shop` — deep link works
-- [ ] `https://theskinningshed.com/settings` — deep link works
-
-### Functionality Tests
-
+- [ ] https://theskinningshed.com — loads app
+- [ ] https://www.theskinningshed.com — redirects to root
+- [ ] https://theskinningshed.com/trophy-wall — deep link works
+- [ ] https://theskinningshed.com/swap-shop — deep link works
 - [ ] Sign up / Sign in works
-- [ ] Profile photo upload works
-- [ ] Trophy photo upload works
-- [ ] Share links copy correct URL
-- [ ] No mixed-content warnings in console
+- [ ] Photo uploads work
+- [ ] No mixed-content warnings
 - [ ] Browser tab shows "The Skinning Shed"
-- [ ] Favicon displays correctly
+- [ ] Favicon displays
 
-### SEO Tests
+## iOS Verification
 
-- [ ] View page source shows meta tags
-- [ ] Open Graph preview works (use https://www.opengraph.xyz/)
-- [ ] Twitter card preview works (use https://cards-dev.twitter.com/validator)
+- [ ] App displays as "The Skinning Shed" on home screen
+- [ ] App icon appears correctly
+- [ ] Photo picker works
+- [ ] Camera works
+- [ ] Auth flow completes
+- [ ] Share links use theskinningshed.com
+- [ ] No debug banners in release build
 
----
+## Android Verification
 
-## Troubleshooting
-
-### DNS Not Propagating
-
-- Use https://dnschecker.org to check propagation
-- Try flushing local DNS: `ipconfig /flushdns` (Windows) or `sudo dscacheutil -flushcache` (Mac)
-
-### 404 on Refresh
-
-If you see 404 when refreshing on a deep link:
-- Ensure `vercel.json` rewrites are correct
-- For Netlify: ensure `_redirects` file is in build output
-
-### Auth Redirect Issues
-
-If OAuth or magic links fail:
-- Check Supabase Dashboard → Auth → URL Configuration
-- Ensure redirect URLs include `/**` wildcards
-- Check browser console for redirect URL mismatch errors
-
-### Mixed Content Warnings
-
-If you see mixed content (http vs https):
-- Check for hardcoded `http://` URLs in code
-- All Supabase storage URLs are already HTTPS
+- [ ] App displays as "The Skinning Shed" in launcher
+- [ ] App icon appears correctly
+- [ ] Photo picker works
+- [ ] Camera works
+- [ ] Auth flow completes
+- [ ] Share links use theskinningshed.com
+- [ ] Deep links open app (if installed)
+- [ ] No debug flags in release build
 
 ---
 
-## Quick Reference
+# TROUBLESHOOTING
+
+## DNS Not Propagating
+- Check https://dnschecker.org
+- Flush local DNS: `ipconfig /flushdns` (Windows)
+
+## 404 on Refresh (Web)
+- Verify `vercel.json` rewrites are deployed
+- Check Vercel deployment logs
+
+## Auth Redirect Issues
+- Verify Supabase redirect URLs include `/**` wildcards
+- For mobile: ensure `com.theskinning.shed://callback` is in redirect URLs
+
+## Android Deep Links Not Working
+- Run: `adb shell am start -a android.intent.action.VIEW -d "https://theskinningshed.com/trophy-wall"`
+- Check Android App Links verification in device settings
+
+---
+
+# QUICK REFERENCE
 
 | Service | URL |
 |---------|-----|
-| Production App | https://theskinningshed.com |
+| Production Web | https://theskinningshed.com |
 | Supabase Dashboard | https://supabase.com/dashboard/project/ssrlhrydcetpspmdphfo |
 | Vercel Dashboard | https://vercel.com/dashboard |
 | Namecheap DNS | https://ap.www.namecheap.com |
+| Google Play Console | https://play.google.com/console |
+| App Store Connect | https://appstoreconnect.apple.com |
 
 ---
 
