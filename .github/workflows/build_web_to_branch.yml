@@ -26,13 +26,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Flutter (3.38.x required for Dart SDK ^3.10.7)
+      # 2. Setup Flutter (latest master for Dart SDK ^3.10.7)
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.0'
           channel: 'master'
-          cache: true
+          cache: false
 
       # 3. Verify Flutter installation
       - name: Flutter version
