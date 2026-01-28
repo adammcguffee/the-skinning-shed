@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,21 +18,104 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO Meta Tags -->
+  <title>The Skinning Shed — Trophy Wall, Hunting Land & Gear for Hunters</title>
+  <meta name="description" content="The Skinning Shed is the ultimate hunting and fishing community. Share your trophies, find hunting land, buy and sell gear, and connect with fellow hunters.">
+  <meta name="keywords" content="hunting, fishing, trophy wall, hunting land, deer hunting, turkey hunting, bass fishing, outdoor gear, swap shop">
+  <meta name="author" content="The Skinning Shed">
+  <meta name="robots" content="index, follow">
+  
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://theskinningshed.com/">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://theskinningshed.com/">
+  <meta property="og:title" content="The Skinning Shed — Trophy Wall, Hunting Land & Gear">
+  <meta property="og:description" content="The ultimate hunting and fishing community. Share trophies, find land, trade gear, and connect with hunters.">
+  <meta property="og:image" content="https://theskinningshed.com/icons/Icon-512.png">
+  <meta property="og:site_name" content="The Skinning Shed">
+  <meta property="og:locale" content="en_US">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://theskinningshed.com/">
+  <meta name="twitter:title" content="The Skinning Shed — Trophy Wall, Hunting Land & Gear">
+  <meta name="twitter:description" content="The ultimate hunting and fishing community. Share trophies, find land, trade gear, and connect with hunters.">
+  <meta name="twitter:image" content="https://theskinningshed.com/icons/Icon-512.png">
+  
+  <!-- Theme Color -->
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="msapplication-TileColor" content="#1a1a1a">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="shed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="The Skinning Shed">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon.png">
+  <link rel="shortcut icon" href="favicon.png">
 
-  <title>shed</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Preconnect to Supabase for faster API calls -->
+  <link rel="preconnect" href="https://ssrlhrydcetpspmdphfo.supabase.co">
+  <link rel="dns-prefetch" href="https://ssrlhrydcetpspmdphfo.supabase.co">
 </head>
 <body>
+  <!-- Loading indicator while Flutter initializes -->
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0a0a0a;
+      min-height: 100vh;
+    }
+    .loading-indicator {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .loading-indicator svg {
+      width: 48px;
+      height: 48px;
+      animation: spin 1s linear infinite;
+    }
+    .loading-indicator p {
+      color: #666;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <div class="loading-indicator" id="loading">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2">
+      <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+      <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+    </svg>
+    <p>Loading The Skinning Shed...</p>
+  </div>
+  <script>
+    // Remove loading indicator once Flutter is ready
+    window.addEventListener('flutter-first-frame', function() {
+      var loading = document.getElementById('loading');
+      if (loading) loading.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
