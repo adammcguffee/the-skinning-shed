@@ -169,12 +169,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           );
         },
         routes: [
-          // Feed (Home)
+          // Feed (Home) - supports ?category= query param
           GoRoute(
             path: '/',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: FeedScreen(),
-            ),
+            pageBuilder: (context, state) {
+              final category = state.uri.queryParameters['category'];
+              return NoTransitionPage(
+                child: FeedScreen(initialCategory: category),
+              );
+            },
           ),
           
           // Explore

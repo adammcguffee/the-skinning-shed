@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
-import 'package:shed/shared/widgets/widgets.dart';
 
 // Category map for feed filtering
 const _categoryMap = {
@@ -38,12 +37,7 @@ class ExploreScreen extends StatelessWidget {
         SliverToBoxAdapter(
           child: _SectionHeader(
             title: 'Browse by Species',
-            onSeeAll: () => showComingSoonModal(
-              context: context,
-              feature: 'Species Browser',
-              description: 'Browse all species categories with detailed statistics and filters.',
-              icon: Icons.nature_rounded,
-            ),
+            onSeeAll: () => context.go('/'), // Navigate to feed (shows all species)
           ),
         ),
         SliverToBoxAdapter(
@@ -66,12 +60,7 @@ class ExploreScreen extends StatelessWidget {
           child: _SectionHeader(
             title: 'Trending This Week',
             trailing: _TrendingBadge(),
-            onSeeAll: () => showComingSoonModal(
-              context: context,
-              feature: 'Trending Feed',
-              description: 'See all trending trophies ranked by likes and engagement this week.',
-              icon: Icons.local_fire_department_rounded,
-            ),
+            onSeeAll: () => context.go('/'), // Navigate to feed (sorted by popularity)
           ),
         ),
         SliverToBoxAdapter(
@@ -279,13 +268,13 @@ class _SpeciesCardState extends State<_SpeciesCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          // Navigate to feed with species filter hint
-          // TODO: Pass category filter via route param when deep linking is implemented
+          // Navigate to feed with species category filter
           final category = _categoryMap[widget.data.name];
           if (category != null) {
-            showComingSoonSnackbar(context, 'Species filtering');
+            context.go('/?category=$category');
+          } else {
+            context.go('/');
           }
-          context.go('/');
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),

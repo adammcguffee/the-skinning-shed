@@ -57,12 +57,25 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('$stateName portal coming soon'),
+            content: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.info),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '$stateName portal not yet verified',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: AppColors.surface,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              side: const BorderSide(color: AppColors.borderSubtle),
             ),
+            duration: const Duration(seconds: 2),
           ),
         );
       }

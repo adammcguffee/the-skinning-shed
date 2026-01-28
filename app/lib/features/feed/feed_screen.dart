@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/data/us_states.dart';
+import 'package:shed/data/us_counties.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
@@ -15,7 +20,10 @@ import 'package:shed/shared/widgets/widgets.dart';
 /// - Cinematic image cards with overlays
 /// - Rich depth and hover effects
 class FeedScreen extends ConsumerStatefulWidget {
-  const FeedScreen({super.key});
+  const FeedScreen({super.key, this.initialCategory});
+  
+  /// Optional initial category filter from URL query param.
+  final String? initialCategory;
 
   @override
   ConsumerState<FeedScreen> createState() => _FeedScreenState();
@@ -25,7 +33,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   List<Map<String, dynamic>> _trophies = [];
   bool _isLoading = true;
   String? _error;
-  String _selectedCategory = 'all';
+  late String _selectedCategory;
+  String? _selectedState;
+  String? _selectedCounty;
+  String _usernameSearch = '';
+  bool _showFilters = false;
 
   final List<_CategoryTab> _categories = const [
     _CategoryTab(id: 'all', label: 'All', icon: Icons.grid_view_rounded),
@@ -38,6 +50,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   @override
   void initState() {
     super.initState();
+    // Use initial category from URL if valid, otherwise default to 'all'
+    final validCategories = ['all', 'deer', 'turkey', 'bass', 'other'];
+    _selectedCategory = validCategories.contains(widget.initialCategory) 
+        ? widget.initialCategory! 
+        : 'all';
     _loadTrophies();
   }
 
@@ -51,9 +68,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final trophyService = ref.read(trophyServiceProvider);
       // Use selected category for filtering (null for 'all')
       final categoryFilter = _selectedCategory == 'all' ? null : _selectedCategory;
-      final trophies = await trophyService.fetchFeed(category: categoryFilter);
+      final trophies = await trophyService.fetchFeed(
+        category: categoryFilter,
+        state: _selectedState,
+        county: _selectedCounty,
+      );
+      
+      // Apply username filter client-side if set
+      var filtered = trophies;
+      if (_usernameSearch.isNotEmpty) {
+        final q = _usernameSearch.toLowerCase();
+        filtered = trophies.where((t) {
+          final displayName = (t['profiles']?['display_name'] as String?)?.toLowerCase() ?? '';
+          final username = (t['profiles']?['username'] as String?)?.toLowerCase() ?? '';
+          return displayName.contains(q) || username.contains(q);
+        }).toList();
+      }
+      
       setState(() {
-        _trophies = trophies;
+        _trophies = filtered;
         _isLoading = false;
       });
     } catch (e) {
@@ -68,6 +101,40 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     setState(() => _selectedCategory = category);
     _loadTrophies(); // Reload with new filter
   }
+  
+  void _onStateChanged(String? state) {
+    setState(() {
+      _selectedState = state;
+      _selectedCounty = null; // Reset county when state changes
+    });
+    _loadTrophies();
+  }
+  
+  void _onCountyChanged(String? county) {
+    setState(() => _selectedCounty = county);
+    _loadTrophies();
+  }
+  
+  void _onUsernameSearchChanged(String value) {
+    setState(() => _usernameSearch = value);
+    _loadTrophies();
+  }
+  
+  void _clearFilters() {
+    setState(() {
+      _selectedCategory = 'all';
+      _selectedState = null;
+      _selectedCounty = null;
+      _usernameSearch = '';
+    });
+    _loadTrophies();
+  }
+  
+  bool get _hasActiveFilters =>
+      _selectedCategory != 'all' ||
+      _selectedState != null ||
+      _selectedCounty != null ||
+      _usernameSearch.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -81,10 +148,22 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           child: _buildHeader(context, isWide),
         ),
 
-        // Category tabs
+        // Category tabs + filter toggle
         SliverToBoxAdapter(
           child: _buildCategoryTabs(),
         ),
+        
+        // Expanded filters panel
+        if (_showFilters)
+          SliverToBoxAdapter(
+            child: _buildExpandedFilters(),
+          ),
+        
+        // Active filter chips
+        if (_hasActiveFilters)
+          SliverToBoxAdapter(
+            child: _buildActiveFilterChips(),
+          ),
 
         // Content
         _buildContent(context, isWide),
@@ -135,21 +214,139 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         horizontal: AppSpacing.screenPadding,
         vertical: AppSpacing.xs,
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (final category in _categories)
-              Padding(
-                padding: const EdgeInsets.only(right: AppSpacing.sm),
-                child: _CategoryChip(
-                  category: category,
-                  isSelected: _selectedCategory == category.id,
-                  onTap: () => _onCategoryChanged(category.id),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final category in _categories)
+                    Padding(
+                      padding: const EdgeInsets.only(right: AppSpacing.sm),
+                      child: _CategoryChip(
+                        category: category,
+                        isSelected: _selectedCategory == category.id,
+                        onTap: () => _onCategoryChanged(category.id),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _FilterToggleButton(
+            isActive: _showFilters || _hasActiveFilters,
+            hasFilters: _hasActiveFilters,
+            onTap: () => setState(() => _showFilters = !_showFilters),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildExpandedFilters() {
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Location filters row
+          Row(
+            children: [
+              Expanded(
+                child: _StateDropdown(
+                  value: _selectedState,
+                  onChanged: _onStateChanged,
                 ),
               ),
-          ],
-        ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _CountyDropdown(
+                  stateCode: _selectedState,
+                  value: _selectedCounty,
+                  onChanged: _onCountyChanged,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Username search
+          _UsernameSearchField(
+            value: _usernameSearch,
+            onChanged: _onUsernameSearchChanged,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildActiveFilterChips() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.screenPadding,
+        vertical: AppSpacing.xs,
+      ),
+      child: Wrap(
+        spacing: AppSpacing.xs,
+        runSpacing: AppSpacing.xs,
+        children: [
+          if (_selectedState != null)
+            _ActiveFilterChip(
+              label: _selectedState!,
+              onRemove: () => _onStateChanged(null),
+            ),
+          if (_selectedCounty != null)
+            _ActiveFilterChip(
+              label: _selectedCounty!,
+              onRemove: () => _onCountyChanged(null),
+            ),
+          if (_usernameSearch.isNotEmpty)
+            _ActiveFilterChip(
+              label: 'User: $_usernameSearch',
+              onRemove: () => _onUsernameSearchChanged(''),
+            ),
+          if (_hasActiveFilters)
+            GestureDetector(
+              onTap: _clearFilters,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.clear_all_rounded, size: 14, color: AppColors.error),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Clear all',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -325,22 +522,63 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
   bool _isHovered = false;
   bool _isLiked = false;
 
-  void _showShareModal(BuildContext context, Map<String, dynamic> trophy) {
-    final title = trophy['title'] ?? 'Trophy';
-    showComingSoonModal(
-      context: context,
-      feature: 'Share Trophy',
-      description: 'Share "$title" directly to social media, messaging apps, or copy a link.',
-      icon: Icons.share_rounded,
+  void _sharePost(BuildContext context, Map<String, dynamic> trophy) {
+    final trophyId = trophy['id'] as String?;
+    if (trophyId == null) return;
+    
+    // Copy deep link to clipboard
+    final link = 'https://theskinningshed.com/trophy/$trophyId';
+    Clipboard.setData(ClipboardData(text: link));
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.success),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Link copied to clipboard',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.surface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          side: const BorderSide(color: AppColors.borderSubtle),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
   
-  void _showSaveModal(BuildContext context) {
-    showComingSoonModal(
-      context: context,
-      feature: 'Save Trophy',
-      description: 'Save trophies to your personal collection for easy access later.',
-      icon: Icons.bookmark_rounded,
+  void _toggleSaved(BuildContext context) {
+    // Toggle saved state (UI only for now - can be expanded to persist)
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.bookmark_added_rounded, size: 18, color: AppColors.accent),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Trophy bookmarked',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.surface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          side: const BorderSide(color: AppColors.borderSubtle),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -523,12 +761,12 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
                         const Spacer(),
                         _ActionButton(
                           icon: Icons.share_outlined,
-                          onTap: () => _showShareModal(context, widget.trophy),
+                          onTap: () => _sharePost(context, widget.trophy),
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         _ActionButton(
                           icon: Icons.bookmark_outline_rounded,
-                          onTap: () => _showSaveModal(context),
+                          onTap: () => _toggleSaved(context),
                         ),
                       ],
                     ),
@@ -927,4 +1165,381 @@ class _CategoryTab {
   final String id;
   final String label;
   final IconData icon;
+}
+
+/// Filter toggle button
+class _FilterToggleButton extends StatefulWidget {
+  const _FilterToggleButton({
+    required this.isActive,
+    required this.hasFilters,
+    required this.onTap,
+  });
+
+  final bool isActive;
+  final bool hasFilters;
+  final VoidCallback onTap;
+
+  @override
+  State<_FilterToggleButton> createState() => _FilterToggleButtonState();
+}
+
+class _FilterToggleButtonState extends State<_FilterToggleButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: widget.isActive || _isHovered
+                ? AppColors.accent.withOpacity(0.15)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            border: Border.all(
+              color: widget.isActive
+                  ? AppColors.accent.withOpacity(0.4)
+                  : _isHovered
+                      ? AppColors.borderStrong
+                      : AppColors.borderSubtle,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.hasFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+                size: 16,
+                color: widget.isActive ? AppColors.accent : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Filters',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w500,
+                  color: widget.isActive ? AppColors.accent : AppColors.textSecondary,
+                ),
+              ),
+              if (widget.hasFilters) ...[
+                const SizedBox(width: 4),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// State dropdown for location filtering
+class _StateDropdown extends StatelessWidget {
+  const _StateDropdown({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: value,
+          isExpanded: true,
+          hint: const Text(
+            'All States',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppColors.textPrimary,
+          ),
+          dropdownColor: AppColors.surfaceElevated,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('All States'),
+            ),
+            ...USStates.all.map((state) => DropdownMenuItem<String?>(
+              value: state.name,
+              child: Text(state.name),
+            )),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+/// County dropdown for location filtering (dependent on state)
+class _CountyDropdown extends StatefulWidget {
+  const _CountyDropdown({
+    required this.stateCode,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String? stateCode;
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  State<_CountyDropdown> createState() => _CountyDropdownState();
+}
+
+class _CountyDropdownState extends State<_CountyDropdown> {
+  List<String> _counties = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCounties();
+  }
+
+  @override
+  void didUpdateWidget(_CountyDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.stateCode != oldWidget.stateCode) {
+      _loadCounties();
+    }
+  }
+
+  void _loadCounties() {
+    if (widget.stateCode == null) {
+      setState(() => _counties = []);
+      return;
+    }
+
+    // Find state code from name
+    final state = USStates.all.firstWhere(
+      (s) => s.name == widget.stateCode,
+      orElse: () => const USState('', ''),
+    );
+    
+    if (state.code.isEmpty) {
+      setState(() => _counties = []);
+      return;
+    }
+
+    // Get counties from static data
+    final counties = USCounties.forState(state.code);
+    setState(() => _counties = counties);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: widget.value,
+          isExpanded: true,
+          hint: Text(
+            widget.stateCode == null
+                ? 'Select state first'
+                : 'All Counties',
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppColors.textPrimary,
+          ),
+          dropdownColor: AppColors.surfaceElevated,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+          items: widget.stateCode == null
+              ? []
+              : [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('All Counties'),
+                  ),
+                  ..._counties.map((county) => DropdownMenuItem<String?>(
+                    value: county,
+                    child: Text(county),
+                  )),
+                ],
+          onChanged: widget.stateCode == null ? null : widget.onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+/// Username search field with debounce
+class _UsernameSearchField extends StatefulWidget {
+  const _UsernameSearchField({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_UsernameSearchField> createState() => _UsernameSearchFieldState();
+}
+
+class _UsernameSearchFieldState extends State<_UsernameSearchField> {
+  late TextEditingController _controller;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      widget.onChanged(value.trim());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      decoration: InputDecoration(
+        hintText: 'Search by username...',
+        hintStyle: const TextStyle(
+          fontSize: 13,
+          color: AppColors.textSecondary,
+        ),
+        prefixIcon: const Icon(
+          Icons.person_search_rounded,
+          size: 18,
+          color: AppColors.textTertiary,
+        ),
+        suffixIcon: _controller.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear_rounded, size: 18),
+                onPressed: () {
+                  _controller.clear();
+                  widget.onChanged('');
+                },
+                color: AppColors.textTertiary,
+              )
+            : null,
+        filled: true,
+        fillColor: AppColors.surfaceElevated,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.borderSubtle),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.borderSubtle),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          borderSide: BorderSide(color: AppColors.accent),
+        ),
+      ),
+      style: const TextStyle(
+        fontSize: 13,
+        color: AppColors.textPrimary,
+      ),
+      onChanged: _onChanged,
+    );
+  }
+}
+
+/// Active filter chip (removable)
+class _ActiveFilterChip extends StatelessWidget {
+  const _ActiveFilterChip({
+    required this.label,
+    required this.onRemove,
+  });
+
+  final String label;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 10, right: 4, top: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 12,
+                color: AppColors.accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

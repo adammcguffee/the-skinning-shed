@@ -24,5 +24,4 @@ export 'layout/responsive.dart';
 
 // Modal system (global dismiss behavior)
 export 'modals/shed_modal.dart';
-export 'modals/coming_soon_modal.dart';
 export 'modals/create_menu_sheet.dart';
