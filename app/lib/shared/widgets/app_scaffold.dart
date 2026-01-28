@@ -44,7 +44,7 @@ class AppScaffold extends ConsumerWidget {
       case 5: return AdPages.feed; // Swap Shop - use feed for now
       case 6: return AdPages.weather;
       case 7: return AdPages.research;
-      case 8: return AdPages.regulations;
+      case 8: return AdPages.officialLinks;
       case 9: return AdPages.settings;
       default: return AdPages.feed;
     }

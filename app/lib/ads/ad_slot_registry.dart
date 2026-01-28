@@ -64,9 +64,9 @@ abstract final class AdSlotRegistry {
   static const researchLeft = AdSlotKey(AdPages.research, AdPosition.left);
   static const researchRight = AdSlotKey(AdPages.research, AdPosition.right);
 
-  // Regulations page slots
-  static const regulationsLeft = AdSlotKey(AdPages.regulations, AdPosition.left);
-  static const regulationsRight = AdSlotKey(AdPages.regulations, AdPosition.right);
+  // Official Links page slots
+  static const officialLinksLeft = AdSlotKey(AdPages.officialLinks, AdPosition.left);
+  static const officialLinksRight = AdSlotKey(AdPages.officialLinks, AdPosition.right);
 
   // Settings page slots
   static const settingsLeft = AdSlotKey(AdPages.settings, AdPosition.left);
@@ -92,8 +92,8 @@ abstract final class AdSlotRegistry {
     weatherRight,
     researchLeft,
     researchRight,
-    regulationsLeft,
-    regulationsRight,
+    officialLinksLeft,
+    officialLinksRight,
     settingsLeft,
     settingsRight,
     swapShopLeft,
@@ -109,7 +109,7 @@ abstract final class AdSlotRegistry {
     AdPages.messages,
     AdPages.weather,
     AdPages.research,
-    AdPages.regulations,
+    AdPages.officialLinks,
     AdPages.settings,
     AdPages.swapShop,
   ];

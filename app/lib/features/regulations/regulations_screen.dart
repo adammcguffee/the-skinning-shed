@@ -57,15 +57,11 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('No official link available for $stateName'),
-            backgroundColor: AppColors.warning,
-            action: SnackBarAction(
-              label: 'Report',
-              textColor: Colors.white,
-              onPressed: () {
-                // Could open a feedback form
-                debugPrint('Report missing link for $stateCode');
-              },
+            content: Text('$stateName portal coming soon'),
+            backgroundColor: AppColors.surface,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             ),
           ),
         );
@@ -237,7 +233,7 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$statesWithUrls of 50 states verified',
+                  'Direct links to official sources',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -245,7 +241,7 @@ class _RegulationsScreenState extends ConsumerState<RegulationsScreen> {
                   ),
                 ),
                 Text(
-                  'Links open official state wildlife agency portals.',
+                  'We link directly to state wildlife agencies — no summaries, no guesswork.',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textTertiary,
@@ -286,11 +282,9 @@ class _StateLinkCardState extends State<_StateLinkCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: widget.hasUrl ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: SystemMouseCursors.click,
       child: Tooltip(
-        message: widget.hasUrl 
-            ? 'Open ${widget.stateName} wildlife portal'
-            : '${widget.stateName} - Link unavailable',
+        message: 'Open ${widget.stateName} wildlife portal',
         child: GestureDetector(
           onTap: widget.onTap,
           child: AnimatedContainer(

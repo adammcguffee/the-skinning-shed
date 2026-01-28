@@ -18,7 +18,7 @@ abstract final class AdPages {
   static const String messages = 'messages';
   static const String weather = 'weather';
   static const String research = 'research';
-  static const String regulations = 'regulations';
+  static const String officialLinks = 'official_links';
   static const String settings = 'settings';
   static const String swapShop = 'swap_shop';
 }
