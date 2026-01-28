@@ -25,6 +25,15 @@
       ]
     },
     {
+      "source": "/sitemap.xml",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/xml"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -66,7 +75,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets|icons|favicon|flutter|main|manifest|canvaskit|\\.well-known).*)",
+      "source": "/((?!assets|icons|favicon|flutter|main|manifest|canvaskit|\\.well-known|robots\\.txt|sitemap\\.xml|humans\\.txt|security\\.txt).*)",
       "destination": "/index.html"
     }
   ],

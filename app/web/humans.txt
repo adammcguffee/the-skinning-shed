@@ -1,0 +1,15 @@
+/* TEAM */
+Name: The Skinning Shed
+Site: https://theskinningshed.com
+Contact: support@theskinningshed.com
+Location: USA
+
+/* THANKS */
+Built with Flutter, Supabase, and Vercel.
+Icons by Material Design.
+
+/* SITE */
+Last update: 2026-01-28
+Language: English
+Standards: HTML5, CSS3, ES6
+Software: Flutter, Dart, Supabase
