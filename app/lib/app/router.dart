@@ -18,6 +18,12 @@ import '../features/regulations/regulations_screen.dart';
 import '../features/regulations/regulations_admin_screen.dart';
 import '../features/research/research_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/settings/pages/privacy_policy_page.dart';
+import '../features/settings/pages/terms_of_service_page.dart';
+import '../features/settings/pages/content_disclaimer_page.dart';
+import '../features/settings/pages/help_center_page.dart';
+import '../features/settings/pages/about_page.dart';
+import '../features/settings/pages/feedback_page.dart';
 import '../features/swap_shop/swap_shop_create_screen.dart';
 import '../features/swap_shop/swap_shop_detail_screen.dart';
 import '../features/swap_shop/swap_shop_screen.dart';
@@ -254,10 +260,35 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       
-      // Official links admin (admin only)
+      // Official links admin (admin only - protected)
       GoRoute(
         path: '/admin/official-links',
         builder: (context, state) => const RegulationsAdminScreen(),
+        redirect: (context, state) async {
+          // Check admin status before allowing access
+          final client = SupabaseService.instance.client;
+          if (client == null) return '/';
+          
+          final userId = client.auth.currentUser?.id;
+          if (userId == null) return '/';
+          
+          try {
+            final response = await client
+                .from('profiles')
+                .select('is_admin')
+                .eq('id', userId)
+                .maybeSingle();
+            
+            final isAdmin = response?['is_admin'] == true;
+            if (!isAdmin) {
+              return '/'; // Redirect non-admins to home
+            }
+          } catch (e) {
+            return '/'; // On error, redirect to home
+          }
+          
+          return null; // Allow access
+        },
       ),
       
       // Post trophy (modal / full screen)
@@ -319,6 +350,32 @@ final routerProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['id']!;
           return LandDetailScreen(landId: id);
         },
+      ),
+      
+      // Settings pages
+      GoRoute(
+        path: '/settings/privacy',
+        builder: (context, state) => const PrivacyPolicyPage(),
+      ),
+      GoRoute(
+        path: '/settings/terms',
+        builder: (context, state) => const TermsOfServicePage(),
+      ),
+      GoRoute(
+        path: '/settings/disclaimer',
+        builder: (context, state) => const ContentDisclaimerPage(),
+      ),
+      GoRoute(
+        path: '/settings/help',
+        builder: (context, state) => const HelpCenterPage(),
+      ),
+      GoRoute(
+        path: '/settings/about',
+        builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        path: '/settings/feedback',
+        builder: (context, state) => const FeedbackPage(),
       ),
     ],
   );

@@ -4,6 +4,38 @@
 
 ---
 
+## Privacy, Legal, Help & Admin Hardening
+
+### Settings Page Structure
+- [x] Account section (Edit Profile link)
+- [x] Help & Support (Help Center, Send Feedback)
+- [x] Legal (Privacy Policy, Terms of Service, Content Disclaimer)
+- [x] App Info (About page with version, mission, credits)
+- [x] Danger Zone (Delete Account)
+- [x] Sign Out button
+
+### Legal Pages Created
+- [x] Privacy Policy - covers data collection, usage, no GPS tracking, no selling data
+- [x] Terms of Service - user content, prohibited content, marketplace disclaimer, termination
+- [x] Content Disclaimer - Official Links disclaimer, user-generated content notice, no legal advice
+
+### Help & Support
+- [x] Help Center with expandable FAQ topics
+- [x] Feedback form (bug, feature request, content report, etc.)
+- [x] feedback_reports table created with RLS
+
+### Admin Protection
+- [x] Admin section hidden from non-admin users (isAdminProvider)
+- [x] Admin route (/admin/official-links) protected with redirect guard
+- [x] RLS policies restrict feedback_reports access
+
+### Account Management
+- [x] Delete Account flow with confirmation dialog
+- [x] delete_user_account RPC function cascades deletes
+- [x] Lists what data will be deleted
+
+---
+
 ## Phase 0: Quick Audit
 - [x] Storage buckets verified: avatars, trophy_photos, land_photos, swap_shop_photos, ad_share, record_photos
 - [x] All screens identified and audited

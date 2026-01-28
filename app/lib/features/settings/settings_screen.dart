@@ -32,18 +32,16 @@ final isAdminProvider = FutureProvider<bool>((ref) async {
   }
 });
 
-/// ⚙️ SETTINGS SCREEN - 2025 PREMIUM
+/// ⚙️ SETTINGS SCREEN - 2026 PRODUCTION
+/// 
+/// Complete settings with:
+/// - Account management
+/// - Help & Support
+/// - Legal pages
+/// - App info
+/// - Admin section (gated)
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
-
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature coming soon!'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,8 +50,6 @@ class SettingsScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        // Banner header is now rendered by AppScaffold
-
         // Top bar (web only)
         if (isWide)
           const AppTopBar(
@@ -80,63 +76,69 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsItem(
                       icon: Icons.person_outline_rounded,
                       title: 'Edit Profile',
-                      onTap: () => _showComingSoon(context, 'Edit Profile'),
-                    ),
-                    _SettingsItem(
-                      icon: Icons.notifications_outlined,
-                      title: 'Notifications',
-                      onTap: () => _showComingSoon(context, 'Notifications'),
-                    ),
-                    _SettingsItem(
-                      icon: Icons.lock_outline_rounded,
-                      title: 'Privacy',
-                      onTap: () => _showComingSoon(context, 'Privacy settings'),
+                      subtitle: 'Display name, bio, avatar',
+                      onTap: () => context.push('/profile/edit'),
                     ),
                   ],
                 ),
               ),
 
-              // Preferences section
+              // Help & Support section
               SliverToBoxAdapter(
                 child: _SettingsSection(
-                  title: 'Preferences',
-                  children: [
-                    _SettingsItem(
-                      icon: Icons.location_on_outlined,
-                      title: 'Default Location',
-                      subtitle: 'Texas',
-                      onTap: () => _showComingSoon(context, 'Default Location'),
-                    ),
-                    _SettingsItem(
-                      icon: Icons.straighten_outlined,
-                      title: 'Units',
-                      subtitle: 'Imperial',
-                      onTap: () => _showComingSoon(context, 'Units'),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Support section
-              SliverToBoxAdapter(
-                child: _SettingsSection(
-                  title: 'Support',
+                  title: 'Help & Support',
                   children: [
                     _SettingsItem(
                       icon: Icons.help_outline_rounded,
                       title: 'Help Center',
-                      onTap: () => _showComingSoon(context, 'Help Center'),
+                      subtitle: 'How to use The Skinning Shed',
+                      onTap: () => context.push('/settings/help'),
                     ),
                     _SettingsItem(
                       icon: Icons.feedback_outlined,
                       title: 'Send Feedback',
-                      onTap: () => _showComingSoon(context, 'Send Feedback'),
+                      subtitle: 'Report bugs or suggest features',
+                      onTap: () => context.push('/settings/feedback'),
                     ),
+                  ],
+                ),
+              ),
+
+              // Legal section
+              SliverToBoxAdapter(
+                child: _SettingsSection(
+                  title: 'Legal',
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.privacy_tip_outlined,
+                      title: 'Privacy Policy',
+                      onTap: () => context.push('/settings/privacy'),
+                    ),
+                    _SettingsItem(
+                      icon: Icons.article_outlined,
+                      title: 'Terms of Service',
+                      onTap: () => context.push('/settings/terms'),
+                    ),
+                    _SettingsItem(
+                      icon: Icons.warning_amber_outlined,
+                      title: 'Content Disclaimer',
+                      subtitle: 'Important notices',
+                      onTap: () => context.push('/settings/disclaimer'),
+                    ),
+                  ],
+                ),
+              ),
+
+              // App Info section
+              SliverToBoxAdapter(
+                child: _SettingsSection(
+                  title: 'App Info',
+                  children: [
                     _SettingsItem(
                       icon: Icons.info_outline_rounded,
                       title: 'About',
                       subtitle: 'Version 1.0.0',
-                      onTap: () => _showComingSoon(context, 'About'),
+                      onTap: () => context.push('/settings/about'),
                     ),
                   ],
                 ),
@@ -154,6 +156,7 @@ class SettingsScreen extends ConsumerWidget {
                       return SliverToBoxAdapter(
                         child: _SettingsSection(
                           title: 'Admin',
+                          titleColor: AppColors.warning,
                           children: [
                             _SettingsItem(
                               icon: Icons.link_outlined,
@@ -202,6 +205,23 @@ class SettingsScreen extends ConsumerWidget {
                 },
               ),
 
+              // Danger Zone section
+              SliverToBoxAdapter(
+                child: _SettingsSection(
+                  title: 'Danger Zone',
+                  titleColor: AppColors.error,
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.delete_outline_rounded,
+                      title: 'Delete Account',
+                      subtitle: 'Permanently remove your account and data',
+                      iconColor: AppColors.error,
+                      onTap: () => _showDeleteAccountDialog(context, ref),
+                    ),
+                  ],
+                ),
+              ),
+
               // Sign out
               SliverToBoxAdapter(
                 child: Padding(
@@ -228,16 +248,174 @@ class SettingsScreen extends ConsumerWidget {
       ],
     );
   }
+
+  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => _DeleteAccountDialog(ref: ref),
+    );
+  }
+}
+
+/// Delete account confirmation dialog.
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog({required this.ref});
+  
+  final WidgetRef ref;
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  bool _isDeleting = false;
+  bool _confirmed = false;
+
+  Future<void> _deleteAccount() async {
+    if (!_confirmed) return;
+    
+    setState(() => _isDeleting = true);
+    
+    try {
+      final client = widget.ref.read(supabaseClientProvider);
+      if (client == null) throw Exception('Not connected');
+      
+      // Call the delete account RPC (which handles cascading deletes)
+      await client.rpc('delete_user_account');
+      
+      // Sign out
+      final authService = widget.ref.read(authServiceProvider);
+      await authService.signOut();
+      
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account has been deleted.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting account: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surfaceElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      ),
+      title: Row(
+        children: [
+          Icon(Icons.warning_rounded, color: AppColors.error, size: 24),
+          const SizedBox(width: AppSpacing.sm),
+          const Text('Delete Account?'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This action cannot be undone. The following will be permanently deleted:',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _buildDeleteItem('Your profile and preferences'),
+          _buildDeleteItem('All trophy posts'),
+          _buildDeleteItem('All swap shop listings'),
+          _buildDeleteItem('All land listings'),
+          _buildDeleteItem('Message history'),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              Checkbox(
+                value: _confirmed,
+                onChanged: (value) {
+                  setState(() => _confirmed = value ?? false);
+                },
+                activeColor: AppColors.error,
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _confirmed = !_confirmed),
+                  child: Text(
+                    'I understand this is permanent',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _confirmed && !_isDeleting ? _deleteAccount : null,
+          style: TextButton.styleFrom(foregroundColor: AppColors.error),
+          child: _isDeleting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Delete Account'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeleteItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+      child: Row(
+        children: [
+          Icon(
+            Icons.remove_circle_outline,
+            size: 14,
+            color: AppColors.error.withOpacity(0.7),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SettingsSection extends StatelessWidget {
   const _SettingsSection({
     required this.title,
     required this.children,
+    this.titleColor,
   });
 
   final String title;
   final List<Widget> children;
+  final Color? titleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +432,8 @@ class _SettingsSection extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: titleColor ?? AppColors.textSecondary,
+                  fontWeight: titleColor != null ? FontWeight.w600 : FontWeight.w500,
                 ),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -288,12 +467,14 @@ class _SettingsItem extends StatefulWidget {
     required this.title,
     this.subtitle,
     required this.onTap,
+    this.iconColor,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
   final VoidCallback onTap;
+  final Color? iconColor;
 
   @override
   State<_SettingsItem> createState() => _SettingsItemState();
@@ -320,13 +501,13 @@ class _SettingsItemState extends State<_SettingsItem> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: AppColors.backgroundAlt,
+                  color: (widget.iconColor ?? AppColors.textSecondary).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                 ),
                 child: Icon(
                   widget.icon,
                   size: 18,
-                  color: AppColors.textSecondary,
+                  color: widget.iconColor ?? AppColors.textSecondary,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -341,7 +522,9 @@ class _SettingsItemState extends State<_SettingsItem> {
                     if (widget.subtitle != null)
                       Text(
                         widget.subtitle!,
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
                       ),
                   ],
                 ),
@@ -405,7 +588,9 @@ class _SettingsToggleItem extends ConsumerWidget {
                 if (subtitle != null)
                   Text(
                     subtitle!,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
                   ),
               ],
             ),
