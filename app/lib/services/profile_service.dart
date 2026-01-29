@@ -226,6 +226,111 @@ class ProfileService {
     if (_client == null || avatarPath == null) return null;
     return _client.storage.from('avatars').getPublicUrl(avatarPath);
   }
+  
+  /// Check if a username is available (case-insensitive).
+  /// Returns true if available, false if taken.
+  Future<bool> isUsernameAvailable(String username) async {
+    if (_client == null) return false;
+    
+    try {
+      final result = await _client.rpc(
+        'is_username_available',
+        params: {'check_username': username},
+      );
+      return result == true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ProfileService] Error checking username: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Set the current user's username.
+  /// Returns a UsernameResult indicating success or specific failure reason.
+  Future<UsernameResult> setUsername(String username) async {
+    if (_client == null) {
+      return UsernameResult.error('Not connected');
+    }
+    
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      return UsernameResult.error('Not authenticated');
+    }
+    
+    try {
+      await _client
+          .from('profiles')
+          .update({
+            'username': username,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', userId);
+      
+      return UsernameResult.success();
+    } on PostgrestException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ProfileService] Postgrest error setting username: ${e.code} - ${e.message}');
+      }
+      
+      // Check for unique violation (code 23505) or check constraint violation (23514)
+      if (e.code == '23505') {
+        return UsernameResult.taken();
+      } else if (e.code == '23514') {
+        return UsernameResult.invalidFormat();
+      }
+      
+      return UsernameResult.error(e.message);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ProfileService] Error setting username: $e');
+      }
+      return UsernameResult.error(e.toString());
+    }
+  }
+  
+  /// Get a user's profile by ID.
+  Future<ProfileData?> getProfileById(String userId) async {
+    if (_client == null) return null;
+    
+    try {
+      final response = await _client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
+      
+      if (response != null) {
+        return ProfileData.fromJson(response);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ProfileService] Error loading profile by ID: $e');
+      }
+      return null;
+    }
+  }
+}
+
+/// Result of attempting to set a username.
+enum UsernameResultType { success, taken, invalidFormat, error }
+
+class UsernameResult {
+  const UsernameResult._(this.type, [this.errorMessage]);
+  
+  factory UsernameResult.success() => const UsernameResult._(UsernameResultType.success);
+  factory UsernameResult.taken() => const UsernameResult._(UsernameResultType.taken);
+  factory UsernameResult.invalidFormat() => const UsernameResult._(UsernameResultType.invalidFormat);
+  factory UsernameResult.error(String message) => UsernameResult._(UsernameResultType.error, message);
+  
+  final UsernameResultType type;
+  final String? errorMessage;
+  
+  bool get isSuccess => type == UsernameResultType.success;
+  bool get isTaken => type == UsernameResultType.taken;
+  bool get isInvalidFormat => type == UsernameResultType.invalidFormat;
+  bool get isError => type == UsernameResultType.error;
 }
 
 /// Provider for profile service.

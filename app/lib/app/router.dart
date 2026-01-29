@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/auth_screen.dart';
+import '../features/auth/choose_username_screen.dart';
 import '../navigation/app_routes.dart';
 import '../services/location_prefetch_service.dart';
 import '../features/discover/discover_screen.dart';
@@ -45,23 +46,33 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Auth state notifier that listens to Supabase auth changes.
 /// Also triggers location prefetch in background after auth succeeds.
+/// Tracks whether user needs to choose a username.
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier(this._service) {
     _subscription = _service.authStateChanges?.listen((state) {
       final wasAuthenticated = _session != null;
       _session = state.session;
+      
+      // Reset username check on auth change
+      if (wasAuthenticated != (_session != null)) {
+        _hasCheckedUsername = false;
+        _needsUsername = false;
+      }
+      
       notifyListeners();
       
       // Trigger location prefetch when user becomes authenticated
       if (!wasAuthenticated && _session != null) {
         _triggerLocationPrefetch();
+        _checkUsernameNeeded();
       }
     });
     _session = _service.currentSession;
     
-    // If already authenticated on startup, trigger prefetch
+    // If already authenticated on startup, trigger prefetch and username check
     if (_session != null) {
       _triggerLocationPrefetch();
+      _checkUsernameNeeded();
     }
   }
 
@@ -69,9 +80,69 @@ class AuthNotifier extends ChangeNotifier {
   Session? _session;
   dynamic _subscription;
   bool _didPrefetch = false;
+  
+  /// Username tracking
+  bool _hasCheckedUsername = false;
+  bool _needsUsername = false;
 
   bool get isAuthenticated => _session != null;
   Session? get session => _session;
+  
+  /// Whether we've checked if username is needed.
+  bool get hasCheckedUsername => _hasCheckedUsername;
+  
+  /// Whether the user needs to choose a username.
+  bool get needsUsername => _needsUsername;
+  
+  /// Check if the user needs to set a username.
+  Future<void> _checkUsernameNeeded() async {
+    if (_hasCheckedUsername) return;
+    
+    final client = _service.client;
+    if (client == null) return;
+    
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+    
+    try {
+      final response = await client
+          .from('profiles')
+          .select('username')
+          .eq('id', userId)
+          .maybeSingle();
+      
+      final username = response?['username'] as String?;
+      _hasCheckedUsername = true;
+      _needsUsername = username == null || username.isEmpty;
+      
+      if (kDebugMode) {
+        debugPrint('[AuthNotifier] Username check: needsUsername=$_needsUsername');
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AuthNotifier] Error checking username: $e');
+      }
+      // On error, assume we don't need username to avoid blocking
+      _hasCheckedUsername = true;
+      _needsUsername = false;
+      notifyListeners();
+    }
+  }
+  
+  /// Force re-check username (call after username is set).
+  void markUsernameSet() {
+    _hasCheckedUsername = true;
+    _needsUsername = false;
+    notifyListeners();
+  }
+  
+  /// Force refresh username check.
+  Future<void> refreshUsernameCheck() async {
+    _hasCheckedUsername = false;
+    await _checkUsernameNeeded();
+  }
   
   /// Trigger location prefetch in background (non-blocking).
   void _triggerLocationPrefetch() {
@@ -136,15 +207,28 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       final isAuthenticated = authNotifier.isAuthenticated;
       final isAuthRoute = state.matchedLocation == AppRoutes.auth;
+      final isChooseUsernameRoute = state.matchedLocation == AppRoutes.chooseUsername;
       
       // If not authenticated and not on auth page, redirect to auth
       if (!isAuthenticated && !isAuthRoute) {
         return AppRoutes.auth;
       }
       
-      // If authenticated and on auth page, redirect to home
+      // If authenticated and on auth page, redirect to home (or choose-username if needed)
       if (isAuthenticated && isAuthRoute) {
+        if (authNotifier.hasCheckedUsername && authNotifier.needsUsername) {
+          return AppRoutes.chooseUsername;
+        }
         return AppRoutes.feed;
+      }
+      
+      // If authenticated, username check complete, and username is needed
+      // Redirect to choose-username (unless already there)
+      if (isAuthenticated && 
+          authNotifier.hasCheckedUsername && 
+          authNotifier.needsUsername && 
+          !isChooseUsernameRoute) {
+        return AppRoutes.chooseUsername;
       }
       
       return null;
@@ -154,6 +238,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.auth,
         builder: (context, state) => const AuthScreen(),
+      ),
+      
+      // Choose username route (outside shell - required flow)
+      GoRoute(
+        path: AppRoutes.chooseUsername,
+        builder: (context, state) => const ChooseUsernameScreen(),
       ),
       
       // Main shell with navigation

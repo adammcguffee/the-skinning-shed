@@ -13,6 +13,7 @@ class AppRoutes {
   // ═══════════════════════════════════════════════════════════════════════════
   
   static const String auth = '/auth';
+  static const String chooseUsername = '/choose-username';
   static const String feed = '/';
   static const String explore = '/explore';
   static const String discover = '/discover';
