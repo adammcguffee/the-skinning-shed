@@ -1,10 +1,10 @@
 # The Skinning Shed - Project State
 
-> Last updated: January 28, 2026
+> Last updated: January 29, 2026
 
 ## Overview
 
-Premium hunting & fishing community app built with Flutter. Dark, cinematic forest-green theme with full Supabase backend integration. Features include trophy posting with weather auto-fill, social interactions, direct messaging, land listings, swap shop marketplace, regulations lookup, and research analytics.
+Premium hunting & fishing community app built with Flutter. Dark, cinematic forest-green theme with full Supabase backend integration. Features include trophy posting with weather auto-fill, social interactions, direct messaging, hunting clubs with stand sign-in boards, land listings, swap shop marketplace, regulations lookup, and research analytics.
 
 ---
 
@@ -53,6 +53,16 @@ Premium hunting & fishing community app built with Flutter. Dark, cinematic fore
 | `/regulations/:stateCode` | StateRegulationsScreen | State-specific regs |
 | `/admin/regulations` | RegulationsAdminScreen | Admin: run regs sync |
 
+### Club Routes
+| Route | Screen | Description |
+|-------|--------|-------------|
+| `/clubs` | ClubsHomeScreen | My Clubs + Discover |
+| `/clubs/create` | CreateClubScreen | Create new club |
+| `/clubs/:id` | ClubDetailScreen | Club tabs (News, Stands, Trail Cam, Members) |
+| `/clubs/:id/settings` | ClubSettingsScreen | Club settings (admin) |
+| `/clubs/preview/:id` | ClubPreviewScreen | Preview for non-members |
+| `/clubs/join/:token` | ClubJoinScreen | Accept invite link |
+
 ---
 
 ## Features Status
@@ -74,13 +84,32 @@ Premium hunting & fishing community app built with Flutter. Dark, cinematic fore
 - [x] **Regulations**: State selector, season dates, limits
 - [x] **Research**: Pattern analytics with privacy threshold
 - [x] **Ads System**: Header slots, page targeting, scheduling
+- [x] **Hunting Clubs**: Full club system (see below)
+
+### Hunting Clubs Features (Implemented)
+- [x] **Club CRUD**: Create, edit, delete clubs
+- [x] **Member Management**: Roles (owner, admin, member), invite/remove
+- [x] **Invite System**: By username + shareable invite links
+- [x] **Discoverable Clubs**: Join requests, approval workflow
+- [x] **Club News Feed**: Post updates visible to members only
+- [x] **Stand Sign-In Board**: Track who is hunting which stand
+- [x] **Hunt Details**: Parked location, entry route on sign-in
+- [x] **Stand Activity**: Log observations after each sit
+- [x] **Log Your Sit**: Post-signout prompt to record activity
+- [x] **Auto-expire Signins**: Configurable TTL (1-12 hours)
+- [x] **Premium Occupied Styling**: Warm orange tint for occupied stands
+- [x] **Trail Cam Tab**: Club photo uploads
+- [x] **Club Settings**: Admin-only settings screen
+- [x] **Mobile-First UI**: FABs, overflow menu, responsive design
+- [x] **RLS Security**: All data protected at database level
 
 ### Pending / In Progress
-- [ ] Push notifications
+- [ ] Push notifications (in progress)
 - [ ] Avatar upload in settings
 - [ ] Full profile editing
 - [ ] Admin moderation dashboard
 - [ ] Offline mode / caching
+- [ ] Club realtime updates (currently polling)
 
 ---
 
@@ -170,6 +199,9 @@ See `docs/REGS_WORKER_DEPLOY.md` for full deployment guide.
 | `MessagingService` | `messaging_service.dart` | DM conversations |
 | `RegulationsService` | `regulations_service.dart` | Regs data + Edge Function |
 | `AdService` | `ad_service.dart` | Ad slot management |
+| `ClubsService` | `clubs_service.dart` | Club CRUD, members, invites |
+| `StandsService` | `stands_service.dart` | Stands, signins, activity |
+| `ClubOpeningsService` | `club_openings_service.dart` | Club openings/seasons |
 
 ---
 
@@ -385,21 +417,35 @@ flutter build web --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY
 ## Recent Commits (Latest First)
 
 ```
+8d54488 Make Clubs fully functional on mobile (stands + invites + settings)
+21f7999 Fix club stands schema + delete + mobile invite + prompt logic
+ce48840 Enhance club stands: hunt details + admin stand delete + premium occupied styling + recent activity
+d4ee5b7 Fix club members privacy + mobile invite
+d597ee1 Add club invites by username + SMS share
+abe2f04 Fix club admin gating + nav icons + preview + settings + back
+... (earlier commits)
 3284f18 fix: improve crawler robustness, fallback for NO_PAGES_FOUND, and graceful shutdown
 506da73 feat: support PDF regs and misc_related URLs in discovery and extraction
-... feat: harden regulations worker with strict schemas, smarter crawl, and fallback
 2959f10 feat(chat): verification polish + inbox context + pagination + realtime optimization
-4a2f3dd fix(ads): correct page ID mapping after Messages nav addition
-df12ffc feat(chat-wire): wire Swap/Land/Profile message buttons
-4555219 feat(chat-ui): inbox + conversation screen + unread badges + mark read
-b944e86 feat(chat-db): tables + RLS + RPC + triggers
-02c5620 feat(research): top insights readability + compare mode
-e97fc93 feat(regs): sources seed + regulations-check edge function + admin run-now
 ```
 
 ---
 
 ## Notes for Next Session
+
+### Hunting Clubs - COMPLETE
+
+The clubs feature is fully implemented with:
+- Full CRUD for clubs, stands, signins, activity
+- Member management with roles (owner, admin, member)
+- Invite system (username + shareable links)
+- Stand sign-in board with hunt details
+- Post-signout activity logging ("Log your sit")
+- Premium occupied stand styling
+- Mobile-first responsive design
+- RLS security on all tables
+
+**See**: `docs/CLUBS.md` for full documentation.
 
 ### Regulations Worker - ACTIVE
 
@@ -423,18 +469,13 @@ systemctl restart regs-worker
 journalctl -u regs-worker -f
 ```
 
-**Next Steps**:
-1. Run discovery on a few states to verify NO_PAGES_FOUND fallback works
-2. Check that PDFs are being stored properly
-3. Test extraction with states that have PDF-only sources
-4. Verify graceful shutdown (systemctl stop, check logs for clean exit)
+### Pending Work
 
-### Other Pending Work
-
-1. **Verify logic update** - HEAD/content-type checks for HTML/PDF URLs (not yet implemented)
-2. **Manual QA** - Test DM flows, social interactions
-3. **Performance audit** - Profile app startup time, image loading
-4. **Accessibility pass** - Add semantic labels, verify contrast ratios
+1. **Push Notifications** - In progress (see `docs/PUSH_NOTIFICATIONS.md`)
+2. **Club Realtime** - Currently polling; consider Supabase Realtime
+3. **Manual QA** - Test clubs on iOS/Android native apps
+4. **Performance audit** - Profile app startup time, image loading
+5. **Accessibility pass** - Add semantic labels, verify contrast ratios
 
 ---
 

@@ -1,38 +1,49 @@
 # Supabase Schema — The Skinning Shed
 
-> Last updated: January 24, 2026
-> MVP database schema with RLS enabled on all tables.
+> Last updated: January 29, 2026
+> Database schema with RLS enabled on all tables.
 
 ## Tables Overview
 
-| Table | Purpose | RLS | Rows |
-|-------|---------|-----|------|
-| `profiles` | User identity / Trophy Wall | ✅ | 1 |
-| `species_master` | Controlled species taxonomy | ✅ | 42 |
-| `trophy_posts` | Core harvest records | ✅ | 3 |
-| `trophy_photos` | Multiple photos per trophy | ✅ | 0 |
-| `weather_snapshots` | Historical weather at harvest | ✅ | 0 |
-| `moon_snapshots` | Moon phase at harvest | ✅ | 0 |
-| `analytics_buckets` | Denormalized research data | ✅ | 0 |
-| `weather_favorite_locations` | User's favorite weather locations | ✅ | 0 |
-| `land_listings` | Land for lease/sale | ✅ | 0 |
-| `land_photos` | Land listing photos | ✅ | 0 |
-| `swap_shop_listings` | BST classifieds | ✅ | 0 |
-| `swap_shop_photos` | Swap shop photos | ✅ | 0 |
-| `comments` | Trophy comments (legacy) | ✅ | 0 |
-| `post_comments` | Trophy comments (new) | ✅ | 0 |
-| `reactions` | Respect / Well-earned reactions | ✅ | 0 |
-| `post_likes` | Simple like system | ✅ | 0 |
-| `follows` | User follow relationships | ✅ | 0 |
-| `content_reports` | Content moderation reports | ✅ | 0 |
-| `moderation_reports` | User reports (legacy) | ✅ | 0 |
-| `conversations` | DM conversation containers | ✅ | 0 |
-| `conversation_members` | DM participants + read state | ✅ | 0 |
-| `messages` | DM message content | ✅ | 0 |
-| `state_regulations_sources` | Regulation source URLs | ✅ | 18 |
-| `state_regulations_approved` | Verified regulation data | ✅ | 0 |
-| `state_regulations_pending` | Pending regulation updates | ✅ | 0 |
-| `ad_slots` | Advertising slot configuration | ✅ | 1 |
+| Table | Purpose | RLS |
+|-------|---------|-----|
+| `profiles` | User identity / Trophy Wall | ✅ |
+| `species_master` | Controlled species taxonomy | ✅ |
+| `trophy_posts` | Core harvest records | ✅ |
+| `trophy_photos` | Multiple photos per trophy | ✅ |
+| `weather_snapshots` | Historical weather at harvest | ✅ |
+| `moon_snapshots` | Moon phase at harvest | ✅ |
+| `analytics_buckets` | Denormalized research data | ✅ |
+| `weather_favorite_locations` | User's favorite weather locations | ✅ |
+| `land_listings` | Land for lease/sale | ✅ |
+| `land_photos` | Land listing photos | ✅ |
+| `swap_shop_listings` | BST classifieds | ✅ |
+| `swap_shop_photos` | Swap shop photos | ✅ |
+| `post_comments` | Trophy comments | ✅ |
+| `post_likes` | Simple like system | ✅ |
+| `follows` | User follow relationships | ✅ |
+| `content_reports` | Content moderation reports | ✅ |
+| `conversations` | DM conversation containers | ✅ |
+| `conversation_members` | DM participants + read state | ✅ |
+| `messages` | DM message content | ✅ |
+| `state_regulations_sources` | Regulation source URLs | ✅ |
+| `state_regulations_approved` | Verified regulation data | ✅ |
+| `ad_slots` | Advertising slot configuration | ✅ |
+
+### Clubs Tables
+
+| Table | Purpose | RLS |
+|-------|---------|-----|
+| `clubs` | Club metadata and settings | ✅ |
+| `club_members` | Membership with roles | ✅ |
+| `club_invites` | Invite links and direct invites | ✅ |
+| `club_join_requests` | Requests to join clubs | ✅ |
+| `club_posts` | Club news feed | ✅ |
+| `club_stands` | Stand definitions | ✅ |
+| `stand_signins` | Sign-in records with hunt details | ✅ |
+| `stand_activity` | Observations per stand | ✅ |
+| `club_photos` | Trail cam and club photos | ✅ |
+| `club_buck_profiles` | Buck tracking | ✅ |
 
 ---
 
@@ -45,6 +56,7 @@
 | `land_photos` | Land listing images | ✅ | 10MB |
 | `swap_shop_photos` | Swap shop images | ✅ | 10MB |
 | `ad_share` | Advertising creatives | ✅ | 5MB |
+| `club-photos` | Club/trail cam photos | ✅ | 10MB |
 
 ### Storage Path Conventions
 
@@ -54,6 +66,7 @@ trophy_photos/{user_id}/{trophy_id}/{filename}
 land_photos/{user_id}/{listing_id}/{filename}
 swap_shop_photos/{user_id}/{listing_id}/{filename}
 ad_share/{page}/{position}.png
+club-photos/{club_id}/{user_id}/{filename}
 ```
 
 ---
@@ -275,6 +288,101 @@ Verified regulation data.
 
 ---
 
+## Clubs Tables (Detail)
+
+### clubs
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `owner_id` | UUID (FK) | → profiles.id |
+| `name` | TEXT | Club name |
+| `slug` | TEXT (unique) | URL-friendly name |
+| `description` | TEXT | Club description |
+| `state` | TEXT | State name |
+| `state_code` | CHAR(2) | 2-letter code |
+| `county` | TEXT | County name |
+| `is_discoverable` | BOOLEAN | Show in discover list |
+| `settings` | JSONB | Club settings |
+| `created_at` | TIMESTAMPTZ | |
+
+### club_members
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `club_id` | UUID (FK) | → clubs.id |
+| `user_id` | UUID (FK) | → profiles.id |
+| `role` | TEXT | owner / admin / member |
+| `status` | TEXT | active / invited / requested / banned |
+| `invited_by` | UUID (FK) | → profiles.id (nullable) |
+| `joined_at` | TIMESTAMPTZ | |
+
+UNIQUE(club_id, user_id)
+
+### club_stands
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `club_id` | UUID (FK) | → clubs.id |
+| `name` | TEXT | Stand name |
+| `description` | TEXT | Optional |
+| `sort_order` | INT | Display order |
+| `is_deleted` | BOOLEAN | Soft delete (default false) |
+| `created_at` | TIMESTAMPTZ | |
+
+### stand_signins
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `club_id` | UUID (FK) | → clubs.id |
+| `stand_id` | UUID (FK) | → club_stands.id |
+| `user_id` | UUID (FK) | → profiles.id |
+| `status` | TEXT | active / signed_out / expired |
+| `signed_in_at` | TIMESTAMPTZ | |
+| `signed_out_at` | TIMESTAMPTZ | |
+| `expires_at` | TIMESTAMPTZ | |
+| `ended_reason` | TEXT | manual / auto_expired / stand_deleted |
+| `note` | TEXT | Quick note |
+| `details` | JSONB | Hunt details (parked_at, entry_route, etc.) |
+| `activity_prompt_dismissed` | BOOLEAN | User dismissed prompt |
+
+UNIQUE partial index: `uniq_active_signin_per_stand` (stand_id) WHERE status = 'active'
+
+### stand_activity
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `club_id` | UUID (FK) | → clubs.id |
+| `stand_id` | UUID (FK) | → club_stands.id |
+| `user_id` | UUID (FK) | → profiles.id |
+| `signin_id` | UUID (FK) | → stand_signins.id (nullable) |
+| `body` | TEXT | Observation text |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | |
+
+Indexes: (stand_id, created_at DESC), (club_id, stand_id, created_at DESC)
+
+### club_invites
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID (PK) | |
+| `club_id` | UUID (FK) | → clubs.id |
+| `invite_type` | TEXT | link / direct |
+| `token` | TEXT (unique) | For link invites |
+| `target_user_id` | UUID (FK) | For direct invites |
+| `created_by` | UUID (FK) | → profiles.id |
+| `expires_at` | TIMESTAMPTZ | |
+| `max_uses` | INT | For links |
+| `uses` | INT | Current count |
+| `created_at` | TIMESTAMPTZ | |
+
+---
+
 ## RLS Policies Summary
 
 ### profiles
@@ -326,6 +434,31 @@ Verified regulation data.
 - ✅ Public read
 - ✅ Write only to user's own folder
 
+### Clubs
+
+### clubs
+- ✅ Members can view their clubs
+- ✅ Authenticated users can create clubs
+
+### club_members
+- ✅ Members can view membership list
+- ✅ Admin can manage members
+
+### club_stands
+- ✅ Members can view stands
+- ✅ Members can create stands
+- ✅ Admin can update/delete stands
+
+### stand_signins
+- ✅ Members can view signins
+- ✅ Members can sign in
+- ✅ User or admin can update own signin
+
+### stand_activity
+- ✅ Members can view activity
+- ✅ Members can insert own activity
+- ✅ Author or admin can update/delete
+
 ---
 
 ## RPC Functions
@@ -345,6 +478,28 @@ Verified regulation data.
 |----------|---------|-------------|
 | `get_pattern_data(...)` | TABLE | Aggregated pattern analytics |
 | `get_top_insights(...)` | TABLE | Top performing conditions |
+
+### Clubs (SECURITY DEFINER)
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `is_club_member(club_id)` | BOOLEAN | Check if user is active member |
+| `is_club_admin(club_id)` | BOOLEAN | Check if user is admin/owner |
+| `create_club(...)` | UUID | Create club + add owner atomically |
+| `accept_club_invite(token)` | JSONB | Accept invite link |
+| `accept_club_direct_invite(club_id)` | JSONB | Accept direct invite |
+| `decline_club_direct_invite(club_id)` | JSONB | Decline direct invite |
+| `invite_user_to_club(club_id, username)` | JSONB | Send invite by username |
+| `get_my_club_invites()` | TABLE | Get user's pending invites |
+| `get_club_pending_invites(club_id)` | TABLE | Get club's pending invites |
+| `cancel_club_invite(club_id, user_id)` | JSONB | Cancel pending invite |
+| `approve_join_request(request_id)` | BOOLEAN | Approve join request |
+| `get_invite_info(token)` | JSONB | Get limited club info for join |
+| `soft_delete_stand(stand_id)` | JSONB | Soft delete stand (admin) |
+| `update_stand(stand_id, name, desc)` | JSONB | Update stand (admin) |
+| `get_stand_activity(stand_id, limit)` | TABLE | Get recent stand activity |
+| `get_pending_activity_prompts(club_id)` | TABLE | Get pending prompts |
+| `dismiss_activity_prompt(signin_id)` | BOOLEAN | Dismiss prompt |
 
 ---
 
