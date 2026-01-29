@@ -25,6 +25,7 @@ import '../features/settings/pages/content_disclaimer_page.dart';
 import '../features/settings/pages/help_center_page.dart';
 import '../features/settings/pages/about_page.dart';
 import '../features/settings/pages/feedback_page.dart';
+import '../features/settings/pages/admin_reports_page.dart';
 import '../features/swap_shop/swap_shop_create_screen.dart';
 import '../features/swap_shop/swap_shop_detail_screen.dart';
 import '../features/swap_shop/swap_shop_screen.dart';
@@ -263,6 +264,37 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.adminOfficialLinks,
         builder: (context, state) => const RegulationsAdminScreen(),
+        redirect: (context, state) async {
+          // Check admin status before allowing access
+          final client = SupabaseService.instance.client;
+          if (client == null) return AppRoutes.feed;
+          
+          final userId = client.auth.currentUser?.id;
+          if (userId == null) return AppRoutes.feed;
+          
+          try {
+            final response = await client
+                .from('profiles')
+                .select('is_admin')
+                .eq('id', userId)
+                .maybeSingle();
+            
+            final isAdmin = response?['is_admin'] == true;
+            if (!isAdmin) {
+              return AppRoutes.feed; // Redirect non-admins to home
+            }
+          } catch (e) {
+            return AppRoutes.feed; // On error, redirect to home
+          }
+          
+          return null; // Allow access
+        },
+      ),
+      
+      // Admin reports (admin only - protected)
+      GoRoute(
+        path: AppRoutes.adminReports,
+        builder: (context, state) => const AdminReportsPage(),
         redirect: (context, state) async {
           // Check admin status before allowing access
           final client = SupabaseService.instance.client;

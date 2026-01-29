@@ -140,6 +140,12 @@ class SettingsScreen extends ConsumerWidget {
                           titleColor: AppColors.warning,
                           children: [
                             _SettingsItem(
+                              icon: Icons.flag_outlined,
+                              title: 'Reports',
+                              subtitle: 'Review user reports',
+                              onTap: () => context.push('/admin/reports'),
+                            ),
+                            _SettingsItem(
                               icon: Icons.link_outlined,
                               title: 'Official Links Admin',
                               subtitle: 'Manage state portal links',

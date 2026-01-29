@@ -39,6 +39,9 @@ class AppRoutes {
   static const String settingsAbout = '/settings/about';
   static const String settingsFeedback = '/settings/feedback';
   
+  // Admin pages
+  static const String adminReports = '/admin/reports';
+  
   // Parameterized routes (use these with string interpolation)
   static String conversation(String id) => '/messages/$id';
   static String swapShopDetail(String id) => '/swap-shop/detail/$id';
