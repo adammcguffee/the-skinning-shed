@@ -618,6 +618,8 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
     final comments = widget.trophy['comments_count'] ?? 0;
     final username = widget.trophy['profiles']?['display_name'] ?? 
                      widget.trophy['profiles']?['username'] ?? 'Hunter';
+    final userId = widget.trophy['user_id'] as String?;
+    final avatarPath = widget.trophy['profiles']?['avatar_path'] as String?;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -699,7 +701,11 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
                     Positioned(
                       top: AppSpacing.md,
                       right: AppSpacing.md,
-                      child: _UserBadge(username: username),
+                      child: _UserBadge(
+                        username: username,
+                        userId: userId,
+                        avatarPath: avatarPath,
+                      ),
                     ),
 
                     // Location chip (bottom left)
@@ -930,48 +936,68 @@ class _LocationChip extends StatelessWidget {
   }
 }
 
-/// User badge
+/// User badge - tappable to view profile
 class _UserBadge extends StatelessWidget {
-  const _UserBadge({required this.username});
+  const _UserBadge({
+    required this.username,
+    this.userId,
+    this.avatarPath,
+  });
 
   final String username;
+  final String? userId;
+  final String? avatarPath;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleAvatar(
-            radius: 10,
-            backgroundColor: AppColors.accent,
-            child: Text(
-              username.isNotEmpty ? username[0].toUpperCase() : 'U',
+    String? avatarUrl;
+    if (avatarPath != null) {
+      final client = SupabaseService.instance.client;
+      if (client != null) {
+        avatarUrl = client.storage.from('avatars').getPublicUrl(avatarPath!);
+      }
+    }
+
+    return GestureDetector(
+      onTap: userId != null ? () => context.push('/user/$userId') : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 10,
+              backgroundColor: AppColors.accent,
+              backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+              child: avatarUrl == null
+                  ? Text(
+                      username.isNotEmpty ? username[0].toUpperCase() : 'U',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textInverse,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              username,
               style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textInverse,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            username,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

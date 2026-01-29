@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/services/discover_service.dart';
 
 // Category map for feed filtering
 const _categoryMap = {
@@ -17,12 +19,12 @@ const _categoryMap = {
 /// - Banner logo header
 /// - Visual species tiles with images
 /// - Quick link cards
-/// - Trending section
-class ExploreScreen extends StatelessWidget {
+/// - Trending section (real data)
+class ExploreScreen extends ConsumerWidget {
   const ExploreScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
 
@@ -55,12 +57,12 @@ class ExploreScreen extends StatelessWidget {
           child: _QuickLinksGrid(isWide: isWide),
         ),
 
-        // Trending section
+        // Trending section (real data)
         SliverToBoxAdapter(
           child: _SectionHeader(
             title: 'Trending This Week',
             trailing: _TrendingBadge(),
-            onSeeAll: () => context.go('/'), // Navigate to feed (sorted by popularity)
+            onSeeAll: () => context.go('/discover'),
           ),
         ),
         SliverToBoxAdapter(
@@ -565,70 +567,90 @@ class _QuickLinkCardState extends State<_QuickLinkCard> {
   }
 }
 
-class _TrendingList extends StatelessWidget {
+class _TrendingList extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
-    final trending = [
-      _TrendingItem(
-        title: '12-Point Buck in Texas',
-        subtitle: 'Posted by @hunter_joe',
-        likes: 234,
-        species: 'Whitetail Deer',
-      ),
-      _TrendingItem(
-        title: 'Opening Day Turkey',
-        subtitle: 'Posted by @wild_tom',
-        likes: 189,
-        species: 'Turkey',
-      ),
-      _TrendingItem(
-        title: 'Personal Best Bass',
-        subtitle: 'Posted by @bass_master',
-        likes: 156,
-        species: 'Bass',
-      ),
-    ];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final trendingAsync = ref.watch(trendingPostsProvider);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-      child: Column(
-        children: trending
-            .map((item) => _TrendingCard(data: item))
-            .toList(),
+      child: trendingAsync.when(
+        data: (posts) {
+          if (posts.isEmpty) {
+            return Container(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.trending_up_rounded,
+                    size: 40,
+                    color: AppColors.textTertiary,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  const Text(
+                    'No trending posts this week',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  const Text(
+                    'Be the first to share your trophy!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return Column(
+            children: posts.take(5).map((post) => _TrendingCard(post: post)).toList(),
+          );
+        },
+        loading: () => Column(
+          children: List.generate(3, (_) => _TrendingCardSkeleton()),
+        ),
+        error: (e, _) => Container(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: const Text(
+            'Unable to load trending posts',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _TrendingItem {
-  const _TrendingItem({
-    required this.title,
-    required this.subtitle,
-    required this.likes,
-    required this.species,
-  });
+class _TrendingCard extends ConsumerStatefulWidget {
+  const _TrendingCard({required this.post});
 
-  final String title;
-  final String subtitle;
-  final int likes;
-  final String species;
-}
-
-class _TrendingCard extends StatefulWidget {
-  const _TrendingCard({required this.data});
-
-  final _TrendingItem data;
+  final TrendingPost post;
 
   @override
-  State<_TrendingCard> createState() => _TrendingCardState();
+  ConsumerState<_TrendingCard> createState() => _TrendingCardState();
 }
 
-class _TrendingCardState extends State<_TrendingCard> {
+class _TrendingCardState extends ConsumerState<_TrendingCard> {
   bool _isHovered = false;
 
   Color get _speciesColor {
-    switch (widget.data.species.toLowerCase()) {
-      case 'whitetail deer':
+    switch (widget.post.category?.toLowerCase()) {
+      case 'deer':
         return AppColors.categoryDeer;
       case 'turkey':
         return AppColors.categoryTurkey;
@@ -641,15 +663,15 @@ class _TrendingCardState extends State<_TrendingCard> {
 
   @override
   Widget build(BuildContext context) {
+    final discoverService = ref.read(discoverServiceProvider);
+    final photoUrl = discoverService.getPhotoUrl(widget.post.coverPhotoPath);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {
-          // Navigate to feed to view trophy
-          context.go('/');
-        },
+        onTap: () => context.push('/trophy/${widget.post.id}'),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -669,23 +691,19 @@ class _TrendingCardState extends State<_TrendingCard> {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      _speciesColor.withOpacity(0.3),
-                      AppColors.surface,
-                    ],
-                  ),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                   border: Border.all(
-                    color: _speciesColor.withOpacity(0.2),
+                    color: _speciesColor.withValues(alpha: 0.2),
                   ),
                 ),
-                child: Icon(
-                  Icons.image_rounded,
-                  color: _speciesColor.withOpacity(0.5),
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: photoUrl != null
+                    ? Image.network(
+                        photoUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                      )
+                    : _buildPlaceholder(),
               ),
               const SizedBox(width: AppSpacing.md),
 
@@ -695,7 +713,7 @@ class _TrendingCardState extends State<_TrendingCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.data.title,
+                      widget.post.title,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -705,11 +723,14 @@ class _TrendingCardState extends State<_TrendingCard> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      widget.data.subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textTertiary,
+                    GestureDetector(
+                      onTap: () => context.push('/user/${widget.post.userId}'),
+                      child: Text(
+                        'by ${widget.post.userName}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textTertiary,
+                        ),
                       ),
                     ),
                   ],
@@ -723,7 +744,7 @@ class _TrendingCardState extends State<_TrendingCard> {
                   vertical: AppSpacing.xs,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.error.withOpacity(0.15),
+                  color: AppColors.error.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
                 ),
                 child: Row(
@@ -735,7 +756,7 @@ class _TrendingCardState extends State<_TrendingCard> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      widget.data.likes.toString(),
+                      widget.post.likesCount.toString(),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -748,6 +769,77 @@ class _TrendingCardState extends State<_TrendingCard> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _speciesColor.withValues(alpha: 0.3),
+            AppColors.surface,
+          ],
+        ),
+      ),
+      child: Icon(
+        Icons.image_rounded,
+        color: _speciesColor.withValues(alpha: 0.5),
+      ),
+    );
+  }
+}
+
+class _TrendingCardSkeleton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceHover,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 14,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHover,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 10,
+                  width: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHover,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

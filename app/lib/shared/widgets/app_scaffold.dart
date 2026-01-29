@@ -33,20 +33,21 @@ class AppScaffold extends ConsumerWidget {
   final int currentIndex;
 
   /// Map navigation index to page identifier for ad targeting.
-  /// Indices: 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-  ///          5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
+  /// Indices: 0=Feed, 1=Explore, 2=Discover, 3=TrophyWall, 4=Land, 5=Messages,
+  ///          6=SwapShop, 7=Weather, 8=Research, 9=OfficialLinks, 10=Settings
   String get _currentPageId {
     switch (currentIndex) {
       case 0: return AdPages.feed;
       case 1: return AdPages.explore;
-      case 2: return AdPages.trophyWall;
-      case 3: return AdPages.land;
-      case 4: return AdPages.messages;
-      case 5: return AdPages.feed; // Swap Shop - use feed for now
-      case 6: return AdPages.weather;
-      case 7: return AdPages.research;
-      case 8: return AdPages.officialLinks;
-      case 9: return AdPages.settings;
+      case 2: return AdPages.explore; // Discover - use explore for ads
+      case 3: return AdPages.trophyWall;
+      case 4: return AdPages.land;
+      case 5: return AdPages.messages;
+      case 6: return AdPages.feed; // Swap Shop - use feed for now
+      case 7: return AdPages.weather;
+      case 8: return AdPages.research;
+      case 9: return AdPages.officialLinks;
+      case 10: return AdPages.settings;
       default: return AdPages.feed;
     }
   }
@@ -63,6 +64,11 @@ class AppScaffold extends ConsumerWidget {
       label: 'Explore',
     ),
     AppNavDestination(
+      icon: Icons.people_outline_rounded,
+      selectedIcon: Icons.people_rounded,
+      label: 'Discover',
+    ),
+    AppNavDestination(
       icon: Icons.emoji_events_outlined,
       selectedIcon: Icons.emoji_events_rounded,
       label: 'Trophy Wall',
@@ -72,7 +78,7 @@ class AppScaffold extends ConsumerWidget {
       selectedIcon: Icons.landscape_rounded,
       label: 'Land',
     ),
-    // Messages is index 4 - badge added dynamically
+    // Messages is index 5 - badge added dynamically
     AppNavDestination(
       icon: Icons.chat_bubble_outline_rounded,
       selectedIcon: Icons.chat_bubble_rounded,
@@ -111,8 +117,8 @@ class AppScaffold extends ConsumerWidget {
       final index = entry.key;
       final dest = entry.value;
       
-      // Add badge to Messages (index 4, unchanged)
-      if (index == 4 && unreadCount > 0) {
+      // Add badge to Messages (index 5)
+      if (index == 5 && unreadCount > 0) {
         return AppNavDestination(
           icon: dest.icon,
           selectedIcon: dest.selectedIcon,

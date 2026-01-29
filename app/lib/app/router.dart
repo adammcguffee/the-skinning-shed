@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/auth_screen.dart';
 import '../navigation/app_routes.dart';
 import '../services/location_prefetch_service.dart';
+import '../features/discover/discover_screen.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/feed/feed_screen.dart';
 import '../features/messages/messages_inbox_screen.dart';
@@ -182,6 +183,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.explore,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: ExploreScreen(),
+            ),
+          ),
+          
+          // Discover (People)
+          GoRoute(
+            path: AppRoutes.discover,
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: DiscoverScreen(),
             ),
           ),
           

@@ -15,6 +15,7 @@ class AppRoutes {
   static const String auth = '/auth';
   static const String feed = '/';
   static const String explore = '/explore';
+  static const String discover = '/discover';
   static const String trophyWall = '/trophy-wall';
   static const String land = '/land';
   static const String messages = '/messages';
@@ -59,20 +60,22 @@ class AppRoutes {
   /// These MUST match the order in AppScaffold._destinationsBase exactly.
   static const int indexFeed = 0;
   static const int indexExplore = 1;
-  static const int indexTrophyWall = 2;
-  static const int indexLand = 3;
-  static const int indexMessages = 4;
-  static const int indexSwapShop = 5;
-  static const int indexWeather = 6;
-  static const int indexResearch = 7;
-  static const int indexOfficialLinks = 8;
-  static const int indexSettings = 9;
+  static const int indexDiscover = 2;
+  static const int indexTrophyWall = 3;
+  static const int indexLand = 4;
+  static const int indexMessages = 5;
+  static const int indexSwapShop = 6;
+  static const int indexWeather = 7;
+  static const int indexResearch = 8;
+  static const int indexOfficialLinks = 9;
+  static const int indexSettings = 10;
   
   /// Get the route path for a given navigation index.
   static String pathForIndex(int index) {
     switch (index) {
       case indexFeed: return feed;
       case indexExplore: return explore;
+      case indexDiscover: return discover;
       case indexTrophyWall: return trophyWall;
       case indexLand: return land;
       case indexMessages: return messages;
@@ -88,7 +91,8 @@ class AppRoutes {
   /// Get the navigation index for a given location path.
   static int indexForLocation(String location) {
     if (location.startsWith(explore)) return indexExplore;
-    if (location.startsWith(trophyWall) || location.startsWith('/profile')) return indexTrophyWall;
+    if (location.startsWith(discover)) return indexDiscover;
+    if (location.startsWith(trophyWall) || location.startsWith('/profile') || location.startsWith('/user/')) return indexTrophyWall;
     if (location.startsWith(land)) return indexLand;
     if (location.startsWith(messages)) return indexMessages;
     if (location.startsWith(swapShop)) return indexSwapShop;
@@ -104,6 +108,7 @@ class AppRoutes {
     switch (index) {
       case indexFeed: return 'Feed';
       case indexExplore: return 'Explore';
+      case indexDiscover: return 'Discover';
       case indexTrophyWall: return 'Trophy Wall';
       case indexLand: return 'Land';
       case indexMessages: return 'Messages';
