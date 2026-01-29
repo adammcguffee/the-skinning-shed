@@ -95,6 +95,22 @@ class ClubSettings {
   };
 }
 
+/// Helper to detect if a string looks like an email (privacy filter)
+bool _looksLikeEmail(String? value) {
+  if (value == null || value.isEmpty) return false;
+  // Check for email-like pattern: contains @ and a domain suffix
+  final hasAt = value.contains('@');
+  final hasDomainSuffix = RegExp(r'\.(com|net|org|edu|gov|io|co|me|info|biz|us|uk|ca|au|de|fr|es|it|nl|ru|cn|jp|br|in|za)$', caseSensitive: false).hasMatch(value);
+  return hasAt && hasDomainSuffix;
+}
+
+/// Sanitize a display value to never show emails
+String? _sanitizeDisplayValue(String? value) {
+  if (value == null || value.isEmpty) return null;
+  if (_looksLikeEmail(value)) return null; // Never display email-like strings
+  return value;
+}
+
 /// Club member model
 class ClubMember {
   const ClubMember({
@@ -117,8 +133,21 @@ class ClubMember {
   final String? displayName;
   final String? avatarPath;
   
-  String get name => displayName ?? username ?? 'Unknown';
-  String get handle => username != null ? '@$username' : '';
+  /// Safe name that never exposes email addresses
+  String get name {
+    // Priority: displayName > username > "User"
+    final safeName = _sanitizeDisplayValue(displayName) ?? _sanitizeDisplayValue(username);
+    return safeName ?? 'User';
+  }
+  
+  /// Safe handle - shows @username if available
+  String get handle {
+    final safeUsername = _sanitizeDisplayValue(username);
+    return safeUsername != null ? '@$safeUsername' : '';
+  }
+  
+  /// Check if this member has incomplete profile (no username)
+  bool get hasIncompleteProfile => _sanitizeDisplayValue(username) == null;
   
   bool get isOwner => role == 'owner';
   bool get isAdmin => role == 'owner' || role == 'admin';

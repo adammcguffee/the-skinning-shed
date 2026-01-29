@@ -83,8 +83,26 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
         final isAdmin = membership?.isAdmin ?? false;
         final memberCount = membersAsync.valueOrNull?.length ?? 0;
         
+        // Show FAB on Members tab for admins (mobile-friendly invite)
+        final showInviteFab = _selectedTab == 3 && isAdmin;
+        
         return Scaffold(
           backgroundColor: AppColors.background,
+          // Mobile-friendly FAB for inviting members
+          floatingActionButton: showInviteFab
+              ? FloatingActionButton.extended(
+                  onPressed: () => _showInviteSheet(context, club),
+                  backgroundColor: AppColors.primary,
+                  icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+                  label: const Text(
+                    'Invite',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              : null,
           body: SafeArea(
             child: Column(
               children: [
@@ -3380,81 +3398,28 @@ class _PremiumMembersTabState extends ConsumerState<_PremiumMembersTab> {
   
   Future<void> _createInviteLink() async {
     HapticFeedback.mediumImpact();
-    final service = ref.read(clubsServiceProvider);
-    final token = await service.createInviteLink(widget.clubId);
     
-    if (token != null && mounted) {
-      final url = 'https://www.theskinningshed.com/clubs/join/$token';
-      
-      await showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (context) => _PremiumBottomSheet(
-          title: 'Invite Link',
-          icon: Icons.link_rounded,
-          child: Column(
-            children: [
-              const Text(
-                'Share this link to invite members',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: SelectableText(
-                  url,
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Expires in 7 days • Up to 5 uses',
-                style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _PremiumSecondaryButton(
-                      label: 'Copy Link',
-                      icon: Icons.copy_rounded,
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: url));
-                        HapticFeedback.lightImpact();
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Link copied!')),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _PremiumPrimaryButton(
-                      label: 'Done',
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    } else if (mounted) {
+    // Get club for the invite sheet
+    final club = ref.read(clubProvider(widget.clubId)).valueOrNull;
+    if (club == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to create invite')),
+        const SnackBar(content: Text('Club not found')),
       );
+      return;
     }
+    
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _PremiumInviteSheet(
+        club: club,
+        onInviteSent: () {
+          ref.invalidate(pendingClubInvitesProvider(widget.clubId));
+          ref.invalidate(clubMembersProvider(widget.clubId));
+        },
+      ),
+    );
   }
   
   Future<void> _approveRequest(String requestId) async {
@@ -3642,6 +3607,8 @@ class _PremiumMemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasIncompleteProfile = member.hasIncompleteProfile;
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -3689,10 +3656,36 @@ class _PremiumMemberCard extends StatelessWidget {
                         style: const TextStyle(color: AppColors.textTertiary, fontSize: 12),
                       ),
                     ],
+                    // Show warning for incomplete profiles (admins only)
+                    if (hasIncompleteProfile && isAdmin) ...[
+                      const SizedBox(width: 6),
+                      Tooltip(
+                        message: 'This member hasn\'t set a username yet',
+                        child: Icon(
+                          Icons.warning_amber_rounded,
+                          size: 14,
+                          color: AppColors.warning,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 4),
-                _PremiumRoleBadge(role: member.role),
+                Row(
+                  children: [
+                    _PremiumRoleBadge(role: member.role),
+                    if (hasIncompleteProfile && !isAdmin) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        'No username',
+                        style: TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
