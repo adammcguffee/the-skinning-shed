@@ -36,6 +36,10 @@ import '../features/trophy_wall/trophy_detail_screen.dart';
 import '../features/trophy_wall/trophy_edit_screen.dart';
 import '../features/trophy_wall/trophy_wall_screen.dart';
 import '../features/swap_shop/swap_shop_edit_screen.dart';
+import '../features/clubs/clubs_home_screen.dart';
+import '../features/clubs/create_club_screen.dart';
+import '../features/clubs/club_detail_screen.dart';
+import '../features/clubs/club_join_screen.dart';
 import '../features/weather/weather_screen.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
@@ -316,6 +320,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           
+          // Clubs
+          GoRoute(
+            path: AppRoutes.clubs,
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: ClubsHomeScreen(),
+            ),
+          ),
+          
           // Settings
           GoRoute(
             path: AppRoutes.settings,
@@ -446,6 +458,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final id = state.pathParameters['id']!;
           return SwapShopEditScreen(listingId: id);
+        },
+      ),
+      
+      // Clubs routes (outside shell - full screen)
+      GoRoute(
+        path: AppRoutes.clubsCreate,
+        builder: (context, state) => const CreateClubScreen(),
+      ),
+      GoRoute(
+        path: '/clubs/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return ClubDetailScreen(clubId: id);
+        },
+      ),
+      GoRoute(
+        path: '/clubs/join/:token',
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return ClubJoinScreen(token: token);
         },
       ),
       

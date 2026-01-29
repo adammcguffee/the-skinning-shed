@@ -34,7 +34,7 @@ class AppScaffold extends ConsumerWidget {
 
   /// Map navigation index to page identifier for ad targeting.
   /// Indices: 0=Feed, 1=Explore, 2=Discover, 3=TrophyWall, 4=Land, 5=Messages,
-  ///          6=SwapShop, 7=Weather, 8=Research, 9=OfficialLinks, 10=Settings
+  ///          6=SwapShop, 7=Clubs, 8=Weather, 9=Research, 10=OfficialLinks, 11=Settings
   String get _currentPageId {
     switch (currentIndex) {
       case 0: return AdPages.feed;
@@ -44,10 +44,11 @@ class AppScaffold extends ConsumerWidget {
       case 4: return AdPages.land;
       case 5: return AdPages.messages;
       case 6: return AdPages.feed; // Swap Shop - use feed for now
-      case 7: return AdPages.weather;
-      case 8: return AdPages.research;
-      case 9: return AdPages.officialLinks;
-      case 10: return AdPages.settings;
+      case 7: return AdPages.feed; // Clubs - use feed for now
+      case 8: return AdPages.weather;
+      case 9: return AdPages.research;
+      case 10: return AdPages.officialLinks;
+      case 11: return AdPages.settings;
       default: return AdPages.feed;
     }
   }
@@ -88,6 +89,11 @@ class AppScaffold extends ConsumerWidget {
       icon: Icons.swap_horiz_outlined,
       selectedIcon: Icons.swap_horiz_rounded,
       label: 'Swap Shop',
+    ),
+    AppNavDestination(
+      icon: Icons.groups_outlined,
+      selectedIcon: Icons.groups_rounded,
+      label: 'Clubs',
     ),
     AppNavDestination(
       icon: Icons.cloud_outlined,
