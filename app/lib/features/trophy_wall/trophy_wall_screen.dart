@@ -380,91 +380,177 @@ class _ProfileHeader extends ConsumerWidget {
           ),
           child: Column(
             children: [
-              // Profile info row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Avatar with accent ring (clickable for own profile)
-                  _buildAvatar(context, ref),
-                  const SizedBox(width: AppSpacing.lg),
-
-                  // Info
-                  Expanded(
-                    child: Column(
+              // Profile info row - responsive layout
+              if (isWide)
+                // Wide layout: Avatar + Info + Buttons in row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildAvatar(context, ref),
+                    const SizedBox(width: AppSpacing.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            profile?.name ?? 'Hunter',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          if (profile?.handle.isNotEmpty == true) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              profile!.handle,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ],
+                          if (profile?.location != null) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on_rounded,
+                                  size: 16,
+                                  color: AppColors.textTertiary,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  profile!.location!,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (isOwnProfile)
+                      _EditProfileButton()
+                    else if (targetUserId != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _MessageButton(targetUserId: targetUserId!),
+                          const SizedBox(width: AppSpacing.sm),
+                          _FollowButton(
+                            isFollowing: isFollowing,
+                            isLoading: followState?.isLoading ?? false,
+                            onTap: () {
+                              ref
+                                  .read(followStateNotifierProvider(targetUserId!).notifier)
+                                  .toggleFollow();
+                            },
+                          ),
+                        ],
+                      ),
+                  ],
+                )
+              else
+                // Mobile layout: Avatar + Info stacked, buttons below
+                Column(
+                  children: [
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Name
-                        Text(
-                          profile?.name ?? 'Hunter',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                        _buildAvatar(context, ref),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                profile?.name ?? 'Hunter',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (profile?.handle.isNotEmpty == true) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  profile!.handle,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.accent,
+                                  ),
+                                ),
+                              ],
+                              if (profile?.location != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.location_on_rounded,
+                                      size: 14,
+                                      color: AppColors.textTertiary,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Expanded(
+                                      child: Text(
+                                        profile!.location!,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textTertiary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        if (profile?.handle.isNotEmpty == true) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            profile!.handle,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.accent,
+                      ],
+                    ),
+                    // Buttons below profile info on mobile
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        if (isOwnProfile)
+                          Expanded(child: _EditProfileButton())
+                        else if (targetUserId != null) ...[
+                          Expanded(
+                            child: _MessageButton(targetUserId: targetUserId!),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: _FollowButton(
+                              isFollowing: isFollowing,
+                              isLoading: followState?.isLoading ?? false,
+                              onTap: () {
+                                ref
+                                    .read(followStateNotifierProvider(targetUserId!).notifier)
+                                    .toggleFollow();
+                              },
                             ),
                           ),
                         ],
-                        if (profile?.location != null) ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.location_on_rounded,
-                                size: 16,
-                                color: AppColors.textTertiary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                profile!.location!,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textTertiary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                       ],
                     ),
-                  ),
+                  ],
+                ),
+              const SizedBox(height: AppSpacing.lg),
 
-                  // Edit or Follow/Message buttons
-                  if (isOwnProfile)
-                    _EditProfileButton()
-                  else if (targetUserId != null)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _MessageButton(
-                          targetUserId: targetUserId!,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        _FollowButton(
-                          isFollowing: isFollowing,
-                          isLoading: followState?.isLoading ?? false,
-                          onTap: () {
-                            ref
-                                .read(followStateNotifierProvider(targetUserId!).notifier)
-                                .toggleFollow();
-                          },
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xl),
-
-              // Stats pills
-              Row(
+              // Stats pills - wrap on mobile
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
                 children: [
                   _StatPill(
                     label: 'Trophies',
@@ -472,7 +558,6 @@ class _ProfileHeader extends ConsumerWidget {
                     icon: Icons.emoji_events_rounded,
                     isAccent: true,
                   ),
-                  const SizedBox(width: AppSpacing.sm),
                   _StatPill(
                     label: 'Followers',
                     value: followerCount.toString(),
@@ -481,7 +566,6 @@ class _ProfileHeader extends ConsumerWidget {
                         ? () => _showFollowersList(context, ref, targetUserId!, true)
                         : null,
                   ),
-                  const SizedBox(width: AppSpacing.sm),
                   _StatPill(
                     label: 'Following',
                     value: followingCount.toString(),
@@ -685,6 +769,7 @@ class _MessageButtonState extends ConsumerState<_MessageButton> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
@@ -821,6 +906,7 @@ class _FollowButtonState extends State<_FollowButton> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(

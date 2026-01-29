@@ -256,7 +256,7 @@ class MessagingService {
           sender_id,
           body,
           created_at,
-          sender:sender_id (
+          sender:profiles!messages_v2_sender_profiles_fkey (
             id,
             username,
             display_name,
@@ -317,7 +317,7 @@ class MessagingService {
           sender_id,
           body,
           created_at,
-          sender:sender_id (
+          sender:profiles!messages_v2_sender_profiles_fkey (
             id,
             username,
             display_name,
@@ -412,7 +412,7 @@ class MessagingService {
                       sender_id,
                       body,
                       created_at,
-                      sender:sender_id (
+                      sender:profiles!messages_v2_sender_profiles_fkey (
                         id,
                         username,
                         display_name,
