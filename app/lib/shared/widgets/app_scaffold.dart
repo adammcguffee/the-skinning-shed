@@ -619,7 +619,12 @@ class _MoreSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get screen height to constrain sheet
+    final screenHeight = MediaQuery.of(context).size.height;
+    final maxSheetHeight = screenHeight * 0.75; // Max 75% of screen
+    
     return Container(
+      constraints: BoxConstraints(maxHeight: maxSheetHeight),
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         borderRadius: const BorderRadius.vertical(
@@ -627,87 +632,97 @@ class _MoreSheet extends StatelessWidget {
         ),
         boxShadow: AppColors.shadowElevated,
       ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          
+          // Scrollable options
+          Flexible(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _MoreSheetItem(
+                      icon: Icons.people_outline_rounded,
+                      label: 'Discover Hunters',
+                      isSelected: currentIndex == AppRoutes.indexDiscover,
+                      onTap: () => onDestinationSelected(AppRoutes.indexDiscover),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.landscape_outlined,
+                      label: 'Land Listings',
+                      isSelected: currentIndex == AppRoutes.indexLand,
+                      onTap: () => onDestinationSelected(AppRoutes.indexLand),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      label: 'Messages',
+                      isSelected: currentIndex == AppRoutes.indexMessages,
+                      onTap: () => onDestinationSelected(AppRoutes.indexMessages),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.swap_horiz_outlined,
+                      label: 'Swap Shop',
+                      isSelected: currentIndex == AppRoutes.indexSwapShop,
+                      onTap: () => onDestinationSelected(AppRoutes.indexSwapShop),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.groups_outlined,
+                      label: 'Hunting Clubs',
+                      isSelected: currentIndex == AppRoutes.indexClubs,
+                      onTap: () => onDestinationSelected(AppRoutes.indexClubs),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.group_add_outlined,
+                      label: 'Club Openings',
+                      isSelected: currentIndex == AppRoutes.indexOpenings,
+                      onTap: () => onDestinationSelected(AppRoutes.indexOpenings),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.cloud_outlined,
+                      label: 'Weather & Tools',
+                      isSelected: currentIndex == AppRoutes.indexWeather,
+                      onTap: () => onDestinationSelected(AppRoutes.indexWeather),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.insights_outlined,
+                      label: 'Research & Patterns',
+                      isSelected: currentIndex == AppRoutes.indexResearch,
+                      onTap: () => onDestinationSelected(AppRoutes.indexResearch),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.link_outlined,
+                      label: 'Official Links',
+                      isSelected: currentIndex == AppRoutes.indexOfficialLinks,
+                      onTap: () => onDestinationSelected(AppRoutes.indexOfficialLinks),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.settings_outlined,
+                      label: 'Settings',
+                      isSelected: currentIndex == AppRoutes.indexSettings,
+                      onTap: () => onDestinationSelected(AppRoutes.indexSettings),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: AppSpacing.lg),
-
-            // Options - using AppRoutes constants for correct indices
-            _MoreSheetItem(
-              icon: Icons.people_outline_rounded,
-              label: 'Discover Hunters',
-              isSelected: currentIndex == AppRoutes.indexDiscover,
-              onTap: () => onDestinationSelected(AppRoutes.indexDiscover),
-            ),
-            _MoreSheetItem(
-              icon: Icons.landscape_outlined,
-              label: 'Land Listings',
-              isSelected: currentIndex == AppRoutes.indexLand,
-              onTap: () => onDestinationSelected(AppRoutes.indexLand),
-            ),
-            _MoreSheetItem(
-              icon: Icons.chat_bubble_outline_rounded,
-              label: 'Messages',
-              isSelected: currentIndex == AppRoutes.indexMessages,
-              onTap: () => onDestinationSelected(AppRoutes.indexMessages),
-            ),
-            _MoreSheetItem(
-              icon: Icons.swap_horiz_outlined,
-              label: 'Swap Shop',
-              isSelected: currentIndex == AppRoutes.indexSwapShop,
-              onTap: () => onDestinationSelected(AppRoutes.indexSwapShop),
-            ),
-            _MoreSheetItem(
-              icon: Icons.groups_outlined,
-              label: 'Hunting Clubs',
-              isSelected: currentIndex == AppRoutes.indexClubs,
-              onTap: () => onDestinationSelected(AppRoutes.indexClubs),
-            ),
-            _MoreSheetItem(
-              icon: Icons.group_add_outlined,
-              label: 'Club Openings',
-              isSelected: currentIndex == AppRoutes.indexOpenings,
-              onTap: () => onDestinationSelected(AppRoutes.indexOpenings),
-            ),
-            _MoreSheetItem(
-              icon: Icons.cloud_outlined,
-              label: 'Weather & Tools',
-              isSelected: currentIndex == AppRoutes.indexWeather,
-              onTap: () => onDestinationSelected(AppRoutes.indexWeather),
-            ),
-            _MoreSheetItem(
-              icon: Icons.insights_outlined,
-              label: 'Research & Patterns',
-              isSelected: currentIndex == AppRoutes.indexResearch,
-              onTap: () => onDestinationSelected(AppRoutes.indexResearch),
-            ),
-            _MoreSheetItem(
-              icon: Icons.link_outlined,
-              label: 'Official Links',
-              isSelected: currentIndex == AppRoutes.indexOfficialLinks,
-              onTap: () => onDestinationSelected(AppRoutes.indexOfficialLinks),
-            ),
-            _MoreSheetItem(
-              icon: Icons.settings_outlined,
-              label: 'Settings',
-              isSelected: currentIndex == AppRoutes.indexSettings,
-              onTap: () => onDestinationSelected(AppRoutes.indexSettings),
-            ),
-
-            const SizedBox(height: AppSpacing.lg),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -729,9 +744,20 @@ class _MoreSheetItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? AppColors.accent : AppColors.textSecondary,
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? AppColors.accent.withValues(alpha: 0.15)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(
+          icon,
+          size: 22,
+          color: isSelected ? AppColors.accent : AppColors.textSecondary,
+        ),
       ),
       title: Text(
         label,

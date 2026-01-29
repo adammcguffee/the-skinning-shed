@@ -296,25 +296,46 @@ class ClubPhotosService {
     DateTime? takenAt,
     String? cameraLabel,
   }) async {
-    if (_client == null) return null;
+    if (_client == null) {
+      if (kDebugMode) debugPrint('[ClubPhotosService] Upload failed: client is null');
+      return null;
+    }
 
     final userId = _client.auth.currentUser?.id;
-    if (userId == null) return null;
+    if (userId == null) {
+      if (kDebugMode) debugPrint('[ClubPhotosService] Upload failed: user not authenticated');
+      return null;
+    }
 
     try {
       final photoId = _uuid.v4();
-      final ext = fileName.split('.').last.toLowerCase();
+      // Normalize extension - handle cases like "IMG_1234.JPG" or files without extension
+      String ext = 'jpg';
+      if (fileName.contains('.')) {
+        ext = fileName.split('.').last.toLowerCase();
+        // Validate common image extensions
+        if (!['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].contains(ext)) {
+          ext = 'jpg'; // Default to jpg for unknown extensions
+        }
+      }
       final storagePath = 'clubs/$clubId/trailcam/$photoId.$ext';
+
+      if (kDebugMode) {
+        debugPrint('[ClubPhotosService] Uploading to bucket: $_bucket, path: $storagePath');
+        debugPrint('[ClubPhotosService] Image size: ${imageBytes.length} bytes');
+      }
 
       // Upload to storage
       await _client.storage.from(_bucket).uploadBinary(
         storagePath,
         imageBytes,
         fileOptions: FileOptions(
-          contentType: 'image/$ext',
+          contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
           upsert: false,
         ),
       );
+
+      if (kDebugMode) debugPrint('[ClubPhotosService] Storage upload successful');
 
       // Insert DB row
       final response = await _client.from('club_photos').insert({
@@ -328,12 +349,26 @@ class ClubPhotosService {
         'camera_label': cameraLabel,
       }).select('*, profiles:profiles!club_photos_author_profiles_fkey(username, display_name)').single();
 
+      if (kDebugMode) debugPrint('[ClubPhotosService] DB insert successful: ${response['id']}');
+
       final signedUrl = await _getSignedUrl(storagePath);
       
       // Trigger thumbnail generation (fire-and-forget, non-blocking)
       _generateThumbnails(photoId, storagePath);
       
       return ClubPhoto.fromJson(response, signedUrl: signedUrl);
+    } on StorageException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubPhotosService] Storage error: ${e.message}');
+        debugPrint('[ClubPhotosService] Storage error statusCode: ${e.statusCode}');
+      }
+      return null;
+    } on PostgrestException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubPhotosService] DB error: ${e.message}');
+        debugPrint('[ClubPhotosService] DB error code: ${e.code}');
+      }
+      return null;
     } catch (e) {
       if (kDebugMode) debugPrint('[ClubPhotosService] Error uploading photo: $e');
       return null;
