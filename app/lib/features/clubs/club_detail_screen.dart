@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../services/clubs_service.dart';
+import '../../services/club_photos_service.dart';
 import '../../services/stands_service.dart';
 import '../../services/supabase_service.dart';
 
@@ -96,7 +98,7 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
                 _PremiumTabBar(
                   selectedIndex: _selectedTab,
                   onSelected: _onTabChanged,
-                  tabs: const ['News', 'Stands', 'Members'],
+                  tabs: const ['News', 'Stands', 'Trail Cam', 'Members'],
                 ),
                 
                 // Tab Content
@@ -136,6 +138,12 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
           },
         );
       case 2:
+        return _PremiumTrailCamTab(
+          key: const ValueKey('trailcam'),
+          clubId: widget.clubId,
+          isAdmin: isAdmin,
+        );
+      case 3:
         return _PremiumMembersTab(
           key: const ValueKey('members'),
           clubId: widget.clubId,
@@ -1353,6 +1361,1666 @@ class _StandAction extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PREMIUM TRAIL CAM TAB
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PremiumTrailCamTab extends ConsumerStatefulWidget {
+  const _PremiumTrailCamTab({
+    super.key,
+    required this.clubId,
+    required this.isAdmin,
+  });
+  
+  final String clubId;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_PremiumTrailCamTab> createState() => _PremiumTrailCamTabState();
+}
+
+class _PremiumTrailCamTabState extends ConsumerState<_PremiumTrailCamTab> {
+  String _filter = 'all'; // all, targets, recent
+  bool _showTargets = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    if (_showTargets) {
+      return _TargetsView(
+        clubId: widget.clubId,
+        isAdmin: widget.isAdmin,
+        onBack: () => setState(() => _showTargets = false),
+      );
+    }
+    
+    final photosAsync = ref.watch(clubPhotosProvider(widget.clubId));
+    
+    return Column(
+      children: [
+        // Filter row
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Row(
+            children: [
+              // Filter chips
+              _FilterChip(
+                label: 'All',
+                isSelected: _filter == 'all',
+                onTap: () => setState(() => _filter = 'all'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Targets',
+                isSelected: _filter == 'targets',
+                icon: Icons.adjust_rounded,
+                onTap: () => setState(() => _showTargets = true),
+              ),
+              const Spacer(),
+              // Upload button
+              GestureDetector(
+                onTap: () => _uploadPhotos(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text(
+                        'Upload',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Photos grid
+        Expanded(
+          child: photosAsync.when(
+            loading: () => const Center(child: _PremiumLoader()),
+            error: (e, _) => _ErrorState(
+              message: 'Could not load photos',
+              onRetry: () => ref.invalidate(clubPhotosProvider(widget.clubId)),
+            ),
+            data: (photos) {
+              if (photos.isEmpty) {
+                return _EmptyTrailCamState(onUpload: () => _uploadPhotos(context));
+              }
+              
+              return RefreshIndicator(
+                onRefresh: () async => ref.invalidate(clubPhotosProvider(widget.clubId)),
+                color: AppColors.primary,
+                child: GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.85,
+                  ),
+                  itemCount: photos.length,
+                  itemBuilder: (context, index) => _PhotoCard(
+                    photo: photos[index],
+                    isAdmin: widget.isAdmin,
+                    onTap: () => _showPhotoDetail(context, photos[index]),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Future<void> _uploadPhotos(BuildContext context) async {
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage(
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 85,
+    );
+    
+    if (images.isEmpty || !mounted) return;
+    
+    // Show upload sheet
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _PhotoUploadSheet(
+        clubId: widget.clubId,
+        images: images,
+        onComplete: () {
+          ref.invalidate(clubPhotosProvider(widget.clubId));
+        },
+      ),
+    );
+  }
+  
+  void _showPhotoDetail(BuildContext context, ClubPhoto photo) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _PhotoDetailSheet(
+        photo: photo,
+        clubId: widget.clubId,
+        isAdmin: widget.isAdmin,
+        onDelete: () {
+          ref.invalidate(clubPhotosProvider(widget.clubId));
+          Navigator.pop(context);
+        },
+        onLinkBuck: () {
+          ref.invalidate(clubPhotosProvider(widget.clubId));
+        },
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    this.icon,
+  });
+  
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: isSelected ? 1 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: isSelected ? AppColors.primary : AppColors.textSecondary),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoCard extends StatelessWidget {
+  const _PhotoCard({
+    required this.photo,
+    required this.isAdmin,
+    required this.onTap,
+  });
+  
+  final ClubPhoto photo;
+  final bool isAdmin;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border, width: 0.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Image
+            Expanded(
+              child: photo.signedUrl != null
+                  ? Image.network(
+                      photo.signedUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _PhotoPlaceholder(),
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return const _PhotoPlaceholder();
+                      },
+                    )
+                  : const _PhotoPlaceholder(),
+            ),
+            
+            // Info
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (photo.caption != null && photo.caption!.isNotEmpty)
+                    Text(
+                      photo.caption!,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (photo.cameraLabel != null) ...[
+                        Icon(Icons.videocam_rounded, size: 12, color: AppColors.textTertiary),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            photo.cameraLabel!,
+                            style: const TextStyle(
+                              color: AppColors.textTertiary,
+                              fontSize: 10,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        photo.displayDate,
+                        style: const TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (photo.linkedBucks.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: photo.linkedBucks.take(2).map((buck) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          buck.name,
+                          style: const TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.surfaceElevated,
+      child: const Center(
+        child: Icon(
+          Icons.image_rounded,
+          color: AppColors.textTertiary,
+          size: 32,
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHOTO UPLOAD SHEET
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PhotoUploadSheet extends ConsumerStatefulWidget {
+  const _PhotoUploadSheet({
+    required this.clubId,
+    required this.images,
+    required this.onComplete,
+  });
+  
+  final String clubId;
+  final List<XFile> images;
+  final VoidCallback onComplete;
+
+  @override
+  ConsumerState<_PhotoUploadSheet> createState() => _PhotoUploadSheetState();
+}
+
+class _PhotoUploadSheetState extends ConsumerState<_PhotoUploadSheet> {
+  final _cameraController = TextEditingController();
+  bool _isUploading = false;
+  int _uploadedCount = 0;
+  
+  @override
+  void dispose() {
+    _cameraController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _upload() async {
+    setState(() {
+      _isUploading = true;
+      _uploadedCount = 0;
+    });
+    
+    HapticFeedback.mediumImpact();
+    final service = ref.read(clubPhotosServiceProvider);
+    final cameraLabel = _cameraController.text.trim().isEmpty ? null : _cameraController.text.trim();
+    
+    for (final image in widget.images) {
+      final bytes = await image.readAsBytes();
+      await service.uploadPhoto(
+        clubId: widget.clubId,
+        imageBytes: bytes,
+        fileName: image.name,
+        cameraLabel: cameraLabel,
+      );
+      
+      if (mounted) {
+        setState(() => _uploadedCount++);
+      }
+    }
+    
+    if (mounted) {
+      HapticFeedback.mediumImpact();
+      widget.onComplete();
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Uploaded $_uploadedCount photo${_uploadedCount == 1 ? '' : 's'}'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Header
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.cloud_upload_rounded, color: AppColors.primary, size: 28),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Upload ${widget.images.length} Photo${widget.images.length == 1 ? '' : 's'}',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Camera label input
+            _PremiumTextField(
+              controller: _cameraController,
+              label: 'Camera Label (optional)',
+              hint: 'e.g., North Ridge Cam',
+            ),
+            const SizedBox(height: 24),
+            
+            // Upload progress
+            if (_isUploading) ...[
+              LinearProgressIndicator(
+                value: _uploadedCount / widget.images.length,
+                backgroundColor: AppColors.border,
+                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Uploading $_uploadedCount of ${widget.images.length}...',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ] else
+              _PremiumPrimaryButton(
+                label: 'Upload',
+                icon: Icons.cloud_upload_rounded,
+                onPressed: _upload,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHOTO DETAIL SHEET
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PhotoDetailSheet extends ConsumerStatefulWidget {
+  const _PhotoDetailSheet({
+    required this.photo,
+    required this.clubId,
+    required this.isAdmin,
+    required this.onDelete,
+    required this.onLinkBuck,
+  });
+  
+  final ClubPhoto photo;
+  final String clubId;
+  final bool isAdmin;
+  final VoidCallback onDelete;
+  final VoidCallback onLinkBuck;
+
+  @override
+  ConsumerState<_PhotoDetailSheet> createState() => _PhotoDetailSheetState();
+}
+
+class _PhotoDetailSheetState extends ConsumerState<_PhotoDetailSheet> {
+  bool _showLinkBuck = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    final currentUserId = SupabaseService.instance.client?.auth.currentUser?.id;
+    final isAuthor = widget.photo.authorId == currentUserId;
+    final canDelete = isAuthor || widget.isAdmin;
+    
+    return Container(
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            
+            // Image
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: widget.photo.signedUrl != null
+                    ? Image.network(
+                        widget.photo.signedUrl!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const SizedBox(height: 200, child: _PhotoPlaceholder()),
+                      )
+                    : const SizedBox(height: 200, child: _PhotoPlaceholder()),
+              ),
+            ),
+            
+            // Info
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Caption
+                  if (widget.photo.caption != null && widget.photo.caption!.isNotEmpty)
+                    Text(
+                      widget.photo.caption!,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  
+                  // Metadata
+                  Row(
+                    children: [
+                      Icon(Icons.person_outline_rounded, size: 14, color: AppColors.textTertiary),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.photo.authorName ?? 'Unknown',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                      const SizedBox(width: 16),
+                      Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.textTertiary),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.photo.displayDate,
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  if (widget.photo.cameraLabel != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.videocam_rounded, size: 14, color: AppColors.textTertiary),
+                        const SizedBox(width: 4),
+                        Text(
+                          widget.photo.cameraLabel!,
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Linked bucks
+                  Row(
+                    children: [
+                      const Icon(Icons.adjust_rounded, size: 16, color: AppColors.accent),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Targets',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => setState(() => _showLinkBuck = true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add_rounded, size: 14, color: AppColors.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Link',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  if (widget.photo.linkedBucks.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.border, width: 0.5),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textTertiary),
+                          SizedBox(width: 8),
+                          Text(
+                            'Not linked to any target',
+                            style: TextStyle(color: AppColors.textTertiary, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: widget.photo.linkedBucks.map((buck) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          buck.name,
+                          style: const TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Actions
+                  if (canDelete)
+                    _PremiumSecondaryButton(
+                      label: 'Delete Photo',
+                      icon: Icons.delete_outline_rounded,
+                      onPressed: () => _confirmDelete(context),
+                    ),
+                  
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+            
+            // Link buck sheet overlay
+            if (_showLinkBuck)
+              _LinkBuckOverlay(
+                clubId: widget.clubId,
+                photoId: widget.photo.id,
+                onClose: () => setState(() => _showLinkBuck = false),
+                onLinked: () {
+                  setState(() => _showLinkBuck = false);
+                  widget.onLinkBuck();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Photo?', style: TextStyle(color: AppColors.textPrimary)),
+        content: const Text(
+          'This action cannot be undone.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm == true && mounted) {
+      HapticFeedback.mediumImpact();
+      final service = ref.read(clubPhotosServiceProvider);
+      await service.deletePhoto(widget.photo.id, widget.photo.storagePath);
+      widget.onDelete();
+    }
+  }
+}
+
+class _LinkBuckOverlay extends ConsumerStatefulWidget {
+  const _LinkBuckOverlay({
+    required this.clubId,
+    required this.photoId,
+    required this.onClose,
+    required this.onLinked,
+  });
+  
+  final String clubId;
+  final String photoId;
+  final VoidCallback onClose;
+  final VoidCallback onLinked;
+
+  @override
+  ConsumerState<_LinkBuckOverlay> createState() => _LinkBuckOverlayState();
+}
+
+class _LinkBuckOverlayState extends ConsumerState<_LinkBuckOverlay> {
+  final _nameController = TextEditingController();
+  bool _isCreating = false;
+  
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bucksAsync = ref.watch(buckProfilesProvider(widget.clubId));
+    
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Link to Target',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: widget.onClose,
+                icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary),
+                iconSize: 20,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Create new
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _nameController,
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'New target name...',
+                    hintStyle: const TextStyle(color: AppColors.textTertiary),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _isCreating ? null : _createAndLink,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: _isCreating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          const Text(
+            'Or select existing:',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          
+          // Existing bucks
+          bucksAsync.when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            error: (_, __) => const Text('Error loading targets'),
+            data: (bucks) {
+              if (bucks.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'No targets yet',
+                    style: TextStyle(color: AppColors.textTertiary),
+                  ),
+                );
+              }
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: bucks.length,
+                  itemBuilder: (context, index) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.adjust_rounded, size: 16, color: AppColors.accent),
+                    ),
+                    title: Text(
+                      bucks[index].name,
+                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                    ),
+                    trailing: const Icon(Icons.add_rounded, size: 18, color: AppColors.primary),
+                    onTap: () => _linkToBuck(bucks[index].id),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Future<void> _createAndLink() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+    
+    setState(() => _isCreating = true);
+    HapticFeedback.mediumImpact();
+    
+    final service = ref.read(clubPhotosServiceProvider);
+    final buck = await service.createBuckProfile(widget.clubId, name);
+    
+    if (buck != null) {
+      await service.linkPhotoToBuck(widget.clubId, widget.photoId, buck.id);
+      ref.invalidate(buckProfilesProvider(widget.clubId));
+      widget.onLinked();
+    }
+    
+    if (mounted) {
+      setState(() => _isCreating = false);
+    }
+  }
+  
+  Future<void> _linkToBuck(String buckId) async {
+    HapticFeedback.lightImpact();
+    final service = ref.read(clubPhotosServiceProvider);
+    await service.linkPhotoToBuck(widget.clubId, widget.photoId, buckId);
+    widget.onLinked();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TARGETS VIEW (BUCK PROFILES)
+// ════════════════════════════════════════════════════════════════════════════
+
+class _TargetsView extends ConsumerWidget {
+  const _TargetsView({
+    required this.clubId,
+    required this.isAdmin,
+    required this.onBack,
+  });
+  
+  final String clubId;
+  final bool isAdmin;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bucksAsync = ref.watch(buckProfilesProvider(clubId));
+    
+    return Column(
+      children: [
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: onBack,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.arrow_back_rounded, size: 18, color: AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Icon(Icons.adjust_rounded, size: 20, color: AppColors.accent),
+              const SizedBox(width: 8),
+              const Text(
+                'Targets',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _createTarget(context, ref),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'New',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Targets list
+        Expanded(
+          child: bucksAsync.when(
+            loading: () => const Center(child: _PremiumLoader()),
+            error: (e, _) => _ErrorState(
+              message: 'Could not load targets',
+              onRetry: () => ref.invalidate(buckProfilesProvider(clubId)),
+            ),
+            data: (bucks) {
+              if (bucks.isEmpty) {
+                return _EmptyTargetsState(onCreate: () => _createTarget(context, ref));
+              }
+              
+              return RefreshIndicator(
+                onRefresh: () async => ref.invalidate(buckProfilesProvider(clubId)),
+                color: AppColors.primary,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  itemCount: bucks.length,
+                  itemBuilder: (context, index) => _BuckCard(
+                    buck: bucks[index],
+                    clubId: clubId,
+                    isAdmin: isAdmin,
+                    onTap: () => _showBuckDetail(context, ref, bucks[index]),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Future<void> _createTarget(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController();
+    
+    final name = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _PremiumBottomSheet(
+        title: 'New Target',
+        icon: Icons.adjust_rounded,
+        child: Column(
+          children: [
+            _PremiumTextField(
+              controller: controller,
+              label: 'Name',
+              hint: 'e.g., Split Brow, Big 10',
+              autofocus: true,
+            ),
+            const SizedBox(height: 24),
+            _PremiumPrimaryButton(
+              label: 'Create Target',
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    if (name != null && name.isNotEmpty) {
+      HapticFeedback.mediumImpact();
+      final service = ref.read(clubPhotosServiceProvider);
+      await service.createBuckProfile(clubId, name);
+      ref.invalidate(buckProfilesProvider(clubId));
+    }
+  }
+  
+  void _showBuckDetail(BuildContext context, WidgetRef ref, BuckProfile buck) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _BuckDetailSheet(
+        buck: buck,
+        clubId: clubId,
+        isAdmin: isAdmin,
+        onUpdate: () => ref.invalidate(buckProfilesProvider(clubId)),
+      ),
+    );
+  }
+}
+
+class _BuckCard extends StatelessWidget {
+  const _BuckCard({
+    required this.buck,
+    required this.clubId,
+    required this.isAdmin,
+    required this.onTap,
+  });
+  
+  final BuckProfile buck;
+  final String clubId;
+  final bool isAdmin;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            // Thumbnail
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                bottomLeft: Radius.circular(14),
+              ),
+              child: SizedBox(
+                width: 80,
+                height: 80,
+                child: buck.latestPhotoUrl != null
+                    ? Image.network(buck.latestPhotoUrl!, fit: BoxFit.cover)
+                    : Container(
+                        color: AppColors.surfaceElevated,
+                        child: const Icon(Icons.adjust_rounded, color: AppColors.textTertiary),
+                      ),
+              ),
+            ),
+            
+            // Info
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      buck.name,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Vote summary
+                    Row(
+                      children: [
+                        _VotePill(label: 'Shooter', count: buck.shooterVotes, isSelected: buck.myVote == 'shooter'),
+                        const SizedBox(width: 6),
+                        _VotePill(label: 'Cull', count: buck.cullVotes, isSelected: buck.myVote == 'cull'),
+                        const SizedBox(width: 6),
+                        _VotePill(label: 'Walk', count: buck.letWalkVotes, isSelected: buck.myVote == 'let_walk'),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${buck.photoCount} photo${buck.photoCount == 1 ? '' : 's'}',
+                      style: const TextStyle(color: AppColors.textTertiary, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VotePill extends StatelessWidget {
+  const _VotePill({required this.label, required this.count, required this.isSelected});
+  
+  final String label;
+  final int count;
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (label) {
+      'Shooter' => AppColors.success,
+      'Cull' => AppColors.error,
+      _ => AppColors.warning,
+    };
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isSelected ? color.withValues(alpha: 0.2) : AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(4),
+        border: isSelected ? Border.all(color: color, width: 1) : null,
+      ),
+      child: Text(
+        '$count',
+        style: TextStyle(
+          color: isSelected ? color : AppColors.textTertiary,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BUCK DETAIL SHEET
+// ════════════════════════════════════════════════════════════════════════════
+
+class _BuckDetailSheet extends ConsumerStatefulWidget {
+  const _BuckDetailSheet({
+    required this.buck,
+    required this.clubId,
+    required this.isAdmin,
+    required this.onUpdate,
+  });
+  
+  final BuckProfile buck;
+  final String clubId;
+  final bool isAdmin;
+  final VoidCallback onUpdate;
+
+  @override
+  ConsumerState<_BuckDetailSheet> createState() => _BuckDetailSheetState();
+}
+
+class _BuckDetailSheetState extends ConsumerState<_BuckDetailSheet> {
+  late String? _myVote;
+  
+  @override
+  void initState() {
+    super.initState();
+    _myVote = widget.buck.myVote;
+  }
+  
+  Future<void> _vote(String vote) async {
+    HapticFeedback.mediumImpact();
+    setState(() => _myVote = vote);
+    
+    final service = ref.read(clubPhotosServiceProvider);
+    await service.vote(widget.clubId, widget.buck.id, vote);
+    widget.onUpdate();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final photosAsync = ref.watch(buckPhotosProvider(widget.buck.id));
+    
+    return Container(
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.adjust_rounded, color: AppColors.accent, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.buck.name,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                          ),
+                        ),
+                        Text(
+                          '${widget.buck.photoCount} photos • ${widget.buck.totalVotes} votes',
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Vote selector
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'YOUR CLASSIFICATION',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _VoteButton(
+                    label: 'SHOOTER',
+                    count: widget.buck.shooterVotes,
+                    isSelected: _myVote == 'shooter',
+                    color: AppColors.success,
+                    onTap: () => _vote('shooter'),
+                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: _VoteButton(
+                    label: 'CULL',
+                    count: widget.buck.cullVotes,
+                    isSelected: _myVote == 'cull',
+                    color: AppColors.error,
+                    onTap: () => _vote('cull'),
+                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: _VoteButton(
+                    label: 'LET WALK',
+                    count: widget.buck.letWalkVotes,
+                    isSelected: _myVote == 'let_walk',
+                    color: AppColors.warning,
+                    onTap: () => _vote('let_walk'),
+                  )),
+                ],
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // Photos
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'PHOTOS',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              
+              photosAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                error: (_, __) => const Text('Error loading photos'),
+                data: (photos) {
+                  if (photos.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(24),
+                      child: const Text(
+                        'No photos linked yet',
+                        style: TextStyle(color: AppColors.textTertiary),
+                      ),
+                    );
+                  }
+                  
+                  return SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: photos.length,
+                      itemBuilder: (context, index) => Container(
+                        width: 100,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border, width: 0.5),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: photos[index].signedUrl != null
+                            ? Image.network(photos[index].signedUrl!, fit: BoxFit.cover)
+                            : const _PhotoPlaceholder(),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              
+              // Notes
+              if (widget.buck.notes != null && widget.buck.notes!.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'NOTES',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    widget.buck.notes!,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                  ),
+                ),
+              ],
+              
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoteButton extends StatelessWidget {
+  const _VoteButton({
+    required this.label,
+    required this.count,
+    required this.isSelected,
+    required this.color,
+    required this.onTap,
+  });
+  
+  final String label;
+  final int count;
+  final bool isSelected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.15) : AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? color : AppColors.border,
+            width: isSelected ? 1.5 : 0.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : AppColors.textSecondary,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$count',
+              style: TextStyle(
+                color: isSelected ? color : AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EMPTY STATES
+// ════════════════════════════════════════════════════════════════════════════
+
+class _EmptyTrailCamState extends StatelessWidget {
+  const _EmptyTrailCamState({required this.onUpload});
+  
+  final VoidCallback onUpload;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.camera_alt_rounded,
+                color: AppColors.primary,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'No trail cam photos',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Upload photos from your trail cameras',
+              style: TextStyle(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            _PremiumPrimaryButton(
+              label: 'Upload Photos',
+              icon: Icons.cloud_upload_rounded,
+              onPressed: onUpload,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyTargetsState extends StatelessWidget {
+  const _EmptyTargetsState({required this.onCreate});
+  
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.adjust_rounded,
+                color: AppColors.accent,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'No targets yet',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Create buck profiles to track and classify',
+              style: TextStyle(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            _PremiumPrimaryButton(
+              label: 'Create First Target',
+              icon: Icons.add_rounded,
+              onPressed: onCreate,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
