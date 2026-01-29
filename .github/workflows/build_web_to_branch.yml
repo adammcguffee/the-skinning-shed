@@ -63,12 +63,16 @@ jobs:
             --dart-define=GIT_SHA=$GIT_SHA
 
       # 6. Copy vercel.json to build output (adjusted for static deploy)
+      # IMPORTANT: buildCommand=null tells Vercel this is pre-built
       # Cache-busting: flutter_service_worker.js and bootstrap must not be cached
       - name: Prepare Vercel config
         run: |
           cat > app/build/web/vercel.json << 'EOF'
           {
             "$schema": "https://openapi.vercel.sh/vercel.json",
+            "buildCommand": "",
+            "outputDirectory": ".",
+            "framework": null,
             "cleanUrls": true,
             "trailingSlash": false,
             "headers": [
