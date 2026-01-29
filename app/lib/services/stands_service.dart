@@ -87,6 +87,15 @@ class StandSignin {
   /// Whether this sign-in is currently active (status=active and not expired)
   bool get isActive => status == 'active' && expiresAt.isAfter(DateTime.now());
   
+  /// Formatted sign-in time (e.g., "6:12 AM")
+  String get signedInAtFormatted {
+    final hour = signedInAt.hour;
+    final minute = signedInAt.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return '$hour12:$minute $period';
+  }
+  
   /// Time remaining until expiration
   Duration get timeRemaining {
     final now = DateTime.now();
@@ -168,7 +177,7 @@ class StandsService {
       // Get active sign-ins (not expired)
       final signinsResponse = await _client
           .from('stand_signins')
-          .select('*, profiles!user_id(username, display_name, avatar_path)')
+          .select('*, profiles:profiles!stand_signins_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('status', 'active')
           .gt('expires_at', DateTime.now().toIso8601String());
@@ -396,7 +405,7 @@ class StandsService {
     try {
       final response = await _client
           .from('stand_signins')
-          .select('*, profiles!user_id(username, display_name, avatar_path)')
+          .select('*, profiles:profiles!stand_signins_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('user_id', userId)
           .eq('status', 'active')

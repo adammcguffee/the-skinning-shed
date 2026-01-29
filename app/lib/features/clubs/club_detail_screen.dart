@@ -817,41 +817,97 @@ class _StandCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 if (isOccupied && signin != null) ...[
+                  Row(
+                    children: [
+                      Text(
+                        signin.userName,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isMySignin 
+                              ? AppColors.primary.withValues(alpha: 0.1)
+                              : AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${signin.timeRemainingFormatted} left',
+                          style: TextStyle(
+                            color: isMySignin ? AppColors.primary : AppColors.error,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
                   Text(
-                    '${signin.userName} • ${signin.timeRemainingFormatted} left',
+                    'Signed in at ${signin.signedInAtFormatted}',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                      fontSize: 11,
                     ),
                   ),
                   if (signin.note != null && signin.note!.isNotEmpty)
-                    Text(
-                      signin.note!,
-                      style: TextStyle(
-                        color: AppColors.textTertiary,
-                        fontSize: 11,
-                        fontStyle: FontStyle.italic,
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '"${signin.note}"',
+                        style: TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ),
                 ] else
-                  Text(
-                    'Available',
-                    style: TextStyle(
-                      color: AppColors.success,
-                      fontSize: 12,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppColors.success,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Available',
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
               ],
             ),
           ),
           
-          // Action button
+          // Action buttons
           if (isMySignin && onSignOut != null)
-            TextButton(
+            // My signin - show Sign Out
+            ElevatedButton(
               onPressed: onSignOut,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error.withValues(alpha: 0.1),
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                elevation: 0,
+              ),
               child: const Text('Sign Out'),
             )
           else if (!isOccupied && myActiveSigninStandId == null)
+            // Available and I have no signin - allow sign in
             ElevatedButton(
               onPressed: onSignIn,
               style: ElevatedButton.styleFrom(
@@ -860,7 +916,60 @@ class _StandCard extends StatelessWidget {
               ),
               child: const Text('Sign In'),
             )
+          else if (!isOccupied && myActiveSigninStandId != null)
+            // Available but I'm signed in elsewhere - show disabled
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Signed in\nelsewhere',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textTertiary,
+                  fontSize: 10,
+                ),
+              ),
+            )
+          else if (isOccupied && !isMySignin)
+            // Occupied by someone else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'In Use',
+                    style: TextStyle(
+                      color: AppColors.error,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (isAdmin)
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert_rounded, color: AppColors.textTertiary),
+                    onSelected: (v) {
+                      if (v == 'delete') onDelete();
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete Stand', style: TextStyle(color: AppColors.error)),
+                      ),
+                    ],
+                  ),
+              ],
+            )
           else if (isAdmin)
+            // Admin menu for empty stands
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert_rounded, color: AppColors.textTertiary),
               onSelected: (v) {

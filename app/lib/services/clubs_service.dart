@@ -539,7 +539,7 @@ class ClubsService {
     try {
       final response = await _client
           .from('club_members')
-          .select('*, profiles!user_id(username, display_name, avatar_path)')
+          .select('*, profiles:profiles!club_members_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('user_id', userId)
           .maybeSingle();
@@ -560,7 +560,7 @@ class ClubsService {
     try {
       final response = await _client
           .from('club_members')
-          .select('*, profiles!user_id(username, display_name, avatar_path)')
+          .select('*, profiles:profiles!club_members_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('status', 'active')
           .order('joined_at');
@@ -605,7 +605,7 @@ class ClubsService {
     try {
       final response = await _client
           .from('club_join_requests')
-          .select('*, profiles!user_id(username, display_name, avatar_path)')
+          .select('*, profiles:profiles!club_join_requests_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('status', 'pending')
           .order('created_at');
@@ -817,7 +817,7 @@ class ClubsService {
     try {
       final response = await _client
           .from('club_posts')
-          .select('*, profiles!author_id(username, display_name, avatar_path)')
+          .select('*, profiles:profiles!club_posts_author_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .order('pinned', ascending: false)
           .order('created_at', ascending: false);
