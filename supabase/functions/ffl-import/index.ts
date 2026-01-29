@@ -26,8 +26,12 @@ const corsHeaders = {
 };
 
 // Data.gov CKAN API for ATF FFL dataset
-const DATA_GOV_DATASET_ID = "federal-firearms-licensees";
+// Note: The actual dataset slug includes the month/year suffix
+const DATA_GOV_DATASET_ID = "federal-firearms-licensees-december-2021";
 const DATA_GOV_API_URL = `https://catalog.data.gov/api/3/action/package_show?id=${DATA_GOV_DATASET_ID}`;
+
+// ArcGIS download URL pattern - used when Data.gov links to ArcGIS item pages
+const ARCGIS_DOWNLOAD_BASE = "https://atf-geoplatform.maps.arcgis.com/sharing/rest/content/items";
 
 // Month names for parsing resource names
 const MONTH_NAMES_FULL = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -68,10 +72,38 @@ interface DiscoveredResource {
 }
 
 /**
+ * Convert ArcGIS item page URL to direct download URL
+ * e.g., https://atf-geoplatform.maps.arcgis.com/home/item.html?id=ABC123
+ *    -> https://atf-geoplatform.maps.arcgis.com/sharing/rest/content/items/ABC123/data
+ */
+function convertArcGISUrl(url: string): string {
+  // Pattern: .../home/item.html?id=<ITEM_ID>
+  const itemMatch = url.match(/item\.html\?id=([a-zA-Z0-9]+)/);
+  if (itemMatch) {
+    const itemId = itemMatch[1];
+    const directUrl = `${ARCGIS_DOWNLOAD_BASE}/${itemId}/data`;
+    console.log(`[ffl-import] Converted ArcGIS item page to direct download: ${directUrl}`);
+    return directUrl;
+  }
+  
+  // Pattern: .../items/<ITEM_ID> (already a REST URL, just need /data)
+  const restMatch = url.match(/\/items\/([a-zA-Z0-9]+)(?:\/|$)/);
+  if (restMatch && !url.endsWith("/data")) {
+    const itemId = restMatch[1];
+    const directUrl = `${ARCGIS_DOWNLOAD_BASE}/${itemId}/data`;
+    console.log(`[ffl-import] Converted ArcGIS REST URL to download: ${directUrl}`);
+    return directUrl;
+  }
+  
+  return url;
+}
+
+/**
  * Fetch Data.gov dataset metadata and find FFL resources
  */
 async function discoverDataGovResources(): Promise<DiscoveredResource[]> {
   console.log(`[ffl-import] Fetching Data.gov dataset: ${DATA_GOV_API_URL}`);
+  console.log(`[ffl-import] Dataset ID: ${DATA_GOV_DATASET_ID}`);
   
   const response = await fetch(DATA_GOV_API_URL, {
     headers: {
@@ -80,69 +112,72 @@ async function discoverDataGovResources(): Promise<DiscoveredResource[]> {
   });
 
   if (!response.ok) {
-    console.error(`[ffl-import] Failed to fetch Data.gov API: HTTP ${response.status}`);
-    throw new Error(`Failed to fetch Data.gov dataset: HTTP ${response.status}`);
+    console.error(`[ffl-import] Failed to fetch Data.gov API: HTTP ${response.status} from ${DATA_GOV_API_URL}`);
+    throw new Error(`Failed to fetch Data.gov dataset '${DATA_GOV_DATASET_ID}': HTTP ${response.status}`);
   }
 
   const data = await response.json();
   
   if (!data.success || !data.result) {
-    throw new Error("Invalid Data.gov API response");
+    console.error(`[ffl-import] Invalid Data.gov API response: success=${data.success}`);
+    throw new Error("Invalid Data.gov API response - missing result");
   }
 
   const resources: DataGovResource[] = data.result.resources || [];
   console.log(`[ffl-import] Found ${resources.length} resources in dataset`);
 
+  // Log all resources for debugging
+  for (const r of resources) {
+    console.log(`[ffl-import] Resource: "${r.name}" format=${r.format} url=${r.url?.substring(0, 80)}...`);
+  }
+
   const discovered: DiscoveredResource[] = [];
 
   for (const resource of resources) {
-    const format = (resource.format || "").toLowerCase();
-    const name = (resource.name || "").toLowerCase();
-    const url = resource.url;
-
-    // Only consider CSV files (preferred) or XLSX as fallback
-    if (!format.includes("csv") && !format.includes("xlsx") && !format.includes("xls")) {
-      continue;
-    }
+    const format = (resource.format || "").toUpperCase();
+    const name = (resource.name || "").toUpperCase();
+    let url = resource.url;
 
     // Skip if no URL
     if (!url) {
       continue;
     }
 
-    // Skip if name doesn't look like FFL data
-    const lowerName = name.toLowerCase();
-    const lowerUrl = url.toLowerCase();
-    const isFFL = lowerName.includes("ffl") || lowerName.includes("licensee") || 
-                  lowerName.includes("firearm") || lowerUrl.includes("ffl");
+    // Only consider EXCEL/XLS/XLSX or CSV files
+    const isExcel = format.includes("EXCEL") || format.includes("XLS") || format.includes("XLSX") ||
+                    name.includes("EXCEL") || name.includes("XLS");
+    const isCsv = format.includes("CSV") || name.includes("CSV");
     
-    if (!isFFL && resources.length > 1) {
-      // If multiple resources, filter to FFL-specific ones
+    if (!isExcel && !isCsv) {
+      console.log(`[ffl-import] Skipping non-data resource: ${resource.name} (format: ${format})`);
       continue;
     }
 
+    // Convert ArcGIS item page URLs to direct download URLs
+    url = convertArcGISUrl(url);
+
     // Try to extract year/month from resource name or URL
-    const dateInfo = parseYearMonthFromText(name) || parseYearMonthFromText(url);
+    const dateInfo = parseYearMonthFromText(resource.name || "") || parseYearMonthFromText(url);
     const lastModified = resource.last_modified || resource.created || "";
 
     const now = new Date();
     discovered.push({
       url,
-      format: format.includes("csv") ? "csv" : "xlsx",
+      format: isExcel ? "xlsx" : "csv",
       name: resource.name || url,
       year: dateInfo?.year || now.getUTCFullYear(),
       month: dateInfo?.month || now.getUTCMonth() + 1,
       lastModified,
     });
 
-    console.log(`[ffl-import] Found resource: ${resource.name} (${format}) - last_modified: ${lastModified}`);
+    console.log(`[ffl-import] Found data resource: ${resource.name} (${format}) -> ${url.substring(0, 80)}...`);
   }
 
-  // Sort: CSV first, then by last_modified descending, then by date descending
+  // Sort: EXCEL first (typically more complete), then by last_modified descending
   discovered.sort((a, b) => {
-    // Prefer CSV over XLSX
-    if (a.format === "csv" && b.format !== "csv") return -1;
-    if (b.format === "csv" && a.format !== "csv") return 1;
+    // Prefer EXCEL over CSV (ATF EXCEL files are typically more complete)
+    if (a.format === "xlsx" && b.format !== "xlsx") return -1;
+    if (b.format === "xlsx" && a.format !== "xlsx") return 1;
     
     // Then by last_modified (most recent first)
     if (a.lastModified && b.lastModified) {
@@ -157,7 +192,7 @@ async function discoverDataGovResources(): Promise<DiscoveredResource[]> {
     return dateB - dateA;
   });
 
-  console.log(`[ffl-import] Total usable resources found: ${discovered.length}`);
+  console.log(`[ffl-import] Total usable data resources found: ${discovered.length}`);
   return discovered;
 }
 
@@ -238,21 +273,25 @@ async function downloadFile(url: string): Promise<ArrayBuffer> {
   
   const response = await fetch(url, {
     headers: {
-      "Accept": "*/*",
+      "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv, */*",
+      "User-Agent": "TheSkiningShed-FFL-Import/1.0",
     },
     redirect: "follow",
   });
 
   if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "unknown";
     console.error(`[ffl-import] Download failed: HTTP ${response.status} for ${url}`);
+    console.error(`[ffl-import] Response content-type: ${contentType}`);
     throw new Error(`Failed to download file: HTTP ${response.status} from ${url}`);
   }
 
   const buffer = await response.arrayBuffer();
-  console.log(`[ffl-import] Downloaded ${buffer.byteLength} bytes`);
+  const contentType = response.headers.get("content-type") || "unknown";
+  console.log(`[ffl-import] Downloaded ${buffer.byteLength} bytes (content-type: ${contentType})`);
   
   if (buffer.byteLength < 100) {
-    throw new Error(`Downloaded file too small (${buffer.byteLength} bytes) - may not be valid`);
+    throw new Error(`Downloaded file too small (${buffer.byteLength} bytes) - may not be valid data file`);
   }
 
   return buffer;
