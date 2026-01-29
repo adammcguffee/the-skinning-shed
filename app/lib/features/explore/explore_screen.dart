@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/discover_service.dart';
+import 'package:shed/shared/widgets/explore_category_tile.dart';
 
 // Category map for feed filtering
 const _categoryMap = {
@@ -11,6 +12,21 @@ const _categoryMap = {
   'Turkey': 'turkey',
   'Largemouth Bass': 'bass',
   'Other Game': 'other',
+};
+
+/// High-quality category images (Unsplash - free to use, CC0 license).
+/// These can be replaced with local assets or Supabase storage URLs.
+/// 
+/// Image selection criteria:
+/// - Non-gory, conservation-friendly
+/// - High quality, professional photography
+/// - Good composition for cropping
+/// - Works in both light and dark themes
+const _categoryImages = {
+  'deer': 'https://images.unsplash.com/photo-1484406566174-9da000fda645?w=600&q=80',
+  'turkey': 'https://images.unsplash.com/photo-1606567595334-d39972c85dfd?w=600&q=80',
+  'bass': 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=600&q=80',
+  'other': 'https://images.unsplash.com/photo-1504173010664-32509aeebb62?w=600&q=80',
 };
 
 /// 🧭 EXPLORE SCREEN - 2025 CINEMATIC DARK THEME
@@ -184,6 +200,7 @@ class _TrendingBadge extends StatelessWidget {
   }
 }
 
+/// Species/category grid with premium image-based tiles.
 class _SpeciesGrid extends StatelessWidget {
   const _SpeciesGrid({required this.isWide});
 
@@ -191,30 +208,34 @@ class _SpeciesGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final species = [
-      _SpeciesData(
+    final categories = [
+      ExploreCategoryData(
         name: 'Whitetail Deer',
-        icon: Icons.nature_rounded,
+        categoryKey: 'deer',
         color: AppColors.categoryDeer,
-        imageHint: 'deer',
+        imageUrl: _categoryImages['deer'],
+        semanticLabel: 'Browse whitetail deer trophies',
       ),
-      _SpeciesData(
+      ExploreCategoryData(
         name: 'Turkey',
-        icon: Icons.egg_rounded,
+        categoryKey: 'turkey',
         color: AppColors.categoryTurkey,
-        imageHint: 'turkey',
+        imageUrl: _categoryImages['turkey'],
+        semanticLabel: 'Browse turkey trophies',
       ),
-      _SpeciesData(
+      ExploreCategoryData(
         name: 'Largemouth Bass',
-        icon: Icons.water_rounded,
+        categoryKey: 'bass',
         color: AppColors.categoryBass,
-        imageHint: 'bass',
+        imageUrl: _categoryImages['bass'],
+        semanticLabel: 'Browse largemouth bass catches',
       ),
-      _SpeciesData(
+      ExploreCategoryData(
         name: 'Other Game',
-        icon: Icons.forest_rounded,
+        categoryKey: 'other',
         color: AppColors.categoryOtherGame,
-        imageHint: 'game',
+        imageUrl: _categoryImages['other'],
+        semanticLabel: 'Browse other game and fish',
       ),
     ];
 
@@ -227,180 +248,19 @@ class _SpeciesGrid extends StatelessWidget {
           crossAxisCount: isWide ? 4 : 2,
           mainAxisSpacing: AppSpacing.gridGap,
           crossAxisSpacing: AppSpacing.gridGap,
-          childAspectRatio: isWide ? 1.0 : 0.9,
+          childAspectRatio: isWide ? 1.0 : 0.85,
         ),
-        itemCount: species.length,
-        itemBuilder: (context, index) => _SpeciesCard(data: species[index]),
-      ),
-    );
-  }
-}
-
-class _SpeciesData {
-  const _SpeciesData({
-    required this.name,
-    required this.icon,
-    required this.color,
-    required this.imageHint,
-  });
-
-  final String name;
-  final IconData icon;
-  final Color color;
-  final String imageHint;
-}
-
-class _SpeciesCard extends StatefulWidget {
-  const _SpeciesCard({required this.data});
-
-  final _SpeciesData data;
-
-  @override
-  State<_SpeciesCard> createState() => _SpeciesCardState();
-}
-
-class _SpeciesCardState extends State<_SpeciesCard> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          // Navigate to feed with species category filter
-          final category = _categoryMap[widget.data.name];
-          if (category != null) {
-            context.go('/?category=$category');
-          } else {
-            context.go('/');
-          }
+        itemCount: categories.length,
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          return ExploreCategoryTile(
+            data: category,
+            onTap: () {
+              // Navigate to feed with category filter
+              context.go('/?category=${category.categoryKey}');
+            },
+          );
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          transform: _isHovered
-              ? (Matrix4.identity()..translate(0.0, -4.0))
-              : Matrix4.identity(),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-            border: Border.all(
-              color: _isHovered
-                  ? widget.data.color.withOpacity(0.5)
-                  : AppColors.borderSubtle,
-              width: _isHovered ? 1.5 : 1,
-            ),
-            boxShadow: _isHovered
-                ? [
-                    BoxShadow(
-                      color: widget.data.color.withOpacity(0.25),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : AppColors.shadowCard,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Background gradient (simulating image)
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      widget.data.color.withOpacity(0.3),
-                      AppColors.surface,
-                      AppColors.background,
-                    ],
-                  ),
-                ),
-              ),
-
-              // Pattern overlay
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        AppColors.background.withOpacity(0.9),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // Icon (top)
-              Positioned(
-                top: AppSpacing.lg,
-                right: AppSpacing.lg,
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: widget.data.color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                    border: Border.all(
-                      color: widget.data.color.withOpacity(0.3),
-                    ),
-                  ),
-                  child: Icon(
-                    widget.data.icon,
-                    color: widget.data.color,
-                    size: 24,
-                  ),
-                ),
-              ),
-
-              // Content (bottom)
-              Positioned(
-                bottom: AppSpacing.cardPadding,
-                left: AppSpacing.cardPadding,
-                right: AppSpacing.cardPadding,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.data.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xxs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: widget.data.color.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                      ),
-                      child: Text(
-                        'Browse',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: widget.data.color,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

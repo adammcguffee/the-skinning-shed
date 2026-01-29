@@ -1,6 +1,6 @@
 # The Skinning Shed - Project State
 
-> Last updated: January 23, 2026
+> Last updated: January 28, 2026
 
 ## Overview
 
@@ -27,13 +27,15 @@ Premium hunting & fishing community app built with Flutter. Dark, cinematic fore
 |-------|-------|--------|-------------|
 | 0 | `/` | FeedScreen | Trophy feed with category tabs |
 | 1 | `/explore` | ExploreScreen | Species tiles, quick links |
-| 2 | `/trophy-wall` | TrophyWallScreen | User profile + trophy grid |
-| 3 | `/land` | LandScreen | Land lease/sale listings |
-| 4 | `/messages` | MessagesInboxScreen | DM inbox with unread badge |
-| 5 | `/weather` | WeatherScreen | Forecast + hunting tools |
-| 6 | `/research` | ResearchScreen | Pattern analytics |
-| 7 | `/regulations` | RegulationsScreen | Seasons & limits |
-| 8 | `/settings` | SettingsScreen | Account & preferences |
+| 2 | `/discover` | DiscoverScreen | Search users, trending posts |
+| 3 | `/trophy-wall` | TrophyWallScreen | User profile + trophy grid |
+| 4 | `/land` | LandScreen | Land lease/sale listings |
+| 5 | `/messages` | MessagesInboxScreen | DM inbox with unread badge |
+| 6 | `/swap-shop` | SwapShopScreen | Marketplace |
+| 7 | `/weather` | WeatherScreen | Forecast + hunting tools |
+| 8 | `/research` | ResearchScreen | Pattern analytics |
+| 9 | `/official-links` | OfficialLinksScreen | State agency links |
+| 10 | `/settings` | SettingsScreen | Account & preferences |
 
 ### Detail Routes (Outside Shell)
 | Route | Screen | Description |
@@ -164,6 +166,7 @@ See `docs/REGS_WORKER_DEPLOY.md` for full deployment guide.
 | `SwapShopService` | `swap_shop_service.dart` | Swap shop CRUD |
 | `SocialService` | `social_service.dart` | Likes, comments |
 | `FollowService` | `follow_service.dart` | User follows |
+| `DiscoverService` | `discover_service.dart` | User search, trending posts |
 | `MessagingService` | `messaging_service.dart` | DM conversations |
 | `RegulationsService` | `regulations_service.dart` | Regs data + Edge Function |
 | `AdService` | `ad_service.dart` | Ad slot management |
@@ -211,6 +214,24 @@ abstract final class BrandAssets {
   static const String crest = 'assets/branding/banner_v2/crest.png';
 }
 ```
+
+### Explore Category Images
+```
+app/assets/images/explore/   # Reserved for local assets (optional)
+```
+
+Category tiles on the Explore screen use high-quality imagery with `CachedNetworkImage`. Current image sources (Unsplash CC0):
+| Category | Image Source |
+|----------|--------------|
+| Whitetail Deer | Unsplash photo-1484406566174 |
+| Turkey | Unsplash photo-1606567595334 |
+| Largemouth Bass | Unsplash photo-1544551763 |
+| Other Game | Unsplash photo-1504173010664 |
+
+**Future options:**
+- Replace with local assets in `assets/images/explore/` (add paths to pubspec.yaml)
+- Use Supabase storage bucket `explore_icons` for admin-configurable images
+- Personalize per region/species based on user preferences
 
 ---
 
