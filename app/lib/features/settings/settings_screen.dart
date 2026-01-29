@@ -11,26 +11,7 @@ import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
-/// Provider to check if current user is admin.
-final isAdminProvider = FutureProvider<bool>((ref) async {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return false;
-  
-  final userId = client.auth.currentUser?.id;
-  if (userId == null) return false;
-  
-  try {
-    final response = await client
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', userId)
-        .maybeSingle();
-    
-    return response?['is_admin'] == true;
-  } catch (e) {
-    return false;
-  }
-});
+// Note: isAdminProvider is imported from supabase_service.dart
 
 /// ⚙️ SETTINGS SCREEN - 2026 PRODUCTION
 /// 

@@ -344,7 +344,7 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
                 title: const Text('Delete Post', style: TextStyle(color: AppColors.error)),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _confirmDelete();
+                  _confirmDelete(asAdmin: false);
                 },
               ),
               const SizedBox(height: AppSpacing.md),
@@ -355,14 +355,105 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
     );
   }
 
-  Future<void> _confirmDelete() async {
+  void _showAdminMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              // Admin badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.admin_panel_settings_rounded, size: 16, color: AppColors.warning),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text('Admin Actions', style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.w600, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                title: const Text('Remove Post (Admin)', style: TextStyle(color: AppColors.error)),
+                subtitle: const Text('This will be logged for moderation audit', style: TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDelete(asAdmin: true);
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete({required bool asAdmin}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Delete Post?'),
-        content: const Text(
-          'This will permanently delete this trophy post and all its photos. This action cannot be undone.',
+        title: Text(asAdmin ? 'Remove Post as Admin?' : 'Delete Post?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              asAdmin
+                  ? 'This will permanently remove this trophy post for moderation purposes. This action will be logged.'
+                  : 'This will permanently delete this trophy post and all its photos. This action cannot be undone.',
+            ),
+            if (asAdmin) ...[
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 16, color: AppColors.warning),
+                    const SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: Text(
+                        'Admin removal logged',
+                        style: TextStyle(fontSize: 12, color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -372,27 +463,27 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text(asAdmin ? 'Remove' : 'Delete'),
           ),
         ],
       ),
     );
 
     if (confirmed == true && mounted) {
-      await _deleteTrophy();
+      await _deleteTrophy(asAdmin: asAdmin);
     }
   }
 
-  Future<void> _deleteTrophy() async {
+  Future<void> _deleteTrophy({bool asAdmin = false}) async {
     try {
       final trophyService = ref.read(trophyServiceProvider);
-      final success = await trophyService.deleteTrophy(widget.trophyId);
+      final success = await trophyService.deleteTrophy(widget.trophyId, asAdmin: asAdmin);
       
       if (mounted) {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Trophy deleted'),
+            SnackBar(
+              content: Text(asAdmin ? 'Post removed (admin)' : 'Trophy deleted'),
               backgroundColor: AppColors.success,
             ),
           );
@@ -412,6 +503,20 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
           SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
         );
       }
+    }
+  }
+  
+  /// Determine what menu to show based on ownership and admin status.
+  void _showContextMenu() {
+    final isAdminAsync = ref.read(isAdminProvider);
+    final isAdmin = isAdminAsync.valueOrNull ?? false;
+    
+    if (_isOwner) {
+      _showOwnerMenu();
+    } else if (isAdmin) {
+      _showAdminMenu();
+    } else {
+      _showReportModal();
     }
   }
 
@@ -443,7 +548,7 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
         ),
         _AppBarButton(
           icon: Icons.more_vert_rounded,
-          onTap: _isOwner ? _showOwnerMenu : _showReportModal,
+          onTap: _showContextMenu,
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/utils/navigation.dart';
 
 /// 🧭 PREMIUM PAGE HEADER - 2026
 /// 
@@ -63,7 +64,7 @@ class PageHeader extends StatelessWidget {
           // Home button (always visible if enabled)
           if (showHome)
             GestureDetector(
-              onTap: () => context.go('/feed'),
+              onTap: () => goHome(context),
               child: Container(
                 width: 44,
                 height: 44,

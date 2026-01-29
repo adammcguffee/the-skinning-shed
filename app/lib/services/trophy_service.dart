@@ -427,13 +427,25 @@ class TrophyService {
   }
 
   /// Delete a trophy post with full cleanup (photos from storage, related records).
-  Future<bool> deleteTrophy(String trophyId) async {
+  /// 
+  /// If [asAdmin] is true, logs a moderation action and skips owner check.
+  /// The RLS policy will enforce admin permission at the database level.
+  Future<bool> deleteTrophy(String trophyId, {bool asAdmin = false, String? reason}) async {
     if (_client == null) return false;
     
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return false;
     
     try {
+      // Fetch trophy info for audit (if admin) and photo paths
+      final trophyResponse = await _client
+          .from('trophy_posts')
+          .select('user_id')
+          .eq('id', trophyId)
+          .maybeSingle();
+      
+      final ownerId = trophyResponse?['user_id'] as String?;
+      
       // 1. Fetch photo paths before deletion
       final photosResponse = await _client
           .from('trophy_photos')
@@ -455,19 +467,28 @@ class TrophyService {
       }
       
       // 3. Delete related records (cascade should handle most, but be explicit)
-      // trophy_photos, weather_snapshots, moon_snapshots, analytics_buckets
-      // These should cascade on delete, but delete explicitly for safety
       await _client.from('trophy_photos').delete().eq('post_id', trophyId);
       await _client.from('weather_snapshots').delete().eq('post_id', trophyId);
       await _client.from('moon_snapshots').delete().eq('post_id', trophyId);
       await _client.from('analytics_buckets').delete().eq('post_id', trophyId);
       
-      // 4. Delete the trophy post itself
+      // 4. Log moderation action if admin deletion
+      if (asAdmin && ownerId != null && ownerId != userId) {
+        await _client.from('moderation_actions').insert({
+          'admin_id': userId,
+          'target_type': 'trophy',
+          'target_id': trophyId,
+          'target_owner_id': ownerId,
+          'action': 'delete',
+          'reason': reason,
+        });
+      }
+      
+      // 5. Delete the trophy post itself (RLS handles permission check)
       await _client
           .from('trophy_posts')
           .delete()
-          .eq('id', trophyId)
-          .eq('user_id', userId); // RLS enforced
+          .eq('id', trophyId);
       
       return true;
     } catch (e) {

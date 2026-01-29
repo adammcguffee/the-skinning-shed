@@ -8,6 +8,7 @@ import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/swap_shop_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 🛒 SWAP SHOP DETAIL SCREEN - 2025 PREMIUM
@@ -79,7 +80,7 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                 title: const Text('Delete Listing', style: TextStyle(color: AppColors.error)),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _confirmDelete();
+                  _confirmDelete(asAdmin: false);
                 },
               ),
               const SizedBox(height: AppSpacing.md),
@@ -90,14 +91,105 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
     );
   }
 
-  Future<void> _confirmDelete() async {
+  void _showAdminMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              // Admin badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.admin_panel_settings_rounded, size: 16, color: AppColors.warning),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text('Admin Actions', style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.w600, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                title: const Text('Remove Listing (Admin)', style: TextStyle(color: AppColors.error)),
+                subtitle: const Text('This will be logged for moderation audit', style: TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDelete(asAdmin: true);
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete({required bool asAdmin}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Delete Listing?'),
-        content: const Text(
-          'This will permanently delete this listing and all its photos. This action cannot be undone.',
+        title: Text(asAdmin ? 'Remove Listing as Admin?' : 'Delete Listing?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              asAdmin
+                  ? 'This will permanently remove this listing for moderation purposes. This action will be logged.'
+                  : 'This will permanently delete this listing and all its photos. This action cannot be undone.',
+            ),
+            if (asAdmin) ...[
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 16, color: AppColors.warning),
+                    const SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: Text(
+                        'Admin removal logged',
+                        style: TextStyle(fontSize: 12, color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -107,28 +199,28 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text(asAdmin ? 'Remove' : 'Delete'),
           ),
         ],
       ),
     );
 
     if (confirmed == true && mounted) {
-      await _deleteListing();
+      await _deleteListing(asAdmin: asAdmin);
     }
   }
 
-  Future<void> _deleteListing() async {
+  Future<void> _deleteListing({bool asAdmin = false}) async {
     setState(() => _isDeleting = true);
     
     try {
       final service = ref.read(swapShopServiceProvider);
-      await service.deleteListing(widget.listingId);
+      await service.deleteListing(widget.listingId, asAdmin: asAdmin);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Listing deleted'),
+          SnackBar(
+            content: Text(asAdmin ? 'Listing removed (admin)' : 'Listing deleted'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -142,6 +234,19 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
         );
       }
     }
+  }
+  
+  /// Determine what menu to show based on ownership and admin status.
+  void _showContextMenu() {
+    final isAdminAsync = ref.read(isAdminProvider);
+    final isAdmin = isAdminAsync.valueOrNull ?? false;
+    
+    if (_isOwner) {
+      _showOwnerMenu();
+    } else if (isAdmin) {
+      _showAdminMenu();
+    }
+    // Non-owners/non-admins don't see menu
   }
 
   Future<void> _loadListing() async {
@@ -380,7 +485,7 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                   ),
                   child: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
                 ),
-                onPressed: () => context.go('/'),
+                onPressed: () => goHome(context),
                 tooltip: 'Home',
               ),
               IconButton(
@@ -404,17 +509,27 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                   );
                 },
               ),
-              // More menu (owner: edit/delete, others: report)
-              IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: const Icon(Icons.more_vert_rounded, color: Colors.white),
-                ),
-                onPressed: _isOwner ? _showOwnerMenu : null,
+              // More menu (owner: edit/delete, admin: remove)
+              Consumer(
+                builder: (context, ref, child) {
+                  final isAdminAsync = ref.watch(isAdminProvider);
+                  final isAdmin = isAdminAsync.valueOrNull ?? false;
+                  final showMenu = _isOwner || isAdmin;
+                  
+                  if (!showMenu) return const SizedBox.shrink();
+                  
+                  return IconButton(
+                    icon: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                      ),
+                      child: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                    ),
+                    onPressed: _showContextMenu,
+                  );
+                },
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(

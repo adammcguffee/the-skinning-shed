@@ -356,9 +356,21 @@ class SwapShopService {
   }
 
   /// Delete a listing with full cleanup (photos from storage).
-  Future<void> deleteListing(String listingId) async {
+  /// 
+  /// If [asAdmin] is true, logs a moderation action and skips owner check.
+  /// The RLS policy will enforce admin permission at the database level.
+  Future<void> deleteListing(String listingId, {bool asAdmin = false, String? reason}) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
+    
+    // Fetch listing info for audit (if admin)
+    final listingResponse = await _client
+        .from('swap_shop_listings')
+        .select('user_id')
+        .eq('id', listingId)
+        .maybeSingle();
+    
+    final ownerId = listingResponse?['user_id'] as String?;
     
     // 1. Fetch photo paths before deletion
     final photosResponse = await _client
@@ -385,12 +397,23 @@ class SwapShopService {
     // 3. Delete photo records
     await _client.from('swap_shop_photos').delete().eq('listing_id', listingId);
     
-    // 4. Delete the listing
+    // 4. Log moderation action if admin deletion
+    if (asAdmin && ownerId != null && ownerId != userId) {
+      await _client.from('moderation_actions').insert({
+        'admin_id': userId,
+        'target_type': 'swap_shop',
+        'target_id': listingId,
+        'target_owner_id': ownerId,
+        'action': 'delete',
+        'reason': reason,
+      });
+    }
+    
+    // 5. Delete the listing (RLS handles permission check)
     await _client
         .from('swap_shop_listings')
         .delete()
-        .eq('id', listingId)
-        .eq('user_id', userId); // RLS enforced
+        .eq('id', listingId);
   }
   
   /// Delete a single photo from a listing.

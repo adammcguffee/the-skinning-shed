@@ -9,6 +9,7 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/supabase_service.dart';
+import 'package:shed/utils/navigation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// 💬 CONVERSATION SCREEN - 2025 PREMIUM
@@ -292,7 +293,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           IconButton(
             icon: const Icon(Icons.home_rounded),
             tooltip: 'Home',
-            onPressed: () => context.go('/'),
+            onPressed: () => goHome(context),
           ),
         ],
         bottom: PreferredSize(

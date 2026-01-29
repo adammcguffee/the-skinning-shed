@@ -8,6 +8,7 @@ import 'package:shed/services/land_listing_service.dart';
 import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 🏞️ LAND DETAIL SCREEN - 2025 PREMIUM
@@ -268,7 +269,7 @@ class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
                   ),
                   child: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
                 ),
-                onPressed: () => context.go('/feed'),
+                onPressed: () => goHome(context),
                 tooltip: 'Home',
               ),
               IconButton(
