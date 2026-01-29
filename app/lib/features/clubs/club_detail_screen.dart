@@ -454,21 +454,37 @@ class _PremiumStandsTab extends ConsumerWidget {
               
               final mySignin = mySigninAsync.valueOrNull;
               
+              // Sort: my sign-in first, then occupied, then available
+              final sortedStands = List<ClubStand>.from(stands);
+              sortedStands.sort((a, b) {
+                final aIsMySignin = mySignin?.standId == a.id;
+                final bIsMySignin = mySignin?.standId == b.id;
+                if (aIsMySignin && !bIsMySignin) return -1;
+                if (!aIsMySignin && bIsMySignin) return 1;
+                
+                final aOccupied = a.isOccupied;
+                final bOccupied = b.isOccupied;
+                if (aOccupied && !bOccupied) return -1;
+                if (!aOccupied && bOccupied) return 1;
+                
+                return a.sortOrder.compareTo(b.sortOrder);
+              });
+              
               return SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                 sliver: SliverList.builder(
-                  itemCount: stands.length,
+                  itemCount: sortedStands.length,
                   itemBuilder: (context, index) => _PremiumStandCard(
-                    stand: stands[index],
-                    isMySignin: mySignin?.standId == stands[index].id,
+                    stand: sortedStands[index],
+                    isMySignin: mySignin?.standId == sortedStands[index].id,
                     hasActiveSignin: mySignin != null,
                     ttlHours: club.settings.signInTtlHours,
                     isAdmin: isAdmin,
-                    onSignIn: () => _showSignInSheet(context, ref, stands[index]),
+                    onSignIn: () => _showSignInSheet(context, ref, sortedStands[index]),
                     onSignOut: mySignin != null 
                         ? () => _showSignOutSheet(context, ref, mySignin)
                         : null,
-                    onDelete: () => _deleteStand(context, ref, stands[index]),
+                    onDelete: () => _deleteStand(context, ref, sortedStands[index]),
                   ),
                 ),
               );
@@ -534,7 +550,7 @@ class _PremiumStandsTab extends ConsumerWidget {
         icon: Icons.login_rounded,
         child: Column(
           children: [
-            // Info box
+            // Info box - explain auto-expire
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -544,11 +560,11 @@ class _PremiumStandsTab extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.schedule_rounded, size: 18, color: AppColors.primary),
+                  Icon(Icons.timer_outlined, size: 18, color: AppColors.primary),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Your session will expire in ${club.settings.signInTtlHours} hours',
+                      'Stand hold auto-expires in ${club.settings.signInTtlHours}h to prevent forgotten sign-outs',
                       style: TextStyle(
                         color: AppColors.primary,
                         fontSize: 13,
@@ -769,7 +785,6 @@ class _MyHuntCard extends StatelessWidget {
     // Find stand name
     final stand = stands.where((s) => s.id == signin!.standId).firstOrNull;
     final standName = stand?.name ?? 'Unknown Stand';
-    final signedInAgo = timeago.format(signin!.signedInAt);
     
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -844,27 +859,36 @@ class _MyHuntCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: [
+                      Icon(Icons.login_rounded, size: 14, color: AppColors.textSecondary),
+                      const SizedBox(width: 4),
                       Text(
-                        'Signed in $signedInAgo',
+                        signin!.signedInAgo,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 12,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(
-                          '${signin!.timeRemainingFormatted} left',
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.timer_outlined, size: 10, color: AppColors.primary),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Expires ${signin!.timeRemainingFormatted}',
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -970,21 +994,31 @@ class _LiveStatusRow extends StatelessWidget {
             ),
           ),
           
-          // Admin add button
+          // Admin add button - more prominent
           if (isAdmin) ...[
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             GestureDetector(
               onTap: onAddStand,
               child: Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.add_rounded,
-                  size: 18,
                   color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_rounded, size: 16, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      'Add',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1162,11 +1196,10 @@ class _OccupiedInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final signedInAgo = timeago.format(signin.signedInAt);
-    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // User name with @handle
         Row(
           children: [
             Text(
@@ -1177,7 +1210,38 @@ class _OccupiedInfo extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(width: 6),
+            if (!isMySignin && signin.handle.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Text(
+                signin.handle,
+                style: const TextStyle(
+                  color: AppColors.textTertiary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        // Time info row
+        Row(
+          children: [
+            // Signed in ago
+            Icon(
+              Icons.login_rounded,
+              size: 12,
+              color: AppColors.textTertiary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              signin.signedInAgo,
+              style: const TextStyle(
+                color: AppColors.textTertiary,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Expires chip
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
@@ -1186,37 +1250,53 @@ class _OccupiedInfo extends StatelessWidget {
                     : AppColors.warning.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text(
-                '${signin.timeRemainingFormatted} left',
-                style: TextStyle(
-                  color: isMySignin ? AppColors.primary : AppColors.warning,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.timer_outlined,
+                    size: 10,
+                    color: isMySignin ? AppColors.primary : AppColors.warning,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    'Expires ${signin.timeRemainingFormatted}',
+                    style: TextStyle(
+                      color: isMySignin ? AppColors.primary : AppColors.warning,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 2),
-        Text(
-          'Signed in $signedInAgo • ${signin.signedInAtFormatted}',
-          style: const TextStyle(
-            color: AppColors.textTertiary,
-            fontSize: 11,
-          ),
-        ),
+        // Note if present
         if (signin.note != null && signin.note!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '"${signin.note}"',
-              style: const TextStyle(
-                color: AppColors.textTertiary,
-                fontSize: 11,
-                fontStyle: FontStyle.italic,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.note_outlined,
+                  size: 12,
+                  color: AppColors.textTertiary,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    signin.note!,
+                    style: const TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 11,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
       ],

@@ -675,6 +675,12 @@ class _MoreSheet extends StatelessWidget {
               onTap: () => onDestinationSelected(AppRoutes.indexClubs),
             ),
             _MoreSheetItem(
+              icon: Icons.group_add_outlined,
+              label: 'Club Openings',
+              isSelected: currentIndex == AppRoutes.indexOpenings,
+              onTap: () => onDestinationSelected(AppRoutes.indexOpenings),
+            ),
+            _MoreSheetItem(
               icon: Icons.cloud_outlined,
               label: 'Weather & Tools',
               isSelected: currentIndex == AppRoutes.indexWeather,

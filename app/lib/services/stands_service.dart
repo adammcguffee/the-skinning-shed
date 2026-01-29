@@ -85,22 +85,35 @@ class StandSignin {
   String get handle => username != null ? '@$username' : '';
   
   /// Whether this sign-in is currently active (status=active and not expired)
-  bool get isActive => status == 'active' && expiresAt.isAfter(DateTime.now());
+  /// Uses UTC for comparison since DB stores timestamps in UTC
+  bool get isActive => status == 'active' && expiresAt.toUtc().isAfter(DateTime.now().toUtc());
   
-  /// Formatted sign-in time (e.g., "6:12 AM")
+  /// Formatted sign-in time (e.g., "6:12 AM") in local time
   String get signedInAtFormatted {
-    final hour = signedInAt.hour;
-    final minute = signedInAt.minute.toString().padLeft(2, '0');
+    final local = signedInAt.toLocal();
+    final hour = local.hour;
+    final minute = local.minute.toString().padLeft(2, '0');
     final period = hour >= 12 ? 'PM' : 'AM';
     final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
     return '$hour12:$minute $period';
   }
   
+  /// Time since sign-in (e.g., "12m ago")
+  String get signedInAgo {
+    final now = DateTime.now().toUtc();
+    final diff = now.difference(signedInAt.toUtc());
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ${diff.inMinutes % 60}m ago';
+    return '${diff.inDays}d ago';
+  }
+  
   /// Time remaining until expiration
   Duration get timeRemaining {
-    final now = DateTime.now();
-    if (expiresAt.isBefore(now)) return Duration.zero;
-    return expiresAt.difference(now);
+    final now = DateTime.now().toUtc();
+    final expUtc = expiresAt.toUtc();
+    if (expUtc.isBefore(now)) return Duration.zero;
+    return expUtc.difference(now);
   }
   
   /// Formatted time remaining (e.g., "2h 30m")
@@ -174,13 +187,13 @@ class StandsService {
           .eq('club_id', clubId)
           .order('sort_order');
       
-      // Get active sign-ins (not expired)
+      // Get active sign-ins (not expired) - use UTC for comparison
       final signinsResponse = await _client
           .from('stand_signins')
           .select('*, profiles:profiles!stand_signins_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('status', 'active')
-          .gt('expires_at', DateTime.now().toIso8601String());
+          .gt('expires_at', DateTime.now().toUtc().toIso8601String());
       
       // Map sign-ins by stand ID
       final signInsByStand = <String, StandSignin>{};
@@ -295,18 +308,19 @@ class StandsService {
     
     try {
       // First sign out from any active sign-ins in this club
+      final now = DateTime.now().toUtc();
       await _client
           .from('stand_signins')
           .update({
             'status': 'signed_out',
-            'signed_out_at': DateTime.now().toIso8601String(),
+            'signed_out_at': now.toIso8601String(),
           })
           .eq('club_id', clubId)
           .eq('user_id', userId)
           .eq('status', 'active');
       
-      // Create new sign-in
-      final expiresAt = DateTime.now().add(Duration(hours: ttlHours));
+      // Create new sign-in with UTC timestamps
+      final expiresAt = now.add(Duration(hours: ttlHours));
       
       await _client.from('stand_signins').insert({
         'club_id': clubId,
@@ -355,7 +369,7 @@ class StandsService {
           .from('stand_signins')
           .update({
             'status': 'signed_out',
-            'signed_out_at': DateTime.now().toIso8601String(),
+            'signed_out_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', signinId);
       
@@ -380,7 +394,7 @@ class StandsService {
           .from('stand_signins')
           .update({
             'status': 'signed_out',
-            'signed_out_at': DateTime.now().toIso8601String(),
+            'signed_out_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('club_id', clubId)
           .eq('user_id', userId)
@@ -409,7 +423,7 @@ class StandsService {
           .eq('club_id', clubId)
           .eq('user_id', userId)
           .eq('status', 'active')
-          .gt('expires_at', DateTime.now().toIso8601String())
+          .gt('expires_at', DateTime.now().toUtc().toIso8601String())
           .maybeSingle();
       
       if (response != null) {
