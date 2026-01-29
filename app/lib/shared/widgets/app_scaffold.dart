@@ -420,15 +420,15 @@ class _MobileBottomNav extends StatelessWidget {
                 icon: Icons.home_outlined,
                 selectedIcon: Icons.home_rounded,
                 label: 'Feed',
-                isSelected: currentIndex == 0,
-                onTap: () => onDestinationSelected(0),
+                isSelected: currentIndex == AppRoutes.indexFeed,
+                onTap: () => onDestinationSelected(AppRoutes.indexFeed),
               ),
               _MobileNavItem(
                 icon: Icons.explore_outlined,
                 selectedIcon: Icons.explore_rounded,
                 label: 'Explore',
-                isSelected: currentIndex == 1,
-                onTap: () => onDestinationSelected(1),
+                isSelected: currentIndex == AppRoutes.indexExplore,
+                onTap: () => onDestinationSelected(AppRoutes.indexExplore),
               ),
               // Spacer for FAB
               const SizedBox(width: 64),
@@ -436,14 +436,14 @@ class _MobileBottomNav extends StatelessWidget {
                 icon: Icons.emoji_events_outlined,
                 selectedIcon: Icons.emoji_events_rounded,
                 label: 'Trophy',
-                isSelected: currentIndex == 2,
-                onTap: () => onDestinationSelected(2),
+                isSelected: currentIndex == AppRoutes.indexTrophyWall,
+                onTap: () => onDestinationSelected(AppRoutes.indexTrophyWall),
               ),
               _MobileNavItem(
                 icon: Icons.more_horiz_rounded,
                 selectedIcon: Icons.more_horiz_rounded,
                 label: 'More',
-                isSelected: currentIndex >= 3,
+                isSelected: currentIndex != 0 && currentIndex != 1 && currentIndex != AppRoutes.indexTrophyWall,
                 onTap: () => _showMoreSheet(context),
               ),
             ],
@@ -640,6 +640,12 @@ class _MoreSheet extends StatelessWidget {
 
             // Options - using AppRoutes constants for correct indices
             _MoreSheetItem(
+              icon: Icons.people_outline_rounded,
+              label: 'Discover Hunters',
+              isSelected: currentIndex == AppRoutes.indexDiscover,
+              onTap: () => onDestinationSelected(AppRoutes.indexDiscover),
+            ),
+            _MoreSheetItem(
               icon: Icons.landscape_outlined,
               label: 'Land Listings',
               isSelected: currentIndex == AppRoutes.indexLand,
@@ -656,6 +662,12 @@ class _MoreSheet extends StatelessWidget {
               label: 'Swap Shop',
               isSelected: currentIndex == AppRoutes.indexSwapShop,
               onTap: () => onDestinationSelected(AppRoutes.indexSwapShop),
+            ),
+            _MoreSheetItem(
+              icon: Icons.groups_outlined,
+              label: 'Hunting Clubs',
+              isSelected: currentIndex == AppRoutes.indexClubs,
+              onTap: () => onDestinationSelected(AppRoutes.indexClubs),
             ),
             _MoreSheetItem(
               icon: Icons.cloud_outlined,
