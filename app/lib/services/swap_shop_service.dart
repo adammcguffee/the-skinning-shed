@@ -316,9 +316,125 @@ class SwapShopService {
     return listingId;
   }
 
-  /// Delete a listing (owner only).
-  Future<void> deleteListing(String id) async {
-    await _client.from('swap_shop_listings').delete().eq('id', id);
+  /// Update a listing (owner only).
+  Future<void> updateListing({
+    required String listingId,
+    String? category,
+    String? title,
+    String? description,
+    double? price,
+    String? condition,
+    String? state,
+    String? county,
+    String? contactMethod,
+    String? contactValue,
+    String? status,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    
+    final data = <String, dynamic>{
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    
+    if (category != null) data['category'] = category;
+    if (title != null) data['title'] = title;
+    if (description != null) data['description'] = description;
+    if (price != null) data['price'] = price;
+    if (condition != null) data['condition'] = condition;
+    if (state != null) data['state'] = state;
+    if (county != null) data['county'] = county;
+    if (contactMethod != null) data['contact_method'] = contactMethod;
+    if (contactValue != null) data['contact_value'] = contactValue;
+    if (status != null) data['status'] = status;
+    
+    await _client
+        .from('swap_shop_listings')
+        .update(data)
+        .eq('id', listingId)
+        .eq('user_id', userId); // RLS enforced
+  }
+
+  /// Delete a listing with full cleanup (photos from storage).
+  Future<void> deleteListing(String listingId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    
+    // 1. Fetch photo paths before deletion
+    final photosResponse = await _client
+        .from('swap_shop_photos')
+        .select('storage_path')
+        .eq('listing_id', listingId);
+    
+    final photoPaths = (photosResponse as List)
+        .map((p) => p['storage_path'] as String)
+        .toList();
+    
+    // 2. Delete photos from storage
+    if (photoPaths.isNotEmpty) {
+      try {
+        await _client.storage.from('swap_shop_photos').remove(photoPaths);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Warning: Failed to delete some storage files: $e');
+        }
+        // Continue with DB deletion even if storage fails
+      }
+    }
+    
+    // 3. Delete photo records
+    await _client.from('swap_shop_photos').delete().eq('listing_id', listingId);
+    
+    // 4. Delete the listing
+    await _client
+        .from('swap_shop_listings')
+        .delete()
+        .eq('id', listingId)
+        .eq('user_id', userId); // RLS enforced
+  }
+  
+  /// Delete a single photo from a listing.
+  Future<void> deleteListingPhoto({
+    required String listingId,
+    required String photoPath,
+  }) async {
+    // Delete from storage
+    await _client.storage.from('swap_shop_photos').remove([photoPath]);
+    
+    // Delete DB record
+    await _client
+        .from('swap_shop_photos')
+        .delete()
+        .eq('listing_id', listingId)
+        .eq('storage_path', photoPath);
+  }
+  
+  /// Add a photo to an existing listing.
+  Future<String> addListingPhoto({
+    required String listingId,
+    required XFile photo,
+    required int sortOrder,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    
+    final bytes = await photo.readAsBytes();
+    final ext = photo.name.split('.').last.toLowerCase();
+    final path = '$userId/$listingId/${sortOrder}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    
+    await _client.storage.from('swap_shop_photos').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: 'image/$ext', upsert: false),
+    );
+    
+    await _client.from('swap_shop_photos').insert({
+      'listing_id': listingId,
+      'storage_path': path,
+      'sort_order': sortOrder,
+    });
+    
+    return path;
   }
 
   /// Get public URL for a photo.

@@ -298,6 +298,123 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
     );
   }
 
+  /// Check if current user owns this trophy.
+  bool get _isOwner {
+    final currentUserId = ref.read(currentUserProvider)?.id;
+    final postUserId = _trophy?['user_id'];
+    return currentUserId != null && currentUserId == postUserId;
+  }
+
+  void _showOwnerMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: AppColors.textPrimary),
+                title: const Text('Edit Post'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/trophy/${widget.trophyId}/edit');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                title: const Text('Delete Post', style: TextStyle(color: AppColors.error)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDelete();
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: const Text('Delete Post?'),
+        content: const Text(
+          'This will permanently delete this trophy post and all its photos. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _deleteTrophy();
+    }
+  }
+
+  Future<void> _deleteTrophy() async {
+    try {
+      final trophyService = ref.read(trophyServiceProvider);
+      final success = await trophyService.deleteTrophy(widget.trophyId);
+      
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Trophy deleted'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          context.go('/trophy-wall');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete trophy'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
   Widget _buildImageHeader(BuildContext context) {
     final photos = _trophy!['trophy_photos'] as List? ?? [];
     final storagePath = photos.isNotEmpty ? photos.first['storage_path'] as String? : null;
@@ -326,7 +443,7 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
         ),
         _AppBarButton(
           icon: Icons.more_vert_rounded,
-          onTap: _showReportModal,
+          onTap: _isOwner ? _showOwnerMenu : _showReportModal,
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(

@@ -26,11 +26,122 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
   bool _isLoading = true;
   String? _error;
   int _currentPhotoIndex = 0;
+  bool _isDeleting = false;
 
   @override
   void initState() {
     super.initState();
     _loadListing();
+  }
+
+  /// Check if current user owns this listing.
+  bool get _isOwner {
+    final currentUserId = ref.read(currentUserProvider)?.id;
+    return currentUserId != null && _listing?.userId == currentUserId;
+  }
+
+  void _showOwnerMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: AppColors.textPrimary),
+                title: const Text('Edit Listing'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/swap-shop/${widget.listingId}/edit');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                title: const Text('Delete Listing', style: TextStyle(color: AppColors.error)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDelete();
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        title: const Text('Delete Listing?'),
+        content: const Text(
+          'This will permanently delete this listing and all its photos. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _deleteListing();
+    }
+  }
+
+  Future<void> _deleteListing() async {
+    setState(() => _isDeleting = true);
+    
+    try {
+      final service = ref.read(swapShopServiceProvider);
+      await service.deleteListing(widget.listingId);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Listing deleted'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        context.go('/swap-shop');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 
   Future<void> _loadListing() async {
@@ -269,7 +380,7 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                   ),
                   child: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
                 ),
-                onPressed: () => context.go('/feed'),
+                onPressed: () => context.go('/'),
                 tooltip: 'Home',
               ),
               IconButton(
@@ -292,6 +403,18 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                     ),
                   );
                 },
+              ),
+              // More menu (owner: edit/delete, others: report)
+              IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                ),
+                onPressed: _isOwner ? _showOwnerMenu : null,
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(

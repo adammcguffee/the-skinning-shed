@@ -29,7 +29,9 @@ import '../features/swap_shop/swap_shop_detail_screen.dart';
 import '../features/swap_shop/swap_shop_screen.dart';
 import '../features/trophy_wall/profile_edit_screen.dart';
 import '../features/trophy_wall/trophy_detail_screen.dart';
+import '../features/trophy_wall/trophy_edit_screen.dart';
 import '../features/trophy_wall/trophy_wall_screen.dart';
+import '../features/swap_shop/swap_shop_edit_screen.dart';
 import '../features/weather/weather_screen.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
@@ -313,6 +315,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       
+      // Swap Shop edit (owner only)
+      GoRoute(
+        path: '/swap-shop/:id/edit',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return SwapShopEditScreen(listingId: id);
+        },
+      ),
+      
       // Land create (supports ?mode=lease|sale query param)
       GoRoute(
         path: '/land/create',
@@ -328,6 +339,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final id = state.pathParameters['id']!;
           return TrophyDetailScreen(trophyId: id);
+        },
+      ),
+      
+      // Trophy edit (owner only)
+      GoRoute(
+        path: '/trophy/:id/edit',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return TrophyEditScreen(trophyId: id);
         },
       ),
       

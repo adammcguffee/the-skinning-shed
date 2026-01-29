@@ -378,14 +378,148 @@ class TrophyService {
     return _client.storage.from('trophy_photos').getPublicUrl(storagePath);
   }
   
-  /// Delete a trophy post.
-  Future<bool> deleteTrophy(String id) async {
+  /// Update a trophy post.
+  Future<bool> updateTrophy({
+    required String trophyId,
+    String? category,
+    String? state,
+    String? county,
+    DateTime? harvestDate,
+    String? harvestTime,
+    String? harvestTimeBucket,
+    String? story,
+    String? privateNotes,
+    String? visibility,
+    String? coverPhotoPath,
+  }) async {
+    if (_client == null) return false;
+    
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return false;
+    
+    try {
+      final data = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      
+      if (category != null) data['category'] = category;
+      if (state != null) data['state'] = state;
+      if (county != null) data['county'] = county;
+      if (harvestDate != null) data['harvest_date'] = harvestDate.toIso8601String().split('T')[0];
+      if (harvestTime != null) data['harvest_time'] = harvestTime;
+      if (harvestTimeBucket != null) data['harvest_time_bucket'] = harvestTimeBucket;
+      if (story != null) data['story'] = story;
+      if (privateNotes != null) data['private_notes'] = privateNotes;
+      if (visibility != null) data['visibility'] = visibility;
+      if (coverPhotoPath != null) data['cover_photo_path'] = coverPhotoPath;
+      
+      await _client
+          .from('trophy_posts')
+          .update(data)
+          .eq('id', trophyId)
+          .eq('user_id', userId); // RLS enforced, but be explicit
+      
+      return true;
+    } catch (e) {
+      print('Error updating trophy: $e');
+      return false;
+    }
+  }
+
+  /// Delete a trophy post with full cleanup (photos from storage, related records).
+  Future<bool> deleteTrophy(String trophyId) async {
+    if (_client == null) return false;
+    
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return false;
+    
+    try {
+      // 1. Fetch photo paths before deletion
+      final photosResponse = await _client
+          .from('trophy_photos')
+          .select('storage_path')
+          .eq('post_id', trophyId);
+      
+      final photoPaths = (photosResponse as List)
+          .map((p) => p['storage_path'] as String)
+          .toList();
+      
+      // 2. Delete photos from storage
+      if (photoPaths.isNotEmpty) {
+        try {
+          await _client.storage.from('trophy_photos').remove(photoPaths);
+        } catch (e) {
+          print('Warning: Failed to delete some storage files: $e');
+          // Continue with DB deletion even if storage fails
+        }
+      }
+      
+      // 3. Delete related records (cascade should handle most, but be explicit)
+      // trophy_photos, weather_snapshots, moon_snapshots, analytics_buckets
+      // These should cascade on delete, but delete explicitly for safety
+      await _client.from('trophy_photos').delete().eq('post_id', trophyId);
+      await _client.from('weather_snapshots').delete().eq('post_id', trophyId);
+      await _client.from('moon_snapshots').delete().eq('post_id', trophyId);
+      await _client.from('analytics_buckets').delete().eq('post_id', trophyId);
+      
+      // 4. Delete the trophy post itself
+      await _client
+          .from('trophy_posts')
+          .delete()
+          .eq('id', trophyId)
+          .eq('user_id', userId); // RLS enforced
+      
+      return true;
+    } catch (e) {
+      print('Error deleting trophy: $e');
+      return false;
+    }
+  }
+  
+  /// Delete a single photo from a trophy post.
+  Future<bool> deletePhoto({
+    required String trophyId,
+    required String photoId,
+    required String storagePath,
+  }) async {
     if (_client == null) return false;
     
     try {
-      await _client.from('trophy_posts').delete().eq('id', id);
+      // Delete from storage
+      await _client.storage.from('trophy_photos').remove([storagePath]);
+      
+      // Delete DB record
+      await _client.from('trophy_photos').delete().eq('id', photoId);
+      
+      // Update cover photo if this was the cover
+      final trophy = await _client
+          .from('trophy_posts')
+          .select('cover_photo_path')
+          .eq('id', trophyId)
+          .single();
+      
+      if (trophy['cover_photo_path'] == storagePath) {
+        // Find another photo to be the cover
+        final remainingPhotos = await _client
+            .from('trophy_photos')
+            .select('storage_path')
+            .eq('post_id', trophyId)
+            .order('sort_order')
+            .limit(1);
+        
+        final newCover = (remainingPhotos as List).isNotEmpty 
+            ? remainingPhotos.first['storage_path'] 
+            : null;
+        
+        await _client
+            .from('trophy_posts')
+            .update({'cover_photo_path': newCover})
+            .eq('id', trophyId);
+      }
+      
       return true;
     } catch (e) {
+      print('Error deleting photo: $e');
       return false;
     }
   }
