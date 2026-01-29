@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../data/us_counties.dart';
 import '../../data/us_states.dart';
 import '../../navigation/app_routes.dart';
 import '../../services/clubs_service.dart';
@@ -20,21 +21,20 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _countyController = TextEditingController();
   
   bool _isDiscoverable = false;
   bool _requireApproval = true;
   int _signInTtlHours = 6;
   bool _isSubmitting = false;
   String? _selectedState;
+  String? _selectedCounty;
   
-  static const _ttlOptions = [2, 4, 6, 8, 12, 24];
+  static const _ttlOptions = [2, 4, 6, 8, 10, 12];
   
   @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
-    _countyController.dispose();
     super.dispose();
   }
   
@@ -55,9 +55,7 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
         signInTtlHours: _signInTtlHours,
       ),
       stateCode: _selectedState,
-      county: _countyController.text.trim().isEmpty 
-          ? null 
-          : _countyController.text.trim(),
+      county: _selectedCounty,
     );
     
     if (!mounted) return;
@@ -179,6 +177,7 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
                         onChanged: (value) {
                           setState(() {
                             _selectedState = value;
+                            _selectedCounty = null; // Reset county when state changes
                           });
                         },
                       ),
@@ -186,16 +185,59 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                // County text field
+                // County dropdown
                 Expanded(
-                  child: TextFormField(
-                    controller: _countyController,
-                    style: const TextStyle(color: AppColors.textPrimary),
-                    decoration: _inputDecoration(
-                      label: 'County',
-                      hint: 'e.g., Madison',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: _selectedState == null 
+                          ? AppColors.surface 
+                          : AppColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
                     ),
-                    textCapitalization: TextCapitalization.words,
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedCounty,
+                        hint: Text(
+                          _selectedState == null ? 'Select state first' : 'Select County',
+                          style: TextStyle(
+                            color: _selectedState == null 
+                                ? AppColors.textTertiary.withValues(alpha: 0.5)
+                                : AppColors.textTertiary,
+                          ),
+                        ),
+                        dropdownColor: AppColors.surfaceElevated,
+                        isExpanded: true,
+                        icon: Icon(
+                          Icons.arrow_drop_down_rounded, 
+                          color: _selectedState == null 
+                              ? AppColors.textTertiary.withValues(alpha: 0.3)
+                              : AppColors.textSecondary,
+                        ),
+                        items: _selectedState == null
+                            ? []
+                            : [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('No County'),
+                                ),
+                                ...USCounties.forState(_selectedState!).map((county) => 
+                                  DropdownMenuItem(
+                                    value: county,
+                                    child: Text(county),
+                                  ),
+                                ),
+                              ],
+                        onChanged: _selectedState == null
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _selectedCounty = value;
+                                });
+                              },
+                      ),
+                    ),
                   ),
                 ),
               ],

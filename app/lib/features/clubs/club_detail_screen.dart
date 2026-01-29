@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../app/theme/app_colors.dart';
@@ -91,7 +92,16 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
                   club: club,
                   memberCount: memberCount,
                   isAdmin: isAdmin,
-                  onBack: () => context.pop(),
+                  onBack: () {
+                    // Resilient back: go back if possible, else go to clubs list
+                    if (GoRouter.of(context).canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/clubs');
+                    }
+                  },
+                  onInvite: () => _showInviteSheet(context, club),
+                  onSettings: () => context.push('/clubs/${club.id}/settings'),
                 ),
                 
                 // Premium Tab Bar
@@ -153,6 +163,135 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
         return const SizedBox.shrink();
     }
   }
+  
+  Future<void> _showInviteSheet(BuildContext context, Club club) async {
+    HapticFeedback.mediumImpact();
+    final service = ref.read(clubsServiceProvider);
+    final token = await service.createInviteLink(club.id);
+    
+    if (token != null && mounted) {
+      final url = 'https://www.theskinningshed.com/clubs/join/$token';
+      
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.link_rounded, color: AppColors.primary, size: 28),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Invite Link',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Share this link to invite members',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: SelectableText(
+                    url,
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: url));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Link copied!')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        label: const Text('Copy'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await Share.share(
+                            'Join ${club.name} on The Skinning Shed!\n$url',
+                            subject: 'Club Invite',
+                          );
+                        },
+                        icon: const Icon(Icons.share_rounded, size: 18),
+                        label: const Text('Share'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          side: const BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to create invite link')),
+      );
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -165,12 +304,16 @@ class _PremiumHeader extends StatelessWidget {
     required this.memberCount,
     required this.isAdmin,
     required this.onBack,
+    required this.onInvite,
+    required this.onSettings,
   });
   
   final Club club;
   final int memberCount;
   final bool isAdmin;
   final VoidCallback onBack;
+  final VoidCallback onInvite;
+  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +388,14 @@ class _PremiumHeader extends StatelessWidget {
               color: AppColors.surfaceElevated,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onSelected: (value) {
-                // Handle admin actions
+                switch (value) {
+                  case 'invite':
+                    onInvite();
+                    break;
+                  case 'settings':
+                    onSettings();
+                    break;
+                }
               },
               itemBuilder: (context) => [
                 const PopupMenuItem(

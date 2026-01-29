@@ -529,7 +529,7 @@ class ClubsService {
     }
   }
   
-  /// Get current user's membership in a club
+  /// Get current user's membership in a club (only returns active memberships)
   Future<ClubMember?> getMyMembership(String clubId) async {
     if (_client == null) return null;
     
@@ -542,6 +542,7 @@ class ClubsService {
           .select('*, profiles:profiles!club_members_user_profiles_fkey(username, display_name, avatar_path)')
           .eq('club_id', clubId)
           .eq('user_id', userId)
+          .eq('status', 'active') // Only return active memberships
           .maybeSingle();
       
       if (response != null) {
@@ -801,6 +802,40 @@ class ClubsService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[ClubsService] Error leaving club: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Update club settings (convenience wrapper)
+  Future<bool> updateClubSettings(
+    String clubId, {
+    bool? isDiscoverable,
+    bool? requireApproval,
+    ClubSettings? settings,
+  }) {
+    return updateClub(
+      clubId,
+      isDiscoverable: isDiscoverable,
+      requireApproval: requireApproval,
+      settings: settings,
+    );
+  }
+  
+  /// Delete club (owner only)
+  Future<bool> deleteClub(String clubId) async {
+    if (_client == null) return false;
+    
+    try {
+      // Delete club - cascades should handle members, posts, etc.
+      await _client
+          .from('clubs')
+          .delete()
+          .eq('id', clubId);
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error deleting club: $e');
       }
       return false;
     }

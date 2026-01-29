@@ -40,6 +40,8 @@ import '../features/clubs/clubs_home_screen.dart';
 import '../features/clubs/create_club_screen.dart';
 import '../features/clubs/club_detail_screen.dart';
 import '../features/clubs/club_join_screen.dart';
+import '../features/clubs/club_preview_screen.dart';
+import '../features/clubs/club_settings_screen.dart';
 import '../features/openings/openings_screen.dart';
 import '../features/openings/opening_detail_screen.dart';
 import '../features/openings/create_opening_screen.dart';
@@ -480,6 +482,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CreateClubScreen(),
       ),
       GoRoute(
+        path: '/clubs/preview/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return ClubPreviewScreen(clubId: id);
+        },
+      ),
+      GoRoute(
         path: '/clubs/:id',
         builder: (context, state) {
           final id = state.pathParameters['id']!;
@@ -491,6 +500,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final token = state.pathParameters['token']!;
           return ClubJoinScreen(token: token);
+        },
+      ),
+      GoRoute(
+        path: '/clubs/:id/settings',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return ClubSettingsScreen(clubId: id);
         },
       ),
       
