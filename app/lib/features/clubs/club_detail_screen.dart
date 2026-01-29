@@ -1689,11 +1689,11 @@ class _PhotoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image
+            // Image - use thumbnail (feedUrl) for grid, falls back to original
             Expanded(
-              child: photo.signedUrl != null
+              child: photo.feedUrl != null
                   ? Image.network(
-                      photo.signedUrl!,
+                      photo.feedUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => _PhotoPlaceholder(),
                       loadingBuilder: (context, child, progress) {
@@ -2008,9 +2008,10 @@ class _PhotoDetailSheetState extends ConsumerState<_PhotoDetailSheet> {
               padding: const EdgeInsets.all(16),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: widget.photo.signedUrl != null
+                // Use detailUrl (medium) for detail view, falls back to original
+                child: widget.photo.detailUrl != null
                     ? Image.network(
-                        widget.photo.signedUrl!,
+                        widget.photo.detailUrl!,
                         fit: BoxFit.contain,
                         errorBuilder: (_, __, ___) => const SizedBox(height: 200, child: _PhotoPlaceholder()),
                       )

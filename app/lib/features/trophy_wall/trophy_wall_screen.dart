@@ -1513,13 +1513,16 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
   Widget build(BuildContext context) {
     final species = _speciesName;
     
-    // Resolve cover photo to public URL
+    // Resolve cover photo to public URL - prefer thumbnail for feed cards
+    final coverThumbPath = widget.trophy['cover_thumb_path'] as String?;
     final coverPhotoPath = widget.trophy['cover_photo_path'] as String?;
+    final photoPath = coverThumbPath ?? coverPhotoPath; // Prefer thumb, fall back to original
+    
     String? imageUrl;
-    if (coverPhotoPath != null) {
+    if (photoPath != null) {
       final client = SupabaseService.instance.client;
       if (client != null) {
-        imageUrl = client.storage.from('trophy_photos').getPublicUrl(coverPhotoPath);
+        imageUrl = client.storage.from('trophy_photos').getPublicUrl(photoPath);
       }
     }
 

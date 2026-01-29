@@ -312,10 +312,12 @@ class TrophyService {
           ));
       
       // Add photo record
-      await _client.from('trophy_photos').insert({
+      final photoResponse = await _client.from('trophy_photos').insert({
         'post_id': trophyId,
         'storage_path': storagePath,
-      });
+      }).select('id').single();
+      
+      final photoId = photoResponse['id'] as String;
       
       // Update cover photo if this is the first
       await _client
@@ -323,6 +325,13 @@ class TrophyService {
           .update({'cover_photo_path': storagePath})
           .eq('id', trophyId)
           .isFilter('cover_photo_path', null);
+      
+      // Trigger thumbnail generation (fire-and-forget)
+      _generateTrophyThumbnails(
+        trophyId: trophyId,
+        photoId: photoId,
+        storagePath: storagePath,
+      );
       
       return storagePath;
     } catch (e) {
@@ -353,10 +362,12 @@ class TrophyService {
           ));
       
       // Add photo record
-      await _client.from('trophy_photos').insert({
+      final photoResponse = await _client.from('trophy_photos').insert({
         'post_id': trophyId,
         'storage_path': storagePath,
-      });
+      }).select('id').single();
+      
+      final photoId = photoResponse['id'] as String;
       
       // Update cover photo if this is the first
       await _client
@@ -365,11 +376,59 @@ class TrophyService {
           .eq('id', trophyId)
           .isFilter('cover_photo_path', null);
       
+      // Trigger thumbnail generation (fire-and-forget)
+      _generateTrophyThumbnails(
+        trophyId: trophyId,
+        photoId: photoId,
+        storagePath: storagePath,
+      );
+      
       return storagePath;
     } catch (e) {
       print('Photo upload error: $e');
       return null;
     }
+  }
+  
+  /// Generate thumbnail variants for a trophy photo (fire-and-forget)
+  void _generateTrophyThumbnails({
+    required String trophyId,
+    required String photoId,
+    required String storagePath,
+  }) {
+    if (_client == null) return;
+    
+    // Fire-and-forget: don't await, don't block the upload
+    Future.microtask(() async {
+      try {
+        // Generate for trophy_photos table
+        await _client.functions.invoke(
+          'image-variants',
+          body: {
+            'bucket': 'trophy_photos',
+            'path': storagePath,
+            'recordType': 'trophy_photos',
+            'recordId': photoId,
+          },
+        );
+        
+        // Also update trophy_posts cover if this is the cover photo
+        await _client.functions.invoke(
+          'image-variants',
+          body: {
+            'bucket': 'trophy_photos',
+            'path': storagePath,
+            'recordType': 'trophy_posts',
+            'recordId': trophyId,
+          },
+        );
+        
+        print('[TrophyService] Thumbnail generation triggered for $photoId');
+      } catch (e) {
+        // Don't fail - thumbnails are optional enhancement
+        print('[TrophyService] Thumbnail generation error (non-fatal): $e');
+      }
+    });
   }
   
   /// Get public URL for a photo.

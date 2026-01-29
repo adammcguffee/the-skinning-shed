@@ -19,6 +19,8 @@ class ClubPhoto {
     required this.authorId,
     required this.storageBucket,
     required this.storagePath,
+    this.thumbPath,
+    this.mediumPath,
     this.caption,
     this.takenAt,
     this.cameraLabel,
@@ -26,6 +28,8 @@ class ClubPhoto {
     this.authorName,
     this.authorUsername,
     this.signedUrl,
+    this.thumbSignedUrl,
+    this.mediumSignedUrl,
     this.linkedBucks = const [],
   });
 
@@ -34,6 +38,8 @@ class ClubPhoto {
   final String authorId;
   final String storageBucket;
   final String storagePath;
+  final String? thumbPath;
+  final String? mediumPath;
   final String? caption;
   final DateTime? takenAt;
   final String? cameraLabel;
@@ -41,14 +47,28 @@ class ClubPhoto {
   final String? authorName;
   final String? authorUsername;
   final String? signedUrl;
+  final String? thumbSignedUrl;
+  final String? mediumSignedUrl;
   final List<BuckProfileSummary> linkedBucks;
+  
+  /// Get the best URL for feed/grid display (thumb preferred)
+  String? get feedUrl => thumbSignedUrl ?? signedUrl;
+  
+  /// Get the best URL for detail display (medium preferred)
+  String? get detailUrl => mediumSignedUrl ?? signedUrl;
 
   String get displayDate {
     final date = takenAt ?? createdAt;
     return '${date.month}/${date.day}/${date.year}';
   }
 
-  factory ClubPhoto.fromJson(Map<String, dynamic> json, {String? signedUrl, List<BuckProfileSummary>? linkedBucks}) {
+  factory ClubPhoto.fromJson(
+    Map<String, dynamic> json, {
+    String? signedUrl, 
+    String? thumbSignedUrl,
+    String? mediumSignedUrl,
+    List<BuckProfileSummary>? linkedBucks,
+  }) {
     final profile = json['profiles'] as Map<String, dynamic>?;
     return ClubPhoto(
       id: json['id'] as String,
@@ -56,6 +76,8 @@ class ClubPhoto {
       authorId: json['author_id'] as String,
       storageBucket: json['storage_bucket'] as String,
       storagePath: json['storage_path'] as String,
+      thumbPath: json['thumb_path'] as String?,
+      mediumPath: json['medium_path'] as String?,
       caption: json['caption'] as String?,
       takenAt: json['taken_at'] != null ? DateTime.parse(json['taken_at'] as String) : null,
       cameraLabel: json['camera_label'] as String?,
@@ -63,6 +85,8 @@ class ClubPhoto {
       authorName: profile?['display_name'] as String? ?? profile?['username'] as String?,
       authorUsername: profile?['username'] as String?,
       signedUrl: signedUrl,
+      thumbSignedUrl: thumbSignedUrl,
+      mediumSignedUrl: mediumSignedUrl,
       linkedBucks: linkedBucks ?? [],
     );
   }
@@ -179,7 +203,7 @@ class ClubPhotosService {
   // PHOTOS
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Get photos for a club with signed URLs
+  /// Get photos for a club with signed URLs (including thumbnails when available)
   Future<List<ClubPhoto>> getPhotos(String clubId, {int limit = 50, int offset = 0}) async {
     if (_client == null) return [];
 
@@ -194,11 +218,23 @@ class ClubPhotosService {
       final photos = <ClubPhoto>[];
       for (final row in response as List) {
         final photo = ClubPhoto.fromJson(row as Map<String, dynamic>);
-        // Get signed URL
+        // Get signed URLs (original + variants when available)
         final signedUrl = await _getSignedUrl(photo.storagePath);
+        final thumbSignedUrl = photo.thumbPath != null 
+            ? await _getSignedUrl(photo.thumbPath!) 
+            : null;
+        final mediumSignedUrl = photo.mediumPath != null 
+            ? await _getSignedUrl(photo.mediumPath!) 
+            : null;
         // Get linked bucks
         final bucks = await _getLinkedBucks(photo.id);
-        photos.add(ClubPhoto.fromJson(row, signedUrl: signedUrl, linkedBucks: bucks));
+        photos.add(ClubPhoto.fromJson(
+          row, 
+          signedUrl: signedUrl, 
+          thumbSignedUrl: thumbSignedUrl,
+          mediumSignedUrl: mediumSignedUrl,
+          linkedBucks: bucks,
+        ));
       }
       return photos;
     } catch (e) {
@@ -231,7 +267,18 @@ class ClubPhotosService {
       for (final row in response as List) {
         final photo = ClubPhoto.fromJson(row as Map<String, dynamic>);
         final signedUrl = await _getSignedUrl(photo.storagePath);
-        photos.add(ClubPhoto.fromJson(row, signedUrl: signedUrl));
+        final thumbSignedUrl = photo.thumbPath != null 
+            ? await _getSignedUrl(photo.thumbPath!) 
+            : null;
+        final mediumSignedUrl = photo.mediumPath != null 
+            ? await _getSignedUrl(photo.mediumPath!) 
+            : null;
+        photos.add(ClubPhoto.fromJson(
+          row, 
+          signedUrl: signedUrl,
+          thumbSignedUrl: thumbSignedUrl,
+          mediumSignedUrl: mediumSignedUrl,
+        ));
       }
       return photos;
     } catch (e) {
@@ -282,11 +329,39 @@ class ClubPhotosService {
       }).select('*, profiles:profiles!club_photos_author_profiles_fkey(username, display_name)').single();
 
       final signedUrl = await _getSignedUrl(storagePath);
+      
+      // Trigger thumbnail generation (fire-and-forget, non-blocking)
+      _generateThumbnails(photoId, storagePath);
+      
       return ClubPhoto.fromJson(response, signedUrl: signedUrl);
     } catch (e) {
       if (kDebugMode) debugPrint('[ClubPhotosService] Error uploading photo: $e');
       return null;
     }
+  }
+  
+  /// Generate thumbnail variants for a photo (fire-and-forget)
+  void _generateThumbnails(String photoId, String storagePath) {
+    if (_client == null) return;
+    
+    // Fire-and-forget: don't await, don't block the upload
+    Future.microtask(() async {
+      try {
+        await _client.functions.invoke(
+          'image-variants',
+          body: {
+            'bucket': _bucket,
+            'path': storagePath,
+            'recordType': 'club_photos',
+            'recordId': photoId,
+          },
+        );
+        if (kDebugMode) debugPrint('[ClubPhotosService] Thumbnail generation triggered for $photoId');
+      } catch (e) {
+        // Don't fail - thumbnails are optional enhancement
+        if (kDebugMode) debugPrint('[ClubPhotosService] Thumbnail generation error (non-fatal): $e');
+      }
+    });
   }
 
   /// Update photo metadata

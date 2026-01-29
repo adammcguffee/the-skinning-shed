@@ -522,14 +522,17 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
 
   Widget _buildImageHeader(BuildContext context) {
     final photos = _trophy!['trophy_photos'] as List? ?? [];
+    // For detail view, prefer medium_path, fall back to original storage_path
+    final mediumPath = photos.isNotEmpty ? photos.first['medium_path'] as String? : null;
     final storagePath = photos.isNotEmpty ? photos.first['storage_path'] as String? : null;
+    final photoPath = mediumPath ?? storagePath;
     
     // Resolve storage path to public URL
     String? imageUrl;
-    if (storagePath != null) {
+    if (photoPath != null) {
       final client = SupabaseService.instance.client;
       if (client != null) {
-        imageUrl = client.storage.from('trophy_photos').getPublicUrl(storagePath);
+        imageUrl = client.storage.from('trophy_photos').getPublicUrl(photoPath);
       }
     }
 
