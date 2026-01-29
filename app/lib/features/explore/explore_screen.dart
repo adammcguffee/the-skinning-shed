@@ -23,10 +23,14 @@ const _categoryMap = {
 /// - Good composition for cropping
 /// - Works in both light and dark themes
 const _categoryImages = {
+  // Whitetail deer in forest - verified working
   'deer': 'https://images.unsplash.com/photo-1484406566174-9da000fda645?w=600&q=80',
-  'turkey': 'https://images.unsplash.com/photo-1606567595334-d39972c85dfd?w=600&q=80',
-  'bass': 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=600&q=80',
-  'other': 'https://images.unsplash.com/photo-1504173010664-32509aeebb62?w=600&q=80',
+  // Wild turkey in field
+  'turkey': 'https://images.unsplash.com/photo-1574158346846-93e8aaf56b47?w=600&q=80',
+  // Largemouth bass / fishing catch
+  'bass': 'https://images.unsplash.com/photo-1545450660-3378a7f3a364?w=600&q=80',
+  // Cottontail rabbit - small game
+  'other': 'https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=600&q=80',
 };
 
 /// 🧭 EXPLORE SCREEN - 2025 CINEMATIC DARK THEME
