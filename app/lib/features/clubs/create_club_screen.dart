@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../data/us_states.dart';
 import '../../navigation/app_routes.dart';
 import '../../services/clubs_service.dart';
 
@@ -19,11 +20,13 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _countyController = TextEditingController();
   
   bool _isDiscoverable = false;
   bool _requireApproval = true;
   int _signInTtlHours = 6;
   bool _isSubmitting = false;
+  String? _selectedState;
   
   static const _ttlOptions = [2, 4, 6, 8, 12, 24];
   
@@ -31,6 +34,7 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _countyController.dispose();
     super.dispose();
   }
   
@@ -50,6 +54,10 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
       settings: ClubSettings(
         signInTtlHours: _signInTtlHours,
       ),
+      stateCode: _selectedState,
+      county: _countyController.text.trim().isEmpty 
+          ? null 
+          : _countyController.text.trim(),
     );
     
     if (!mounted) return;
@@ -122,6 +130,75 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
               ),
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
+            ),
+            
+            const SizedBox(height: AppSpacing.xl),
+            
+            // Location
+            _buildSectionTitle('Location'),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Help members find your club by adding a location',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                // State dropdown
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedState,
+                        hint: Text(
+                          'Select State',
+                          style: TextStyle(color: AppColors.textTertiary),
+                        ),
+                        dropdownColor: AppColors.surfaceElevated,
+                        isExpanded: true,
+                        icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.textSecondary),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('No State'),
+                          ),
+                          ...USStates.all.map((state) => DropdownMenuItem(
+                            value: state.code,
+                            child: Text(state.name),
+                          )),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedState = value;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                // County text field
+                Expanded(
+                  child: TextFormField(
+                    controller: _countyController,
+                    style: const TextStyle(color: AppColors.textPrimary),
+                    decoration: _inputDecoration(
+                      label: 'County',
+                      hint: 'e.g., Madison',
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+              ],
             ),
             
             const SizedBox(height: AppSpacing.xl),

@@ -21,6 +21,8 @@ class Club {
     required this.settings,
     required this.createdAt,
     this.memberCount,
+    this.stateCode,
+    this.county,
   });
   
   final String id;
@@ -35,6 +37,16 @@ class Club {
   final ClubSettings settings;
   final DateTime createdAt;
   final int? memberCount;
+  final String? stateCode;
+  final String? county;
+  
+  /// Display location string (e.g., "Madison County, AL")
+  String? get locationDisplay {
+    if (county != null && stateCode != null) {
+      return '$county, $stateCode';
+    }
+    return stateCode;
+  }
   
   factory Club.fromJson(Map<String, dynamic> json) {
     return Club(
@@ -50,6 +62,8 @@ class Club {
       settings: ClubSettings.fromJson(json['settings'] as Map<String, dynamic>? ?? {}),
       createdAt: DateTime.parse(json['created_at'] as String),
       memberCount: json['member_count'] as int?,
+      stateCode: json['state_code'] as String?,
+      county: json['county'] as String?,
     );
   }
 }
@@ -289,6 +303,93 @@ class ClubsService {
     }
   }
   
+  /// Search discoverable clubs with optional filters
+  Future<List<Club>> searchClubs({
+    String? query,
+    String? stateCode,
+    String? county,
+  }) async {
+    if (_client == null) return [];
+    
+    try {
+      var request = _client
+          .from('clubs')
+          .select()
+          .eq('is_discoverable', true);
+      
+      // Filter by state if provided
+      if (stateCode != null && stateCode.isNotEmpty) {
+        request = request.eq('state_code', stateCode);
+      }
+      
+      // Filter by county if provided
+      if (county != null && county.isNotEmpty) {
+        request = request.eq('county', county);
+      }
+      
+      // Search by name if query provided
+      if (query != null && query.isNotEmpty) {
+        request = request.ilike('name', '%$query%');
+      }
+      
+      final response = await request.order('name');
+      
+      return (response as List)
+          .map((row) => Club.fromJson(row as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error searching clubs: $e');
+      }
+      return [];
+    }
+  }
+  
+  /// Get list of states that have discoverable clubs
+  Future<List<String>> getClubStates() async {
+    if (_client == null) return [];
+    
+    try {
+      final response = await _client
+          .from('clubs')
+          .select('state_code')
+          .eq('is_discoverable', true)
+          .not('state_code', 'is', null);
+      
+      final states = (response as List)
+          .map((row) => row['state_code'] as String)
+          .toSet()
+          .toList();
+      states.sort();
+      return states;
+    } catch (e) {
+      return [];
+    }
+  }
+  
+  /// Get list of counties for a state that have discoverable clubs
+  Future<List<String>> getClubCounties(String stateCode) async {
+    if (_client == null) return [];
+    
+    try {
+      final response = await _client
+          .from('clubs')
+          .select('county')
+          .eq('is_discoverable', true)
+          .eq('state_code', stateCode)
+          .not('county', 'is', null);
+      
+      final counties = (response as List)
+          .map((row) => row['county'] as String)
+          .toSet()
+          .toList();
+      counties.sort();
+      return counties;
+    } catch (e) {
+      return [];
+    }
+  }
+  
   /// Get club by ID
   Future<Club?> getClub(String clubId) async {
     if (_client == null) return null;
@@ -319,6 +420,8 @@ class ClubsService {
     bool isDiscoverable = false,
     bool requireApproval = true,
     ClubSettings? settings,
+    String? stateCode,
+    String? county,
   }) async {
     if (_client == null) return null;
     
@@ -335,7 +438,17 @@ class ClubsService {
         'p_settings': (settings ?? const ClubSettings()).toJson(),
       });
       
-      return result as String?;
+      final clubId = result as String?;
+      
+      // Update with location if provided
+      if (clubId != null && (stateCode != null || county != null)) {
+        await _client.from('clubs').update({
+          if (stateCode != null) 'state_code': stateCode,
+          if (county != null) 'county': county,
+        }).eq('id', clubId);
+      }
+      
+      return clubId;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[ClubsService] Error creating club: $e');
@@ -362,6 +475,8 @@ class ClubsService {
     bool? isDiscoverable,
     bool? requireApproval,
     ClubSettings? settings,
+    String? stateCode,
+    String? county,
   }) async {
     if (_client == null) return false;
     
@@ -375,6 +490,8 @@ class ClubsService {
       if (isDiscoverable != null) data['is_discoverable'] = isDiscoverable;
       if (requireApproval != null) data['require_approval'] = requireApproval;
       if (settings != null) data['settings'] = settings.toJson();
+      if (stateCode != null) data['state_code'] = stateCode;
+      if (county != null) data['county'] = county;
       
       await _client
           .from('clubs')
