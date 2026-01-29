@@ -13,6 +13,7 @@ export 'notification_bell.dart';
 export 'banner_header.dart';
 export 'explore_category_tile.dart';
 export 'page_header.dart';
+export 'message_seller_button.dart';
 
 // Shared utilities
 export 'animated_entry.dart';

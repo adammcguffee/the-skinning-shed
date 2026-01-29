@@ -100,28 +100,41 @@ class _LandDetailScreenState extends ConsumerState<LandDetailScreen> {
     final isAuthenticated = ref.read(isAuthenticatedProvider);
     if (!isAuthenticated) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to send messages')),
+        const SnackBar(content: Text('Sign in to message sellers')),
       );
       context.push('/auth');
       return;
     }
     
+    // Check if trying to message self
+    final currentUserId = ref.read(currentUserProvider)?.id;
+    if (currentUserId == _listing!.userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This is your listing'),
+          backgroundColor: AppColors.info,
+        ),
+      );
+      return;
+    }
+    
     try {
       final messagingService = ref.read(messagingServiceProvider);
-      final conversationId = await messagingService.getOrCreateDM(
+      final threadId = await messagingService.getOrCreateDM(
         otherUserId: _listing!.userId,
-        subjectType: 'land',
-        subjectId: _listing!.id,
-        subjectTitle: _listing!.title,
       );
       
       if (mounted) {
-        context.push('/messages/$conversationId');
+        context.push('/messages/$threadId');
       }
     } catch (e) {
       if (mounted) {
+        String message = 'Unable to start conversation';
+        if (e.toString().contains('Cannot message yourself')) {
+          message = 'This is your listing';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(message), backgroundColor: AppColors.error),
         );
       }
     }

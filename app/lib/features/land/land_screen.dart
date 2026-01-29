@@ -741,6 +741,8 @@ class _LandCardState extends ConsumerState<_LandCard> {
     final hasPhoto = listing.photos.isNotEmpty;
     final photoUrl = hasPhoto ? service.getPhotoUrl(listing.photos.first) : null;
     final photoCount = listing.photos.length;
+    final currentUserId = ref.watch(currentUserProvider)?.id;
+    final isOwnListing = currentUserId != null && currentUserId == listing.userId;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -820,6 +822,14 @@ class _LandCardState extends ConsumerState<_LandCard> {
                           ),
                         ),
                       ),
+                      
+                      // Message button (on hover, below type badge)
+                      if (!isOwnListing && _isHovered)
+                        Positioned(
+                          top: AppSpacing.md + 28,
+                          left: AppSpacing.md,
+                          child: MessageSellerIconButton(sellerId: listing.userId),
+                        ),
                       
                       // Price badge (top-right)
                       Positioned(

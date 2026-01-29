@@ -712,6 +712,8 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
     final service = ref.read(swapShopServiceProvider);
     final hasPhoto = listing.photos.isNotEmpty;
     final photoUrl = hasPhoto ? service.getPhotoUrl(listing.photos.first) : null;
+    final currentUserId = ref.watch(currentUserProvider)?.id;
+    final isOwnListing = currentUserId != null && currentUserId == listing.userId;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -758,6 +760,13 @@ class _ListingCardState extends ConsumerState<_ListingCard> {
                         top: AppSpacing.sm,
                         left: AppSpacing.sm,
                         child: _ConditionBadge(condition: listing.condition!),
+                      ),
+                    // Message button (top-right) - only show for others' listings
+                    if (!isOwnListing && _isHovered)
+                      Positioned(
+                        top: AppSpacing.sm,
+                        right: AppSpacing.sm,
+                        child: MessageSellerIconButton(sellerId: listing.userId),
                       ),
                     // Price badge (bottom-right)
                     if (listing.price != null)
