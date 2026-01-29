@@ -20,6 +20,12 @@ enum SpeciesCategory {
   fish,
 }
 
+/// Trophy category enum values from database.
+/// Game = deer, turkey, other_game
+/// Fish = bass, other_fishing
+const _gameCategories = ['deer', 'turkey', 'other_game'];
+const _fishCategories = ['bass', 'other_fishing'];
+
 /// User profile data model.
 class UserProfile {
   UserProfile({
@@ -144,13 +150,17 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
     var filtered = trophies;
     
     // Filter by species category
+    // The 'category' field is directly on trophy_posts, not on species
+    // Enum values: deer, turkey, bass, other_game, other_fishing
     if (_selectedCategory != SpeciesCategory.all) {
       filtered = filtered.where((t) {
-        final category = t['species']?['category'] as String?;
+        final category = t['category'] as String?;
+        if (category == null) return false;
+        
         if (_selectedCategory == SpeciesCategory.game) {
-          return category == 'game';
+          return _gameCategories.contains(category);
         } else {
-          return category == 'fish';
+          return _fishCategories.contains(category);
         }
       }).toList();
     }
@@ -162,8 +172,10 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
         if (dateStr == null) return false;
         try {
           final date = DateTime.parse(dateStr);
-          final category = t['species']?['category'] as String?;
-          final seasonType = SeasonUtils.getSeasonType(category);
+          // Determine season type based on the trophy's category
+          final category = t['category'] as String?;
+          final isGame = _gameCategories.contains(category);
+          final seasonType = isGame ? SeasonType.huntingSeason : SeasonType.calendarYear;
           final season = Season(
             type: seasonType,
             label: '',
@@ -1374,16 +1386,46 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
   bool _isHovered = false;
 
   Color get _speciesColor {
-    final species = (widget.trophy['species']?['name'] ?? '').toLowerCase();
-    if (species.contains('deer')) return AppColors.categoryDeer;
-    if (species.contains('turkey')) return AppColors.categoryTurkey;
-    if (species.contains('bass')) return AppColors.categoryBass;
-    return AppColors.categoryOtherGame;
+    // Use the category field directly from trophy_posts
+    final category = (widget.trophy['category'] as String?) ?? '';
+    switch (category) {
+      case 'deer':
+        return AppColors.categoryDeer;
+      case 'turkey':
+        return AppColors.categoryTurkey;
+      case 'bass':
+        return AppColors.categoryBass;
+      case 'other_fishing':
+        return AppColors.categoryBass; // Use bass color for fishing
+      default:
+        return AppColors.categoryOtherGame;
+    }
+  }
+  
+  String get _speciesName {
+    // Get species name: prefer species.common_name, fallback to category label
+    final speciesName = widget.trophy['species']?['common_name'] as String?;
+    if (speciesName != null && speciesName.isNotEmpty) return speciesName;
+    
+    // Custom species name fallback
+    final customName = widget.trophy['custom_species_name'] as String?;
+    if (customName != null && customName.isNotEmpty) return customName;
+    
+    // Fallback to category display name
+    final category = widget.trophy['category'] as String?;
+    switch (category) {
+      case 'deer': return 'Deer';
+      case 'turkey': return 'Turkey';
+      case 'bass': return 'Bass';
+      case 'other_game': return 'Other Game';
+      case 'other_fishing': return 'Other Fish';
+      default: return 'Trophy';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final species = widget.trophy['species']?['common_name'] ?? 'Unknown';
+    final species = _speciesName;
     
     // Resolve cover photo to public URL
     final coverPhotoPath = widget.trophy['cover_photo_path'] as String?;
@@ -1498,17 +1540,29 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _speciesColor.withOpacity(0.2),
+            _speciesColor.withValues(alpha: 0.25),
             AppColors.surface,
+            AppColors.background,
           ],
         ),
       ),
-      child: Center(
-        child: Icon(
-          Icons.emoji_events_rounded,
-          size: 32,
-          color: _speciesColor.withOpacity(0.4),
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.image_outlined,
+            size: 28,
+            color: _speciesColor.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'No photo',
+            style: TextStyle(
+              fontSize: 10,
+              color: _speciesColor.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
       ),
     );
   }

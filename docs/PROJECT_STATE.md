@@ -438,4 +438,24 @@ journalctl -u regs-worker -f
 
 ---
 
+## Recent Fixes
+
+### Trophy Wall Filter Fix (January 28, 2026)
+
+**Problem**: Trophy Wall "Game" and "Fish" filters showed blank tiles and missing photos.
+
+**Root Cause**: 
+- Filter was checking `t['species']?['category']` but `species_master` wasn't joined with `category` field
+- Actually, the `category` field is directly on `trophy_posts` (enum: deer, turkey, bass, other_game, other_fishing)
+- Filter compared to 'game'/'fish' but those aren't valid enum values
+
+**Fix**:
+- Changed filter to use `t['category']` directly from trophy_posts
+- Game = deer, turkey, other_game
+- Fish = bass, other_fishing
+- Updated species color mapping to use category field
+- Added fallback for species name display when species_master record is missing
+
+---
+
 *Generated: January 23, 2026*
