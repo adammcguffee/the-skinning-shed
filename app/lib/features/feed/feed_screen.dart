@@ -382,9 +382,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   Widget _buildLoadingState(bool isWide) {
     final crossAxisCount = isWide ? 2 : 1;
+    // Use same responsive padding as grid
+    final gridPadding = isWide ? AppSpacing.screenPadding : 12.0;
 
     return SliverPadding(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      padding: EdgeInsets.all(gridPadding),
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
@@ -402,19 +404,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   Widget _buildGrid(BuildContext context, bool isWide) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallPhone = screenWidth < 380;
     final crossAxisCount = screenWidth >= AppSpacing.breakpointDesktop
         ? 3
         : screenWidth >= AppSpacing.breakpointTablet
             ? 2
             : 1;
+    
+    // Responsive padding: tighter on small phones
+    final gridPadding = isSmallPhone ? 8.0 : (isWide ? AppSpacing.screenPadding : 12.0);
+    final gridSpacing = isSmallPhone ? 10.0 : AppSpacing.gridGap;
 
     return SliverPadding(
-      padding: const EdgeInsets.all(AppSpacing.screenPadding),
+      padding: EdgeInsets.all(gridPadding),
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
-          mainAxisSpacing: AppSpacing.gridGap,
-          crossAxisSpacing: AppSpacing.gridGap,
+          mainAxisSpacing: gridSpacing,
+          crossAxisSpacing: gridSpacing,
           childAspectRatio: crossAxisCount == 1 ? 0.9 : 0.85,
         ),
         delegate: SliverChildBuilderDelegate(

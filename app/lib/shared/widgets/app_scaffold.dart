@@ -296,6 +296,14 @@ class AppScaffold extends ConsumerWidget {
   }
 
   Widget _buildNarrowLayout(BuildContext context, WidgetRef ref) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Responsive padding: tighter on small phones, more generous on larger phones
+    final isSmallPhone = screenWidth < 380;
+    final horizontalPadding = isSmallPhone ? 8.0 : 12.0;
+    final contentPadding = isSmallPhone ? 10.0 : 14.0;
+    final borderRadius = isSmallPhone ? 16.0 : 20.0;
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       body: ScaffoldCamoBackground(
@@ -306,42 +314,42 @@ class AppScaffold extends ConsumerWidget {
               bottom: false,
               child: HeroCamoBackground(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 16, right: 16),
+                  padding: EdgeInsets.only(top: 6, left: horizontalPadding, right: horizontalPadding),
                   child: const BannerHeader.appTop(),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             // Subtle divider
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding + 8),
               child: Container(
                 height: 1,
                 color: Colors.white.withValues(alpha: 0.06),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             // Content frame
             Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1100),
+                  constraints: const BoxConstraints(maxWidth: 600),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                      vertical: 2,
                     ),
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(borderRadius),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.06),
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(18),
+                        padding: EdgeInsets.all(contentPadding),
                         child: child,
                       ),
                     ),
