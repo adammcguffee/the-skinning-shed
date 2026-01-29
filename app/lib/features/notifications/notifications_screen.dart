@@ -286,6 +286,8 @@ class _NotificationTile extends StatelessWidget {
         return Icons.person_pin_circle_rounded;
       case 'message':
         return Icons.chat_bubble_rounded;
+      case 'opening_alert':
+        return Icons.group_add_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -299,6 +301,8 @@ class _NotificationTile extends StatelessWidget {
         return AppColors.warning;
       case 'message':
         return AppColors.success;
+      case 'opening_alert':
+        return AppColors.accent;
       default:
         return AppColors.textSecondary;
     }

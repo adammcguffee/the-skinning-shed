@@ -148,6 +148,14 @@ class _NotificationsSettingsPageState extends ConsumerState<NotificationsSetting
                       onChanged: (v) => _updatePref((p) => p.copyWith(messagePush: v)),
                       icon: Icons.chat_bubble_outline_rounded,
                     ),
+                    _buildToggleTile(
+                      title: 'Club Openings',
+                      subtitle: 'New openings matching your alerts',
+                      value: _prefs?.openingsPush ?? true,
+                      enabled: _prefs?.pushEnabled ?? true,
+                      onChanged: (v) => _updatePref((p) => p.copyWith(openingsPush: v)),
+                      icon: Icons.group_add_outlined,
+                    ),
                   ],
                 ),
                 

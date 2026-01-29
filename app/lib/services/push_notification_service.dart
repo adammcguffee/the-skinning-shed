@@ -378,12 +378,14 @@ class NotificationPrefs {
     this.clubPostPush = true,
     this.standPush = true,
     this.messagePush = true,
+    this.openingsPush = true,
   });
   
   final bool pushEnabled;
   final bool clubPostPush;
   final bool standPush;
   final bool messagePush;
+  final bool openingsPush;
   
   factory NotificationPrefs.fromJson(Map<String, dynamic> json) {
     return NotificationPrefs(
@@ -391,6 +393,7 @@ class NotificationPrefs {
       clubPostPush: json['club_post_push'] as bool? ?? true,
       standPush: json['stand_push'] as bool? ?? true,
       messagePush: json['message_push'] as bool? ?? true,
+      openingsPush: json['openings_push'] as bool? ?? true,
     );
   }
   
@@ -399,6 +402,7 @@ class NotificationPrefs {
     'club_post_push': clubPostPush,
     'stand_push': standPush,
     'message_push': messagePush,
+    'openings_push': openingsPush,
     'updated_at': DateTime.now().toIso8601String(),
   };
   
@@ -407,12 +411,14 @@ class NotificationPrefs {
     bool? clubPostPush,
     bool? standPush,
     bool? messagePush,
+    bool? openingsPush,
   }) {
     return NotificationPrefs(
       pushEnabled: pushEnabled ?? this.pushEnabled,
       clubPostPush: clubPostPush ?? this.clubPostPush,
       standPush: standPush ?? this.standPush,
       messagePush: messagePush ?? this.messagePush,
+      openingsPush: openingsPush ?? this.openingsPush,
     );
   }
 }

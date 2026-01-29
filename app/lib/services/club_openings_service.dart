@@ -334,7 +334,12 @@ class ClubOpeningsService {
         'contact_preferred': contactPreferred,
       }).select('*, profiles:profiles!club_openings_owner_profiles_fkey(username, display_name)').single();
 
-      return ClubOpening.fromJson(response);
+      final opening = ClubOpening.fromJson(response);
+      
+      // Trigger notifications for matching alerts (fire-and-forget)
+      _notifyForOpening(opening.id);
+      
+      return opening;
     } catch (e) {
       if (kDebugMode) debugPrint('[ClubOpeningsService] Error creating opening: $e');
       return null;
@@ -485,6 +490,24 @@ class ClubOpeningsService {
     } catch (e) {
       return [];
     }
+  }
+
+  /// Trigger notifications for a new opening (fire-and-forget)
+  void _notifyForOpening(String openingId) {
+    if (_client == null) return;
+
+    // Fire-and-forget: don't await, don't block
+    Future.microtask(() async {
+      try {
+        await _client.functions.invoke(
+          'openings-notify',
+          body: {'openingId': openingId},
+        );
+        if (kDebugMode) debugPrint('[ClubOpeningsService] Notify triggered for $openingId');
+      } catch (e) {
+        if (kDebugMode) debugPrint('[ClubOpeningsService] Notify error: $e');
+      }
+    });
   }
 }
 

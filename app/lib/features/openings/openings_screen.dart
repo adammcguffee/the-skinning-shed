@@ -8,6 +8,7 @@ import '../../app/theme/app_colors.dart';
 import '../../data/us_states.dart';
 import '../../services/club_openings_service.dart';
 import '../../services/messaging_service.dart';
+import '../../services/opening_alerts_service.dart';
 import '../../services/supabase_service.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -227,6 +228,24 @@ class _FilterBarState extends ConsumerState<_FilterBar> {
                 ),
                 const SizedBox(width: 8),
 
+                // Alerts button
+                GestureDetector(
+                  onTap: () => _showAlertsSheet(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.notifications_active_outlined,
+                      size: 20,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
                 // Expand button
                 GestureDetector(
                   onTap: () => setState(() => _expanded = !_expanded),
@@ -337,6 +356,22 @@ class _FilterBarState extends ConsumerState<_FilterBar> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  void _showAlertsSheet(BuildContext context) {
+    final isLoggedIn = SupabaseService.instance.client?.auth.currentUser != null;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AlertsBottomSheet(
+        currentStateCode: widget.filter.stateCode,
+        currentCounty: widget.filter.county,
+        currentFilter: widget.filter,
+        isLoggedIn: isLoggedIn,
       ),
     );
   }
@@ -845,6 +880,525 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ALERTS BOTTOM SHEET
+// ════════════════════════════════════════════════════════════════════════════
+
+class _AlertsBottomSheet extends ConsumerStatefulWidget {
+  const _AlertsBottomSheet({
+    this.currentStateCode,
+    this.currentCounty,
+    required this.currentFilter,
+    required this.isLoggedIn,
+  });
+
+  final String? currentStateCode;
+  final String? currentCounty;
+  final OpeningsFilter currentFilter;
+  final bool isLoggedIn;
+
+  @override
+  ConsumerState<_AlertsBottomSheet> createState() => _AlertsBottomSheetState();
+}
+
+class _AlertsBottomSheetState extends ConsumerState<_AlertsBottomSheet> {
+  String? _stateCode;
+  String _county = '';
+  bool _availableOnly = true;
+  bool _notifyPush = true;
+  bool _notifyInApp = true;
+  final Set<String> _game = {};
+  final Set<String> _amenities = {};
+  bool _isSaving = false;
+
+  OpeningAlert? _existingAlert;
+  bool _isLoadingAlert = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _stateCode = widget.currentStateCode;
+    _county = widget.currentCounty ?? '';
+    _game.addAll(widget.currentFilter.game);
+    _amenities.addAll(widget.currentFilter.amenities);
+    _loadExistingAlert();
+  }
+
+  Future<void> _loadExistingAlert() async {
+    if (!widget.isLoggedIn || _stateCode == null) {
+      setState(() => _isLoadingAlert = false);
+      return;
+    }
+
+    final service = ref.read(openingAlertsServiceProvider);
+    final alert = await service.getAlertForLocation(_stateCode!, _county.isEmpty ? null : _county);
+    
+    if (mounted) {
+      setState(() {
+        _existingAlert = alert;
+        _isLoadingAlert = false;
+        if (alert != null) {
+          _availableOnly = alert.availableOnly;
+          _notifyPush = alert.notifyPush;
+          _notifyInApp = alert.notifyInApp;
+          _game.clear();
+          _game.addAll(alert.game);
+          _amenities.clear();
+          _amenities.addAll(alert.amenities);
+        }
+      });
+    }
+  }
+
+  Future<void> _saveAlert() async {
+    if (_stateCode == null) return;
+    
+    setState(() => _isSaving = true);
+    HapticFeedback.mediumImpact();
+
+    final service = ref.read(openingAlertsServiceProvider);
+    
+    bool success;
+    if (_existingAlert != null) {
+      success = await service.updateAlert(
+        _existingAlert!.id,
+        availableOnly: _availableOnly,
+        game: _game.toList(),
+        amenities: _amenities.toList(),
+        notifyPush: _notifyPush,
+        notifyInApp: _notifyInApp,
+      );
+    } else {
+      final alert = await service.createAlert(
+        stateCode: _stateCode!,
+        county: _county.isEmpty ? null : _county,
+        availableOnly: _availableOnly,
+        game: _game.toList(),
+        amenities: _amenities.toList(),
+        notifyPush: _notifyPush,
+        notifyInApp: _notifyInApp,
+      );
+      success = alert != null;
+    }
+
+    if (mounted) {
+      setState(() => _isSaving = false);
+      if (success) {
+        ref.invalidate(myOpeningAlertsProvider);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_existingAlert != null ? 'Alert updated!' : 'Alert created!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteAlert() async {
+    if (_existingAlert == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Alert?', style: TextStyle(color: AppColors.textPrimary)),
+        content: const Text('You will no longer receive notifications for this area.', style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: AppColors.error))),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final service = ref.read(openingAlertsServiceProvider);
+      await service.deleteAlert(_existingAlert!.id);
+      ref.invalidate(myOpeningAlertsProvider);
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.notifications_active_rounded, color: AppColors.accent, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Opening Alerts', style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
+                      Text('Get notified when new openings match your criteria', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(color: AppColors.border),
+
+          // Content
+          if (!widget.isLoggedIn)
+            _SignInPrompt()
+          else if (_isLoadingAlert)
+            const Padding(
+              padding: EdgeInsets.all(40),
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          else
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Location
+                    const Text('Location', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceElevated,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.border, width: 0.5),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _stateCode,
+                                hint: const Text('State *', style: TextStyle(color: AppColors.textTertiary)),
+                                isExpanded: true,
+                                dropdownColor: AppColors.surfaceElevated,
+                                style: const TextStyle(color: AppColors.textPrimary),
+                                items: USStates.all.map((s) => DropdownMenuItem(value: s.code, child: Text(s.code))).toList(),
+                                onChanged: (v) {
+                                  setState(() {
+                                    _stateCode = v;
+                                    _county = '';
+                                    _existingAlert = null;
+                                  });
+                                  _loadExistingAlert();
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            initialValue: _county,
+                            onChanged: (v) => _county = v,
+                            style: const TextStyle(color: AppColors.textPrimary),
+                            decoration: InputDecoration(
+                              hintText: 'County (optional)',
+                              hintStyle: const TextStyle(color: AppColors.textTertiary),
+                              filled: true,
+                              fillColor: AppColors.surfaceElevated,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Available only toggle
+                    _ToggleRow(
+                      label: 'Available listings only',
+                      value: _availableOnly,
+                      onChanged: (v) => setState(() => _availableOnly = v),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Game chips
+                    const Text('Game (optional)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: ['whitetail', 'turkey', 'duck', 'hog'].map((g) {
+                        final selected = _game.contains(g);
+                        return GestureDetector(
+                          onTap: () => setState(() {
+                            if (selected) _game.remove(g);
+                            else _game.add(g);
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: selected ? AppColors.accent.withValues(alpha: 0.15) : AppColors.surfaceElevated,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: selected ? AppColors.accent : AppColors.border, width: selected ? 1 : 0.5),
+                            ),
+                            child: Text(
+                              g[0].toUpperCase() + g.substring(1),
+                              style: TextStyle(color: selected ? AppColors.accent : AppColors.textSecondary, fontSize: 13, fontWeight: selected ? FontWeight.w600 : FontWeight.w500),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Amenities chips
+                    const Text('Amenities (optional)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: ['camp', 'electric', 'water', 'lodging'].map((a) {
+                        final selected = _amenities.contains(a);
+                        return GestureDetector(
+                          onTap: () => setState(() {
+                            if (selected) _amenities.remove(a);
+                            else _amenities.add(a);
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: selected ? AppColors.success.withValues(alpha: 0.15) : AppColors.surfaceElevated,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: selected ? AppColors.success : AppColors.border, width: selected ? 1 : 0.5),
+                            ),
+                            child: Text(
+                              a[0].toUpperCase() + a.substring(1),
+                              style: TextStyle(color: selected ? AppColors.success : AppColors.textSecondary, fontSize: 13, fontWeight: selected ? FontWeight.w600 : FontWeight.w500),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Notification preferences
+                    const Text('Notification Settings', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    _ToggleRow(
+                      label: 'Push notifications',
+                      subtitle: 'Get notified on your device',
+                      value: _notifyPush,
+                      onChanged: (v) => setState(() => _notifyPush = v),
+                    ),
+                    _ToggleRow(
+                      label: 'In-app notifications',
+                      subtitle: 'Show in notification center',
+                      value: _notifyInApp,
+                      onChanged: (v) => setState(() => _notifyInApp = v),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Action buttons
+                    Row(
+                      children: [
+                        if (_existingAlert != null)
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _deleteAlert,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                                ),
+                                child: const Center(
+                                  child: Text('Delete', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (_existingAlert != null) const SizedBox(width: 12),
+                        Expanded(
+                          flex: _existingAlert != null ? 2 : 1,
+                          child: GestureDetector(
+                            onTap: _stateCode != null && !_isSaving ? _saveAlert : null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: _stateCode != null ? AppColors.primary : AppColors.primary.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(
+                                child: _isSaving
+                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    : Text(
+                                        _existingAlert != null ? 'Save Changes' : 'Create Alert',
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Info text
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceElevated,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textTertiary),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'You will receive up to 10 notifications per day, no more than once every 30 minutes per alert.',
+                              style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  const _ToggleRow({
+    required this.label,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+                if (subtitle != null)
+                  Text(subtitle!, style: const TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: value,
+            onChanged: onChanged,
+            activeColor: AppColors.primary,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignInPrompt extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.lock_outline_rounded, color: AppColors.primary, size: 32),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Sign in to enable alerts',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Create an account to receive notifications when new openings match your criteria.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+              GoRouter.of(context).push('/auth');
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Sign In',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

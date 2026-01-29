@@ -7,6 +7,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../app/theme/app_colors.dart';
 import '../../services/club_openings_service.dart';
 import '../../services/messaging_service.dart';
+import '../../services/opening_alerts_service.dart';
 import '../../services/supabase_service.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -169,7 +170,15 @@ class _OpeningDetailScreenState extends ConsumerState<OpeningDetailScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 10),
+
+                    // Alert chip for this area (only for logged-in non-owners)
+                    if (isLoggedIn && !isOwner)
+                      _AlertMeChip(
+                        stateCode: opening.stateCode,
+                        county: opening.county,
+                      ),
+                    if (isLoggedIn && !isOwner) const SizedBox(height: 10),
 
                     // Posted
                     Row(
@@ -752,5 +761,136 @@ class _PhotoPlaceholder extends StatelessWidget {
         child: Icon(Icons.landscape_rounded, color: AppColors.textTertiary, size: 48),
       ),
     );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ALERT ME CHIP
+// ════════════════════════════════════════════════════════════════════════════
+
+class _AlertMeChip extends ConsumerStatefulWidget {
+  const _AlertMeChip({
+    required this.stateCode,
+    required this.county,
+  });
+
+  final String stateCode;
+  final String county;
+
+  @override
+  ConsumerState<_AlertMeChip> createState() => _AlertMeChipState();
+}
+
+class _AlertMeChipState extends ConsumerState<_AlertMeChip> {
+  bool _isLoading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final alertAsync = ref.watch(alertForLocationProvider((widget.stateCode, widget.county)));
+
+    return alertAsync.when(
+      loading: () => _buildChip(isLoading: true, hasAlert: false),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (existingAlert) {
+        final hasAlert = existingAlert != null;
+        return _buildChip(isLoading: _isLoading, hasAlert: hasAlert, existingAlert: existingAlert);
+      },
+    );
+  }
+
+  Widget _buildChip({
+    required bool isLoading,
+    required bool hasAlert,
+    OpeningAlert? existingAlert,
+  }) {
+    return GestureDetector(
+      onTap: isLoading ? null : () => _handleTap(hasAlert, existingAlert),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: hasAlert
+              ? AppColors.accent.withValues(alpha: 0.15)
+              : AppColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: hasAlert ? AppColors.accent : AppColors.border,
+            width: hasAlert ? 1 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading)
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+              )
+            else
+              Icon(
+                hasAlert ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                size: 16,
+                color: hasAlert ? AppColors.accent : AppColors.textSecondary,
+              ),
+            const SizedBox(width: 6),
+            Text(
+              hasAlert ? 'Alert enabled for ${widget.county.isNotEmpty ? widget.county : widget.stateCode}' : 'Alert me for this area',
+              style: TextStyle(
+                color: hasAlert ? AppColors.accent : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: hasAlert ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleTap(bool hasAlert, OpeningAlert? existingAlert) async {
+    setState(() => _isLoading = true);
+    HapticFeedback.lightImpact();
+
+    final service = ref.read(openingAlertsServiceProvider);
+
+    if (hasAlert && existingAlert != null) {
+      // Toggle the alert off/on
+      final newEnabled = !existingAlert.isEnabled;
+      await service.toggleAlert(existingAlert.id, newEnabled);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newEnabled ? 'Alert enabled' : 'Alert disabled'),
+            backgroundColor: newEnabled ? AppColors.success : AppColors.textSecondary,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      // Create new alert for this location
+      final alert = await service.createAlert(
+        stateCode: widget.stateCode,
+        county: widget.county.isNotEmpty ? widget.county : null,
+      );
+
+      if (alert != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Alert created! You\'ll be notified of new openings here.'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+
+    // Refresh the alert state
+    ref.invalidate(alertForLocationProvider((widget.stateCode, widget.county)));
+    ref.invalidate(myOpeningAlertsProvider);
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 }
