@@ -1,10 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 /**
  * FFL Import Edge Function
  * 
- * Downloads ATF Federal Firearms Licensee data (monthly XLSX),
+ * Discovers and downloads ATF Federal Firearms Licensee XLSX from the ATF website,
  * enriches with county from ZIP->county crosswalk,
  * and upserts into ffl_dealers table.
  * 
@@ -22,26 +23,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
-// ATF Complete Listing URL pattern
-// Format: https://www.atf.gov/firearms/docs/{month}{year}-ffl-list/download
-// Example: https://www.atf.gov/firearms/docs/jan2026-ffl-list/download
-const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// Browser-like User-Agent to avoid 403 blocks
+const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-function getATFUrl(year: number, month: number): string {
-  const monthName = MONTH_NAMES[month - 1];
-  return `https://www.atf.gov/firearms/docs/${monthName}${year}-ffl-list/download`;
-}
+// ATF data page where XLSX links are listed
+const ATF_DATA_PAGE = "https://www.atf.gov/firearms/listing-federal-firearms-licensees";
 
-// Alternative: ATF also provides CSV/TXT at predictable URLs
-function getATFTxtUrl(year: number, month: number): string {
-  // Format: 0125-ffl-list.txt for January 2025
-  const monthStr = month.toString().padStart(2, '0');
-  const yearShort = (year % 100).toString().padStart(2, '0');
-  return `https://www.atf.gov/firearms/docs/${monthStr}${yearShort}-ffl-list.txt`;
-}
+// Month names for matching links
+const MONTH_NAMES_FULL = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const MONTH_NAMES_SHORT = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
-// HUD ZIP->County crosswalk (quarterly updates)
-// We'll cache this in memory during the import run
+// HUD ZIP->County crosswalk cache
 const ZIP_COUNTY_CACHE = new Map<string, string>();
 
 interface FFLRecord {
@@ -56,25 +48,373 @@ interface FFLRecord {
   phone: string | null;
 }
 
+interface DiscoveredXLSX {
+  url: string;
+  year: number;
+  month: number;
+}
+
+/**
+ * Fetch ATF data page and discover XLSX links
+ */
+async function discoverXLSXLinks(): Promise<DiscoveredXLSX[]> {
+  console.log(`[ffl-import] Fetching ATF data page: ${ATF_DATA_PAGE}`);
+  
+  const response = await fetch(ATF_DATA_PAGE, {
+    headers: {
+      "User-Agent": BROWSER_UA,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.5",
+    },
+  });
+
+  if (!response.ok) {
+    console.error(`[ffl-import] Failed to fetch ATF page: HTTP ${response.status}`);
+    throw new Error(`Failed to fetch ATF data page: HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  console.log(`[ffl-import] Received ${html.length} bytes of HTML`);
+
+  // Find all links containing "ffl" and ending with .xlsx
+  const linkRegex = /href=["']([^"']*ffl[^"']*\.xlsx)["']/gi;
+  const links: DiscoveredXLSX[] = [];
+  let match;
+
+  while ((match = linkRegex.exec(html)) !== null) {
+    let url = match[1];
+    
+    // Make absolute URL if relative
+    if (url.startsWith("/")) {
+      url = `https://www.atf.gov${url}`;
+    } else if (!url.startsWith("http")) {
+      url = `https://www.atf.gov/${url}`;
+    }
+
+    // Try to extract year and month from URL
+    const { year, month } = parseYearMonthFromUrl(url);
+    
+    if (year && month) {
+      links.push({ url, year, month });
+      console.log(`[ffl-import] Found XLSX link: ${url} (${month}/${year})`);
+    } else {
+      console.log(`[ffl-import] Found XLSX link (unknown date): ${url}`);
+      // Still add it with current date as fallback
+      const now = new Date();
+      links.push({ url, year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 });
+    }
+  }
+
+  // Also try alternative patterns for links
+  const altLinkRegex = /href=["']([^"']*\.xlsx[^"']*)["'][^>]*>[^<]*ffl/gi;
+  while ((match = altLinkRegex.exec(html)) !== null) {
+    let url = match[1];
+    if (url.startsWith("/")) {
+      url = `https://www.atf.gov${url}`;
+    }
+    
+    // Check if we already have this URL
+    if (!links.some(l => l.url === url)) {
+      const { year, month } = parseYearMonthFromUrl(url);
+      const now = new Date();
+      links.push({ 
+        url, 
+        year: year || now.getUTCFullYear(), 
+        month: month || now.getUTCMonth() + 1 
+      });
+      console.log(`[ffl-import] Found alt XLSX link: ${url}`);
+    }
+  }
+
+  console.log(`[ffl-import] Total XLSX links found: ${links.length}`);
+  return links;
+}
+
+/**
+ * Parse year and month from ATF XLSX URL
+ * Examples:
+ * - /firearms/docs/0126-ffl-list/download -> 01/2026
+ * - /firearms/docs/jan2026-ffl-list.xlsx -> 01/2026
+ * - /files/ffl-january-2026.xlsx -> 01/2026
+ */
+function parseYearMonthFromUrl(url: string): { year: number | null; month: number | null } {
+  const lowerUrl = url.toLowerCase();
+  
+  // Pattern 1: MMYY format (0126, 1225, etc.)
+  const mmyyMatch = lowerUrl.match(/(\d{2})(\d{2})-ffl/);
+  if (mmyyMatch) {
+    const month = parseInt(mmyyMatch[1], 10);
+    let year = parseInt(mmyyMatch[2], 10);
+    // Convert 2-digit year to 4-digit (assume 2000s)
+    year = year < 50 ? 2000 + year : 1900 + year;
+    if (month >= 1 && month <= 12) {
+      return { year, month };
+    }
+  }
+
+  // Pattern 2: Month name + year (jan2026, january-2026, etc.)
+  for (let i = 0; i < MONTH_NAMES_FULL.length; i++) {
+    const fullPattern = new RegExp(`${MONTH_NAMES_FULL[i]}[\\-_]?(\\d{4})`);
+    const shortPattern = new RegExp(`${MONTH_NAMES_SHORT[i]}[\\-_]?(\\d{4})`);
+    
+    let yearMatch = lowerUrl.match(fullPattern) || lowerUrl.match(shortPattern);
+    if (yearMatch) {
+      return { year: parseInt(yearMatch[1], 10), month: i + 1 };
+    }
+  }
+
+  // Pattern 3: Year-month (2026-01, 202601)
+  const isoMatch = lowerUrl.match(/(\d{4})[\\-_]?(\d{2})/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    if (year >= 2020 && year <= 2030 && month >= 1 && month <= 12) {
+      return { year, month };
+    }
+  }
+
+  return { year: null, month: null };
+}
+
+/**
+ * Find best XLSX link for target year/month with fallbacks
+ */
+function findBestXLSXLink(
+  links: DiscoveredXLSX[],
+  targetYear: number,
+  targetMonth: number
+): DiscoveredXLSX | null {
+  // Try exact match first
+  let match = links.find(l => l.year === targetYear && l.month === targetMonth);
+  if (match) {
+    console.log(`[ffl-import] Found exact match for ${targetMonth}/${targetYear}`);
+    return match;
+  }
+
+  // Try previous month
+  let prevMonth = targetMonth - 1;
+  let prevYear = targetYear;
+  if (prevMonth < 1) {
+    prevMonth = 12;
+    prevYear--;
+  }
+  match = links.find(l => l.year === prevYear && l.month === prevMonth);
+  if (match) {
+    console.log(`[ffl-import] Found previous month match: ${prevMonth}/${prevYear}`);
+    return match;
+  }
+
+  // Try 2 months back
+  prevMonth--;
+  if (prevMonth < 1) {
+    prevMonth = 12;
+    prevYear--;
+  }
+  match = links.find(l => l.year === prevYear && l.month === prevMonth);
+  if (match) {
+    console.log(`[ffl-import] Found 2-months-back match: ${prevMonth}/${prevYear}`);
+    return match;
+  }
+
+  // Return most recent available
+  if (links.length > 0) {
+    // Sort by date descending
+    const sorted = [...links].sort((a, b) => {
+      const dateA = a.year * 100 + a.month;
+      const dateB = b.year * 100 + b.month;
+      return dateB - dateA;
+    });
+    console.log(`[ffl-import] Using most recent available: ${sorted[0].month}/${sorted[0].year}`);
+    return sorted[0];
+  }
+
+  return null;
+}
+
+/**
+ * Download XLSX file from ATF
+ */
+async function downloadXLSX(url: string): Promise<ArrayBuffer> {
+  console.log(`[ffl-import] Downloading XLSX from: ${url}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": BROWSER_UA,
+      "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*",
+      "Accept-Language": "en-US,en;q=0.5",
+      "Referer": ATF_DATA_PAGE,
+    },
+    redirect: "follow",
+  });
+
+  if (!response.ok) {
+    console.error(`[ffl-import] XLSX download failed: HTTP ${response.status} for ${url}`);
+    throw new Error(`Failed to download XLSX: HTTP ${response.status} from ${url}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  console.log(`[ffl-import] Downloaded ${buffer.byteLength} bytes`);
+  
+  if (buffer.byteLength < 1000) {
+    throw new Error(`Downloaded file too small (${buffer.byteLength} bytes) - may not be valid XLSX`);
+  }
+
+  return buffer;
+}
+
+/**
+ * Parse XLSX and extract FFL records
+ */
+function parseXLSX(buffer: ArrayBuffer): FFLRecord[] {
+  console.log(`[ffl-import] Parsing XLSX (${buffer.byteLength} bytes)`);
+  
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  
+  // Convert to JSON rows
+  const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  console.log(`[ffl-import] Found ${rows.length} rows in sheet "${sheetName}"`);
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  // Log first row keys to understand structure
+  const firstRow = rows[0];
+  const keys = Object.keys(firstRow);
+  console.log(`[ffl-import] Column headers: ${keys.slice(0, 10).join(", ")}${keys.length > 10 ? "..." : ""}`);
+
+  const records: FFLRecord[] = [];
+
+  for (const row of rows) {
+    // Try to map columns (ATF uses various column names)
+    const record = mapRowToFFLRecord(row);
+    if (record) {
+      records.push(record);
+    }
+  }
+
+  console.log(`[ffl-import] Parsed ${records.length} valid FFL records`);
+  return records;
+}
+
+/**
+ * Map a row object to FFLRecord, handling various ATF column naming conventions
+ */
+function mapRowToFFLRecord(row: Record<string, unknown>): FFLRecord | null {
+  // Common column name variations
+  const getValue = (keys: string[]): string => {
+    for (const key of keys) {
+      // Try exact match
+      if (row[key] !== undefined && row[key] !== null) {
+        return String(row[key]).trim();
+      }
+      // Try case-insensitive match
+      const foundKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
+      if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
+        return String(row[foundKey]).trim();
+      }
+    }
+    return "";
+  };
+
+  // Extract fields with fallbacks for various column names
+  const licenseNumber = getValue([
+    "LIC_SEQN", "LICENSE_NUMBER", "License Number", "Lic_Seqn", 
+    "LicenseNumber", "FFL", "FFL_NUMBER"
+  ]);
+  
+  const licenseName = getValue([
+    "LICENSE_NAME", "License Name", "LicenseName", "BUSINESS_NAME", 
+    "Business Name", "NAME", "Name", "DBA"
+  ]);
+  
+  const businessName = getValue([
+    "BUSINESS_NAME", "Business Name", "BusinessName", "Trade Name"
+  ]);
+  
+  const licenseType = getValue([
+    "LIC_TYPE", "LICENSE_TYPE", "License Type", "Type"
+  ]);
+  
+  const premiseStreet = getValue([
+    "PREMISE_STREET", "Premise Street", "PremiseStreet", "PREM_STREET",
+    "ADDRESS", "Address", "Street"
+  ]);
+  
+  const premiseCity = getValue([
+    "PREMISE_CITY", "Premise City", "PremiseCity", "PREM_CITY", 
+    "CITY", "City"
+  ]);
+  
+  const premiseState = getValue([
+    "PREMISE_STATE", "Premise State", "PremiseState", "PREM_STATE",
+    "STATE", "State"
+  ]);
+  
+  const premiseZip = getValue([
+    "PREMISE_ZIP_CODE", "PREMISE_ZIP", "Premise Zip", "PremiseZip",
+    "PREM_ZIP", "ZIP", "Zip", "ZIP_CODE", "Zip Code"
+  ]);
+  
+  const licenseCounty = getValue([
+    "LIC_CNTY", "LICENSE_COUNTY", "County", "COUNTY"
+  ]);
+  
+  const phone = getValue([
+    "VOICE_PHONE", "PHONE", "Phone", "Telephone", "PHONE_NUMBER"
+  ]);
+
+  // Validate required fields
+  const state = normalizeState(premiseState);
+  if (!state || state.length !== 2) {
+    return null;
+  }
+
+  const city = normalizeCity(premiseCity);
+  if (!city) {
+    return null;
+  }
+
+  const name = normalizeName(licenseName || businessName);
+  if (!name) {
+    return null;
+  }
+
+  const zip = normalizeZip(premiseZip);
+  const county = licenseCounty || getCountyFromZip(zip, state);
+
+  return {
+    license_number: licenseNumber || null,
+    license_name: name,
+    license_type: licenseType || null,
+    premise_street: normalizeStreet(premiseStreet),
+    premise_city: city,
+    premise_state: state,
+    premise_zip: zip,
+    premise_county: county || "Unknown",
+    phone: phone || null,
+  };
+}
+
 async function loadZipCountyCrosswalk(): Promise<Map<string, string>> {
   if (ZIP_COUNTY_CACHE.size > 0) {
     return ZIP_COUNTY_CACHE;
   }
 
-  console.log('[ffl-import] Loading ZIP->County crosswalk...');
+  console.log("[ffl-import] Loading ZIP->County crosswalk...");
 
-  // Try to load from Supabase Storage first (if we uploaded a snapshot)
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { persistSession: false },
   });
 
   try {
-    // Check if we have a cached crosswalk in Storage
     const { data: fileData, error: downloadError } = await supabase.storage
-      .from('ffl-data')
-      .download('zip-county-crosswalk.json');
+      .from("ffl-data")
+      .download("zip-county-crosswalk.json");
 
     if (!downloadError && fileData) {
       const text = await fileData.text();
@@ -86,26 +426,19 @@ async function loadZipCountyCrosswalk(): Promise<Map<string, string>> {
       return ZIP_COUNTY_CACHE;
     }
   } catch (e) {
-    console.log('[ffl-import] No cached crosswalk found, using fallback');
+    console.log("[ffl-import] No cached crosswalk found, using fallback");
   }
 
-  // Fallback: use a simple state-based approach for counties
-  // In production, you would want to fetch the HUD crosswalk
-  // For now, we'll mark counties as "Unknown" and can enrich later
-  console.log('[ffl-import] Using state-based fallback for county mapping');
-  
+  console.log("[ffl-import] Using state-based fallback for county mapping");
   return ZIP_COUNTY_CACHE;
 }
 
-function getCountyFromZip(zip: string, state: string): string {
-  // Try cached crosswalk first
+function getCountyFromZip(zip: string, _state: string): string {
   const normalized = zip.substring(0, 5);
   if (ZIP_COUNTY_CACHE.has(normalized)) {
     return ZIP_COUNTY_CACHE.get(normalized)!;
   }
-
-  // Fallback: return "Unknown" - can be enriched later
-  return 'Unknown';
+  return "Unknown";
 }
 
 function normalizeState(state: string): string {
@@ -113,9 +446,8 @@ function normalizeState(state: string): string {
 }
 
 function normalizeZip(zip: string): string {
-  // Extract first 5 digits
-  const cleaned = zip.replace(/[^0-9]/g, '');
-  return cleaned.substring(0, 5).padStart(5, '0');
+  const cleaned = zip.replace(/[^0-9]/g, "");
+  return cleaned.substring(0, 5).padStart(5, "0");
 }
 
 function normalizeCity(city: string): string {
@@ -132,118 +464,20 @@ function normalizeName(name: string): string {
 
 async function hashRow(row: FFLRecord): Promise<string> {
   const key = [
-    row.license_number || '',
+    row.license_number || "",
     row.license_name,
     row.premise_street,
     row.premise_city,
     row.premise_state,
     row.premise_zip,
-    row.license_type || '',
-  ].join('|');
+    row.license_type || "",
+  ].join("|");
 
   const encoder = new TextEncoder();
   const data = encoder.encode(key);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-interface ParsedATFRow {
-  license_region: string;
-  license_district: string;
-  license_county: string;
-  license_type: string;
-  license_expiration: string;
-  license_number: string;
-  license_name: string;
-  business_name: string;
-  premise_street: string;
-  premise_city: string;
-  premise_state: string;
-  premise_zip: string;
-  mail_street: string;
-  mail_city: string;
-  mail_state: string;
-  mail_zip: string;
-  phone: string;
-}
-
-function parseATFLine(line: string): ParsedATFRow | null {
-  // ATF TXT format is tab or pipe delimited
-  // Fields in order (based on typical ATF format):
-  // LIC_REGN, LIC_DIST, LIC_CNTY, LIC_TYPE, LIC_XPRDTE, LIC_SEQN, LICENSE_NAME, 
-  // BUSINESS_NAME, PREMISE_STREET, PREMISE_CITY, PREMISE_STATE, PREMISE_ZIP_CODE,
-  // MAIL_STREET, MAIL_CITY, MAIL_STATE, MAIL_ZIP_CODE, VOICE_PHONE
-
-  const parts = line.split('\t');
-  if (parts.length < 12) {
-    // Try pipe delimiter
-    const pipeParts = line.split('|');
-    if (pipeParts.length >= 12) {
-      return parseATFParts(pipeParts);
-    }
-    return null;
-  }
-  return parseATFParts(parts);
-}
-
-function parseATFParts(parts: string[]): ParsedATFRow | null {
-  if (parts.length < 12) return null;
-
-  return {
-    license_region: parts[0]?.trim() || '',
-    license_district: parts[1]?.trim() || '',
-    license_county: parts[2]?.trim() || '',
-    license_type: parts[3]?.trim() || '',
-    license_expiration: parts[4]?.trim() || '',
-    license_number: parts[5]?.trim() || '',
-    license_name: parts[6]?.trim() || '',
-    business_name: parts[7]?.trim() || '',
-    premise_street: parts[8]?.trim() || '',
-    premise_city: parts[9]?.trim() || '',
-    premise_state: parts[10]?.trim() || '',
-    premise_zip: parts[11]?.trim() || '',
-    mail_street: parts[12]?.trim() || '',
-    mail_city: parts[13]?.trim() || '',
-    mail_state: parts[14]?.trim() || '',
-    mail_zip: parts[15]?.trim() || '',
-    phone: parts[16]?.trim() || '',
-  };
-}
-
-async function downloadATFData(year: number, month: number): Promise<{ data: string; actualYear: number; actualMonth: number } | null> {
-  // Try current month first
-  const urls = [
-    { url: getATFTxtUrl(year, month), year, month },
-    // Fallback to previous month
-    { url: getATFTxtUrl(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1), year: month === 1 ? year - 1 : year, month: month === 1 ? 12 : month - 1 },
-  ];
-
-  for (const { url, year: y, month: m } of urls) {
-    console.log(`[ffl-import] Trying ATF URL: ${url}`);
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'TheSkinning Shed FFL Import/1.0',
-          'Accept': 'text/plain,*/*',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.text();
-        if (data.length > 1000) { // Sanity check
-          console.log(`[ffl-import] Successfully downloaded ${data.length} bytes for ${m}/${y}`);
-          return { data, actualYear: y, actualMonth: m };
-        }
-      } else {
-        console.log(`[ffl-import] HTTP ${response.status} for ${url}`);
-      }
-    } catch (e) {
-      console.log(`[ffl-import] Fetch error for ${url}: ${e}`);
-    }
-  }
-
-  return null;
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 interface ImportStats {
@@ -264,38 +498,35 @@ async function importRecords(
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
-    const rows = await Promise.all(batch.map(async (r) => ({
-      license_number: r.license_number || null,
-      license_name: r.license_name,
-      license_type: r.license_type || null,
-      premise_street: r.premise_street,
-      premise_city: r.premise_city,
-      premise_state: r.premise_state,
-      premise_zip: r.premise_zip,
-      premise_county: r.premise_county,
-      phone: r.phone || null,
-      source_year: year,
-      source_month: month,
-      source_row_hash: await hashRow(r),
-    })));
+    const rows = await Promise.all(
+      batch.map(async (r) => ({
+        license_number: r.license_number || null,
+        license_name: r.license_name,
+        license_type: r.license_type || null,
+        premise_street: r.premise_street,
+        premise_city: r.premise_city,
+        premise_state: r.premise_state,
+        premise_zip: r.premise_zip,
+        premise_county: r.premise_county,
+        phone: r.phone || null,
+        source_year: year,
+        source_month: month,
+        source_row_hash: await hashRow(r),
+      }))
+    );
 
-    // Upsert by source_row_hash
-    const { error } = await supabase
-      .from('ffl_dealers')
-      .upsert(rows, { 
-        onConflict: 'source_row_hash',
-        ignoreDuplicates: false,
-      });
+    const { error } = await supabase.from("ffl_dealers").upsert(rows, {
+      onConflict: "source_row_hash",
+      ignoreDuplicates: false,
+    });
 
     if (error) {
       console.error(`[ffl-import] Batch error: ${error.message}`);
       stats.skipped += batch.length;
     } else {
-      // Approximate counts (upsert doesn't distinguish insert vs update easily)
       stats.inserted += batch.length;
     }
 
-    // Progress log
     if ((i + BATCH_SIZE) % 5000 === 0) {
       console.log(`[ffl-import] Progress: ${Math.min(i + BATCH_SIZE, records.length)}/${records.length}`);
     }
@@ -306,55 +537,72 @@ async function importRecords(
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   // Verify authorization
-  const cronSecret = Deno.env.get('CRON_SECRET');
-  const providedSecret = req.headers.get('x-cron-secret');
-  const authHeader = req.headers.get('authorization');
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  const providedSecret = req.headers.get("x-cron-secret");
+  const authHeader = req.headers.get("authorization");
 
-  // Allow if: cron secret matches OR valid service role auth
-  const isAuthorized = (cronSecret && providedSecret === cronSecret) || 
-                       (authHeader && authHeader.includes('service_role'));
+  const isAuthorized =
+    (cronSecret && providedSecret === cronSecret) ||
+    (authHeader && authHeader.includes("service_role"));
 
   if (!isAuthorized && cronSecret) {
-    console.log('[ffl-import] Unauthorized request');
-    return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.log("[ffl-import] Unauthorized request");
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { persistSession: false },
   });
 
+  // Parse request body for manual override
+  let overrideYear: number | null = null;
+  let overrideMonth: number | null = null;
+  
+  try {
+    if (req.method === "POST") {
+      const body = await req.json();
+      if (body.year && body.month) {
+        overrideYear = parseInt(body.year, 10);
+        overrideMonth = parseInt(body.month, 10);
+        console.log(`[ffl-import] Manual override: targeting ${overrideMonth}/${overrideYear}`);
+      }
+    }
+  } catch {
+    // No body or invalid JSON - continue with auto-detect
+  }
+
   // Determine target year/month
   const now = new Date();
-  const targetYear = now.getUTCFullYear();
-  const targetMonth = now.getUTCMonth() + 1; // 1-indexed
+  const targetYear = overrideYear || now.getUTCFullYear();
+  const targetMonth = overrideMonth || now.getUTCMonth() + 1;
 
   // Create import run record
   const { data: runData, error: runError } = await supabase
-    .from('ffl_import_runs')
+    .from("ffl_import_runs")
     .insert({
       year: targetYear,
       month: targetMonth,
-      status: 'running',
+      status: "running",
     })
-    .select('id')
+    .select("id")
     .single();
 
   if (runError) {
-    console.error('[ffl-import] Failed to create run record:', runError);
-    return new Response(
-      JSON.stringify({ error: 'Failed to create run record' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error("[ffl-import] Failed to create run record:", runError);
+    return new Response(JSON.stringify({ error: "Failed to create run record" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   const runId = runData.id;
@@ -364,108 +612,84 @@ Deno.serve(async (req: Request) => {
     // Load ZIP->County crosswalk
     await loadZipCountyCrosswalk();
 
-    // Download ATF data
-    const atfResult = await downloadATFData(targetYear, targetMonth);
-    if (!atfResult) {
-      throw new Error('Failed to download ATF data');
+    // Discover XLSX links from ATF page
+    const xlsxLinks = await discoverXLSXLinks();
+    
+    if (xlsxLinks.length === 0) {
+      throw new Error("No ATF XLSX links found on data page");
     }
 
-    const { data: atfData, actualYear, actualMonth } = atfResult;
-
-    // Parse ATF data
-    const lines = atfData.split('\n');
-    console.log(`[ffl-import] Parsing ${lines.length} lines`);
-
-    const records: FFLRecord[] = [];
-    let headerSkipped = false;
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      // Skip header row
-      if (!headerSkipped && (line.includes('LIC_REGN') || line.includes('LICENSE'))) {
-        headerSkipped = true;
-        continue;
-      }
-
-      const parsed = parseATFLine(line);
-      if (!parsed || !parsed.premise_state || !parsed.premise_city) continue;
-
-      const state = normalizeState(parsed.premise_state);
-      const zip = normalizeZip(parsed.premise_zip);
-      
-      // Skip invalid states
-      if (state.length !== 2) continue;
-
-      const county = parsed.license_county || getCountyFromZip(zip, state);
-
-      records.push({
-        license_number: parsed.license_number || null,
-        license_name: normalizeName(parsed.license_name || parsed.business_name),
-        license_type: parsed.license_type || null,
-        premise_street: normalizeStreet(parsed.premise_street),
-        premise_city: normalizeCity(parsed.premise_city),
-        premise_state: state,
-        premise_zip: zip,
-        premise_county: county || 'Unknown',
-        phone: parsed.phone || null,
-      });
+    // Find best match for target date
+    const selectedLink = findBestXLSXLink(xlsxLinks, targetYear, targetMonth);
+    
+    if (!selectedLink) {
+      throw new Error("No ATF XLSX found for last 3 months");
     }
 
-    console.log(`[ffl-import] Parsed ${records.length} valid records`);
+    console.log(`[ffl-import] Selected XLSX: ${selectedLink.url} (${selectedLink.month}/${selectedLink.year})`);
 
-    // Filter out records without names
-    const validRecords = records.filter(r => r.license_name && r.license_name.length > 0);
-    console.log(`[ffl-import] ${validRecords.length} records with valid names`);
+    // Download XLSX
+    const xlsxBuffer = await downloadXLSX(selectedLink.url);
+
+    // Parse XLSX
+    const records = parseXLSX(xlsxBuffer);
+
+    if (records.length === 0) {
+      throw new Error("No valid FFL records found in XLSX");
+    }
+
+    console.log(`[ffl-import] Importing ${records.length} records`);
 
     // Import records
-    const stats = await importRecords(supabase, validRecords, actualYear, actualMonth);
+    const stats = await importRecords(supabase, records, selectedLink.year, selectedLink.month);
 
     // Update run record with success
     await supabase
-      .from('ffl_import_runs')
+      .from("ffl_import_runs")
       .update({
-        year: actualYear,
-        month: actualMonth,
-        status: 'success',
+        year: selectedLink.year,
+        month: selectedLink.month,
+        status: "success",
         rows_total: stats.total,
         rows_inserted: stats.inserted,
         rows_updated: stats.updated,
         rows_skipped: stats.skipped,
         finished_at: new Date().toISOString(),
       })
-      .eq('id', runId);
+      .eq("id", runId);
 
-    console.log(`[ffl-import] Import complete: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.skipped} skipped`);
+    console.log(
+      `[ffl-import] Import complete: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.skipped} skipped`
+    );
 
     return new Response(
       JSON.stringify({
         success: true,
         runId,
-        year: actualYear,
-        month: actualMonth,
+        xlsxUrl: selectedLink.url,
+        year: selectedLink.year,
+        month: selectedLink.month,
         stats,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error) {
     const errorMsg = (error as Error).message;
-    console.error('[ffl-import] Import failed:', errorMsg);
+    console.error("[ffl-import] Import failed:", errorMsg);
 
     // Update run record with failure
     await supabase
-      .from('ffl_import_runs')
+      .from("ffl_import_runs")
       .update({
-        status: 'failed',
+        status: "failed",
         error: errorMsg,
         finished_at: new Date().toISOString(),
       })
-      .eq('id', runId);
+      .eq("id", runId);
 
-    return new Response(
-      JSON.stringify({ error: errorMsg, runId }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: errorMsg, runId }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
