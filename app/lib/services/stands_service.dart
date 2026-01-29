@@ -429,12 +429,40 @@ class StandsService {
     if (_client == null) return false;
     
     try {
-      final result = await _client.rpc('soft_delete_stand', params: {
-        'p_stand_id': standId,
-      });
+      // First, get the club_id for the stand to end active signins
+      final standResponse = await _client
+          .from('club_stands')
+          .select('club_id')
+          .eq('id', standId)
+          .maybeSingle();
       
-      final json = result as Map<String, dynamic>;
-      return json['success'] == true;
+      if (standResponse == null) {
+        if (kDebugMode) {
+          debugPrint('[StandsService] Stand not found for delete: $standId');
+        }
+        return false;
+      }
+      
+      final clubId = standResponse['club_id'] as String;
+      
+      // End any active signins on this stand
+      await _client
+          .from('stand_signins')
+          .update({
+            'status': 'signed_out',
+            'signed_out_at': DateTime.now().toUtc().toIso8601String(),
+            'ended_reason': 'stand_deleted',
+          })
+          .eq('stand_id', standId)
+          .eq('status', 'active');
+      
+      // Soft delete the stand
+      await _client
+          .from('club_stands')
+          .update({'is_deleted': true})
+          .eq('id', standId);
+      
+      return true;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[StandsService] Error deleting stand: $e');
@@ -674,14 +702,28 @@ class StandsService {
     if (_client == null) return [];
     
     try {
-      final result = await _client.rpc('get_stand_activity', params: {
-        'p_stand_id': standId,
-        'p_limit': limit,
-      });
+      final result = await _client
+          .from('stand_activity')
+          .select('*, profiles!inner(username, display_name, avatar_path)')
+          .eq('stand_id', standId)
+          .order('created_at', ascending: false)
+          .limit(limit);
       
       return (result as List).map((row) {
         final json = row as Map<String, dynamic>;
-        return StandActivity.fromJson(json);
+        final profile = json['profiles'] as Map<String, dynamic>?;
+        return StandActivity(
+          id: json['id'] as String,
+          clubId: json['club_id'] as String,
+          standId: json['stand_id'] as String,
+          userId: json['user_id'] as String,
+          signinId: json['signin_id'] as String?,
+          body: json['body'] as String,
+          createdAt: DateTime.parse(json['created_at'] as String),
+          username: profile?['username'] as String?,
+          displayName: profile?['display_name'] as String?,
+          avatarPath: profile?['avatar_path'] as String?,
+        );
       }).toList();
     } catch (e) {
       if (kDebugMode) {
@@ -758,18 +800,59 @@ class StandsService {
   }
   
   /// Get pending activity prompt for current user in a club
+  /// Only shows for auto-expired sessions (not manual sign-outs which get immediate prompt)
   Future<PendingActivityPrompt?> getPendingActivityPrompt(String clubId) async {
     if (_client == null) return null;
     
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+    
     try {
-      final result = await _client.rpc('get_pending_activity_prompts', params: {
-        'p_club_id': clubId,
-      });
+      // Find recent signins that:
+      // 1. Belong to current user in this club
+      // 2. Are ended (status != 'active') or expired
+      // 3. Were auto-expired (ended_reason = 'auto_expired' OR status='active' but expires_at passed)
+      // 4. Don't have activity logged for them
+      // 5. Haven't been dismissed
+      final now = DateTime.now().toUtc();
+      
+      final result = await _client
+          .from('stand_signins')
+          .select('id, stand_id, signed_in_at, expires_at, club_stands!inner(name)')
+          .eq('club_id', clubId)
+          .eq('user_id', userId)
+          .eq('activity_prompt_dismissed', false)
+          .or('status.eq.expired,and(status.eq.active,expires_at.lt.${now.toIso8601String()})')
+          .order('expires_at', ascending: false)
+          .limit(1);
       
       final list = result as List;
       if (list.isEmpty) return null;
       
-      return PendingActivityPrompt.fromJson(list.first as Map<String, dynamic>);
+      final row = list.first as Map<String, dynamic>;
+      final signinId = row['id'] as String;
+      
+      // Check if activity already exists for this signin
+      final activityCheck = await _client
+          .from('stand_activity')
+          .select('id')
+          .eq('signin_id', signinId)
+          .limit(1);
+      
+      if ((activityCheck as List).isNotEmpty) {
+        // Activity already logged, don't prompt
+        return null;
+      }
+      
+      final standData = row['club_stands'] as Map<String, dynamic>;
+      
+      return PendingActivityPrompt(
+        signinId: signinId,
+        standId: row['stand_id'] as String,
+        standName: standData['name'] as String,
+        signedInAt: DateTime.parse(row['signed_in_at'] as String),
+        expiresAt: DateTime.parse(row['expires_at'] as String),
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[StandsService] Error getting pending activity prompt: $e');
@@ -783,9 +866,10 @@ class StandsService {
     if (_client == null) return false;
     
     try {
-      await _client.rpc('dismiss_activity_prompt', params: {
-        'p_signin_id': signinId,
-      });
+      await _client
+          .from('stand_signins')
+          .update({'activity_prompt_dismissed': true})
+          .eq('id', signinId);
       return true;
     } catch (e) {
       if (kDebugMode) {

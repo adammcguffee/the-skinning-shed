@@ -3565,65 +3565,73 @@ class _PremiumMembersTabState extends ConsumerState<_PremiumMembersTab> {
       color: AppColors.primary,
       child: CustomScrollView(
         slivers: [
-          // Search + Invite row
+          // Search row (invite via FAB on mobile, inline on desktop)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Row(
-                children: [
-                  // Search
-                  Expanded(
-                    child: Container(
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.border, width: 0.5),
-                      ),
-                      child: TextField(
-                        onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-                        decoration: const InputDecoration(
-                          hintText: 'Search members...',
-                          hintStyle: TextStyle(color: AppColors.textTertiary),
-                          prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textTertiary),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // On mobile (<400px), just show search - FAB handles invite
+                  final isMobile = constraints.maxWidth < 400;
                   
-                  // Invite button (admin)
-                  if (widget.isAdmin) ...[
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: _createInviteLink,
-                      child: Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.person_add_rounded, size: 18, color: Colors.white),
-                            SizedBox(width: 6),
-                            Text(
-                              'Invite',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
+                  return Row(
+                    children: [
+                      // Search
+                      Expanded(
+                        child: Container(
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.border, width: 0.5),
+                          ),
+                          child: TextField(
+                            onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                            decoration: const InputDecoration(
+                              hintText: 'Search members...',
+                              hintStyle: TextStyle(color: AppColors.textTertiary),
+                              prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textTertiary),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(vertical: 12),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ],
+                      
+                      // Invite button (admin, desktop only - FAB on mobile)
+                      if (widget.isAdmin && !isMobile) ...[
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: _createInviteLink,
+                          child: Container(
+                            height: 42,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.person_add_rounded, size: 18, color: Colors.white),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Invite',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
           ),
