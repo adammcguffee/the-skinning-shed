@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
@@ -166,131 +167,19 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
   
   Future<void> _showInviteSheet(BuildContext context, Club club) async {
     HapticFeedback.mediumImpact();
-    final service = ref.read(clubsServiceProvider);
-    final token = await service.createInviteLink(club.id);
     
-    if (token != null && mounted) {
-      final url = 'https://www.theskinningshed.com/clubs/join/$token';
-      
-      await showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => Container(
-          margin: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.textTertiary.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(Icons.link_rounded, color: AppColors.primary, size: 28),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Invite Link',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Share this link to invite members',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: SelectableText(
-                    url,
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: url));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Link copied!')),
-                          );
-                        },
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        label: const Text('Copy'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          await Share.share(
-                            'Join ${club.name} on The Skinning Shed!\n$url',
-                            subject: 'Club Invite',
-                          );
-                        },
-                        icon: const Icon(Icons.share_rounded, size: 18),
-                        label: const Text('Share'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          side: const BorderSide(color: AppColors.border),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to create invite link')),
-      );
-    }
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _PremiumInviteSheet(
+        club: club,
+        onInviteSent: () {
+          ref.invalidate(pendingClubInvitesProvider(club.id));
+          ref.invalidate(clubMembersProvider(club.id));
+        },
+      ),
+    );
   }
 }
 
@@ -4894,6 +4783,384 @@ class _NotFoundShell extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PREMIUM INVITE SHEET
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PremiumInviteSheet extends ConsumerStatefulWidget {
+  const _PremiumInviteSheet({
+    required this.club,
+    required this.onInviteSent,
+  });
+  
+  final Club club;
+  final VoidCallback onInviteSent;
+
+  @override
+  ConsumerState<_PremiumInviteSheet> createState() => _PremiumInviteSheetState();
+}
+
+class _PremiumInviteSheetState extends ConsumerState<_PremiumInviteSheet> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final _usernameController = TextEditingController();
+  bool _isSending = false;
+  bool _isGeneratingLink = false;
+  String? _inviteUrl;
+  
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+  
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _usernameController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _sendUsernameInvite() async {
+    final username = _usernameController.text.trim();
+    if (username.isEmpty) return;
+    
+    setState(() => _isSending = true);
+    HapticFeedback.mediumImpact();
+    
+    final service = ref.read(clubsServiceProvider);
+    final result = await service.inviteUserByUsername(widget.club.id, username);
+    
+    if (mounted) {
+      setState(() => _isSending = false);
+      
+      if (result.success) {
+        _usernameController.clear();
+        widget.onInviteSent();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invite sent to @$username'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.error ?? 'Failed to send invite'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _generateLink() async {
+    setState(() => _isGeneratingLink = true);
+    
+    final service = ref.read(clubsServiceProvider);
+    final token = await service.createInviteLink(widget.club.id);
+    
+    if (mounted) {
+      setState(() {
+        _isGeneratingLink = false;
+        if (token != null) {
+          _inviteUrl = 'https://www.theskinningshed.com/clubs/join/$token';
+        }
+      });
+    }
+  }
+  
+  void _copyLink() {
+    if (_inviteUrl == null) return;
+    Clipboard.setData(ClipboardData(text: _inviteUrl!));
+    HapticFeedback.mediumImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link copied!')),
+    );
+  }
+  
+  Future<void> _shareLink() async {
+    if (_inviteUrl == null) return;
+    HapticFeedback.mediumImpact();
+    await Share.share(
+      'Join ${widget.club.name} on The Skinning Shed!\n$_inviteUrl',
+      subject: 'Club Invite',
+    );
+  }
+  
+  Future<void> _sendSms() async {
+    if (_inviteUrl == null) return;
+    HapticFeedback.mediumImpact();
+    
+    final message = 'Join my hunting club "${widget.club.name}" on The Skinning Shed: $_inviteUrl';
+    final encodedMessage = Uri.encodeComponent(message);
+    
+    // Try SMS scheme (works on iOS/Android)
+    final smsUri = Uri.parse('sms:?body=$encodedMessage');
+    
+    try {
+      if (await canLaunchUrl(smsUri)) {
+        await launchUrl(smsUri);
+      } else {
+        // Fallback to share sheet
+        await Share.share(message, subject: 'Club Invite');
+      }
+    } catch (e) {
+      // Fallback to share sheet
+      await Share.share(message, subject: 'Club Invite');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Title
+            const Text(
+              'Invite Members',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Tabs
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicator: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                labelColor: Colors.white,
+                unselectedLabelColor: AppColors.textSecondary,
+                labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                dividerColor: Colors.transparent,
+                padding: const EdgeInsets.all(4),
+                tabs: const [
+                  Tab(text: 'By Username'),
+                  Tab(text: 'Share Link'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Tab content
+            SizedBox(
+              height: 220,
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Username Tab
+                  _buildUsernameTab(),
+                  // Share Link Tab
+                  _buildShareLinkTab(),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildUsernameTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          const Text(
+            'Invite members privately by username',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _usernameController,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: '@username',
+              hintStyle: TextStyle(color: AppColors.textTertiary),
+              prefixIcon: const Icon(Icons.alternate_email_rounded, color: AppColors.textTertiary),
+              filled: true,
+              fillColor: AppColors.background,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
+            ),
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _sendUsernameInvite(),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isSending ? null : _sendUsernameInvite,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isSending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Send Invite', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildShareLinkTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          if (_inviteUrl == null) ...[
+            const Text(
+              'Generate a link to share via text or social media',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isGeneratingLink ? null : _generateLink,
+                icon: const Icon(Icons.link_rounded, size: 20),
+                label: _isGeneratingLink
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Generate Invite Link'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _inviteUrl!,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _copyLink,
+                    icon: const Icon(Icons.copy_rounded, size: 20),
+                    color: AppColors.textSecondary,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _shareLink,
+                    icon: const Icon(Icons.share_rounded, size: 18),
+                    label: const Text('Share'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      side: const BorderSide(color: AppColors.border),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _sendSms,
+                    icon: const Icon(Icons.textsms_rounded, size: 18),
+                    label: const Text('Text'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

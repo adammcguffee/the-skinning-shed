@@ -34,6 +34,7 @@ class _ClubsHomeScreenState extends ConsumerState<ClubsHomeScreen> {
           child: RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(myClubsProvider);
+              ref.invalidate(myClubInvitesProvider);
             },
             child: CustomScrollView(
               slivers: [
@@ -43,6 +44,9 @@ class _ClubsHomeScreenState extends ConsumerState<ClubsHomeScreen> {
                       title: 'Hunting Clubs',
                     ),
                   ),
+                
+                // Pending Invitations section (shown if any)
+                const _InvitationsSection(),
                 
                 // Create Club CTA
                 SliverToBoxAdapter(
@@ -100,6 +104,244 @@ class _SectionHeader extends StatelessWidget {
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+}
+
+/// Invitations section - shows pending club invites to current user
+class _InvitationsSection extends ConsumerWidget {
+  const _InvitationsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final invitesAsync = ref.watch(myClubInvitesProvider);
+    
+    return invitesAsync.when(
+      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      data: (invites) {
+        if (invites.isEmpty) {
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        }
+        
+        return SliverToBoxAdapter(
+          child: Container(
+            margin: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.success.withValues(alpha: 0.15),
+                  AppColors.success.withValues(alpha: 0.08),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppColors.success.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.mail_rounded,
+                        color: AppColors.success,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Club Invitations',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.success,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${invites.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...invites.map((invite) => _InvitationCard(invite: invite)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InvitationCard extends ConsumerStatefulWidget {
+  const _InvitationCard({required this.invite});
+  
+  final ClubInviteInfo invite;
+
+  @override
+  ConsumerState<_InvitationCard> createState() => _InvitationCardState();
+}
+
+class _InvitationCardState extends ConsumerState<_InvitationCard> {
+  bool _isLoading = false;
+
+  Future<void> _accept() async {
+    setState(() => _isLoading = true);
+    
+    final service = ref.read(clubsServiceProvider);
+    final result = await service.acceptDirectInvite(widget.invite.clubId);
+    
+    if (mounted) {
+      if (result.success) {
+        ref.invalidate(myClubInvitesProvider);
+        ref.invalidate(myClubsProvider);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Joined ${widget.invite.clubName}!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        // Navigate to club
+        context.push('/clubs/${widget.invite.clubId}');
+      } else {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to join club'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _decline() async {
+    setState(() => _isLoading = true);
+    
+    final service = ref.read(clubsServiceProvider);
+    final success = await service.declineDirectInvite(widget.invite.clubId);
+    
+    if (mounted) {
+      ref.invalidate(myClubInvitesProvider);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invitation declined')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.groups_rounded,
+              color: AppColors.primary,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.invite.clubName,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                if (widget.invite.locationDisplay != null) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 12, color: AppColors.textTertiary),
+                      const SizedBox(width: 2),
+                      Text(
+                        widget.invite.locationDisplay!,
+                        style: const TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (_isLoading)
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else ...[
+            IconButton(
+              onPressed: _decline,
+              icon: const Icon(Icons.close_rounded),
+              color: AppColors.textTertiary,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Decline',
+            ),
+            const SizedBox(width: 4),
+            ElevatedButton(
+              onPressed: _accept,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                minimumSize: Size.zero,
+              ),
+              child: const Text('Accept', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+        ],
       ),
     );
   }

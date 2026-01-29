@@ -250,6 +250,54 @@ class InviteInfo {
   }
 }
 
+/// Club invite info model (for invites TO the user)
+class ClubInviteInfo {
+  const ClubInviteInfo({
+    required this.clubId,
+    required this.clubName,
+    this.clubDescription,
+    this.clubState,
+    this.clubCounty,
+    required this.memberCount,
+    required this.invitedAt,
+  });
+  
+  final String clubId;
+  final String clubName;
+  final String? clubDescription;
+  final String? clubState;
+  final String? clubCounty;
+  final int memberCount;
+  final DateTime invitedAt;
+  
+  String? get locationDisplay {
+    if (clubCounty != null && clubState != null) {
+      return '$clubCounty, $clubState';
+    }
+    return clubState;
+  }
+}
+
+/// Pending club invite model (for admin view)
+class PendingClubInvite {
+  const PendingClubInvite({
+    required this.userId,
+    this.username,
+    this.displayName,
+    this.avatarPath,
+    required this.invitedAt,
+  });
+  
+  final String userId;
+  final String? username;
+  final String? displayName;
+  final String? avatarPath;
+  final DateTime invitedAt;
+  
+  String get name => displayName ?? username ?? 'Unknown';
+  String get handle => username != null ? '@$username' : '';
+}
+
 /// Clubs service
 class ClubsService {
   ClubsService(this._client);
@@ -747,6 +795,162 @@ class ClubsService {
     }
   }
   
+  // =====================
+  // DIRECT INVITES (BY USERNAME)
+  // =====================
+  
+  /// Invite a user to club by username (admin only)
+  Future<({bool success, String? error})> inviteUserByUsername(String clubId, String username) async {
+    if (_client == null) {
+      return (success: false, error: 'Not connected');
+    }
+    
+    try {
+      final result = await _client.rpc('invite_user_to_club', params: {
+        'p_club_id': clubId,
+        'p_username': username,
+      });
+      
+      final json = result as Map<String, dynamic>;
+      final success = json['success'] == true;
+      String? error;
+      
+      if (!success) {
+        final errorCode = json['error'] as String?;
+        error = switch (errorCode) {
+          'not_authorized' => 'You must be a club admin to invite members',
+          'user_not_found' => 'No user found with that username',
+          'already_member' => 'User is already a member of this club',
+          'already_invited' => 'User has already been invited',
+          'user_banned' => 'This user has been banned from the club',
+          _ => 'Failed to send invite',
+        };
+      }
+      
+      return (success: success, error: error);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error inviting user: $e');
+      }
+      return (success: false, error: 'Failed to send invite');
+    }
+  }
+  
+  /// Get pending invites for current user (invites TO the user)
+  Future<List<ClubInviteInfo>> getMyPendingInvites() async {
+    if (_client == null) return [];
+    
+    try {
+      final result = await _client.rpc('get_my_club_invites');
+      
+      return (result as List).map((row) {
+        final json = row as Map<String, dynamic>;
+        return ClubInviteInfo(
+          clubId: json['club_id'] as String,
+          clubName: json['club_name'] as String,
+          clubDescription: json['club_description'] as String?,
+          clubState: json['club_state'] as String?,
+          clubCounty: json['club_county'] as String?,
+          memberCount: json['member_count'] as int? ?? 0,
+          invitedAt: DateTime.parse(json['invited_at'] as String),
+        );
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error getting invites: $e');
+      }
+      return [];
+    }
+  }
+  
+  /// Accept a direct invite (by username)
+  Future<({bool success, String? clubId, String? error})> acceptDirectInvite(String clubId) async {
+    if (_client == null) {
+      return (success: false, clubId: null, error: 'Not connected');
+    }
+    
+    try {
+      final result = await _client.rpc('accept_club_direct_invite', params: {
+        'p_club_id': clubId,
+      });
+      
+      final json = result as Map<String, dynamic>;
+      return (
+        success: json['success'] == true,
+        clubId: json['success'] == true ? clubId : null,
+        error: json['error'] as String?,
+      );
+    } catch (e) {
+      return (success: false, clubId: null, error: e.toString());
+    }
+  }
+  
+  /// Decline a direct invite
+  Future<bool> declineDirectInvite(String clubId) async {
+    if (_client == null) return false;
+    
+    try {
+      final result = await _client.rpc('decline_club_direct_invite', params: {
+        'p_club_id': clubId,
+      });
+      
+      final json = result as Map<String, dynamic>;
+      return json['success'] == true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error declining invite: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Get pending invites sent FROM the club (admin view)
+  Future<List<PendingClubInvite>> getPendingClubInvites(String clubId) async {
+    if (_client == null) return [];
+    
+    try {
+      final result = await _client.rpc('get_club_pending_invites', params: {
+        'p_club_id': clubId,
+      });
+      
+      return (result as List).map((row) {
+        final json = row as Map<String, dynamic>;
+        return PendingClubInvite(
+          userId: json['user_id'] as String,
+          username: json['username'] as String?,
+          displayName: json['display_name'] as String?,
+          avatarPath: json['avatar_path'] as String?,
+          invitedAt: DateTime.parse(json['invited_at'] as String),
+        );
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error getting pending invites: $e');
+      }
+      return [];
+    }
+  }
+  
+  /// Cancel a pending invite (admin only)
+  Future<bool> cancelInvite(String clubId, String userId) async {
+    if (_client == null) return false;
+    
+    try {
+      final result = await _client.rpc('cancel_club_invite', params: {
+        'p_club_id': clubId,
+        'p_user_id': userId,
+      });
+      
+      final json = result as Map<String, dynamic>;
+      return json['success'] == true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Error canceling invite: $e');
+      }
+      return false;
+    }
+  }
+  
   /// Update member role (admin only)
   Future<bool> updateMemberRole(String clubId, String userId, String role) async {
     if (_client == null) return false;
@@ -1037,4 +1241,16 @@ final myClubMembershipProvider = FutureProvider.family<ClubMember?, String>((ref
 final inviteInfoProvider = FutureProvider.family<InviteInfo, String>((ref, token) async {
   final service = ref.watch(clubsServiceProvider);
   return service.getInviteInfo(token);
+});
+
+/// Provider for invites TO the current user
+final myClubInvitesProvider = FutureProvider<List<ClubInviteInfo>>((ref) async {
+  final service = ref.watch(clubsServiceProvider);
+  return service.getMyPendingInvites();
+});
+
+/// Provider for pending invites FROM the club (admin view)
+final pendingClubInvitesProvider = FutureProvider.family<List<PendingClubInvite>, String>((ref, clubId) async {
+  final service = ref.watch(clubsServiceProvider);
+  return service.getPendingClubInvites(clubId);
 });
