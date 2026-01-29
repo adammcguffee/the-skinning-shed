@@ -9,10 +9,7 @@ import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
-/// 💬 MESSAGES INBOX SCREEN - 2025 PREMIUM
-///
-/// Shows all DM conversations with unread indicators.
-/// Uses polling for updates (30s interval) to avoid heavy realtime subscriptions.
+/// Messages Inbox Screen with Inbox/Sent tabs.
 class MessagesInboxScreen extends ConsumerStatefulWidget {
   const MessagesInboxScreen({super.key});
 
@@ -20,8 +17,10 @@ class MessagesInboxScreen extends ConsumerStatefulWidget {
   ConsumerState<MessagesInboxScreen> createState() => _MessagesInboxScreenState();
 }
 
-class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
-  List<Conversation> _conversations = [];
+class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  List<MessageThread> _allThreads = [];
   bool _isLoading = true;
   String? _error;
   Timer? _pollTimer;
@@ -29,23 +28,63 @@ class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInbox();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadThreads();
     _startPolling();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _pollTimer?.cancel();
     super.dispose();
   }
 
   void _startPolling() {
-    // Poll every 30 seconds for inbox updates
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
-        _loadInbox(silent: true);
+        _loadThreads(silent: true);
       }
     });
+  }
+
+  Future<void> _loadThreads({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final service = ref.read(messagingServiceProvider);
+      final threads = await service.getThreads();
+
+      if (mounted) {
+        setState(() {
+          _allThreads = threads;
+          _isLoading = false;
+        });
+        ref.read(messageUnreadCountProvider.notifier).refresh();
+      }
+    } catch (e) {
+      if (mounted && !silent) {
+        setState(() {
+          _error = 'Unable to load messages. Please try again.';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  List<MessageThread> get _inboxThreads {
+    final currentUserId = ref.read(currentUserProvider)?.id;
+    return _allThreads.where((t) => t.isInbox(currentUserId)).toList();
+  }
+
+  List<MessageThread> get _sentThreads {
+    final currentUserId = ref.read(currentUserProvider)?.id;
+    return _allThreads.where((t) => t.isSent(currentUserId)).toList();
   }
 
   void _openNewMessage() {
@@ -59,11 +98,9 @@ class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
           Navigator.of(context, rootNavigator: true).pop();
           try {
             final service = ref.read(messagingServiceProvider);
-            final conversationId = await service.getOrCreateDM(
-              otherUserId: userId,
-            );
+            final threadId = await service.getOrCreateDM(otherUserId: userId);
             if (mounted) {
-              context.push('/messages/$conversationId');
+              context.push('/messages/$threadId');
             }
           } catch (e) {
             if (mounted) {
@@ -77,39 +114,11 @@ class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
     );
   }
 
-  Future<void> _loadInbox({bool silent = false}) async {
-    if (!silent) {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-    }
-
-    try {
-      final service = ref.read(messagingServiceProvider);
-      final conversations = await service.getInbox();
-
-      if (mounted) {
-        setState(() {
-          _conversations = conversations;
-          _isLoading = false;
-        });
-        // Also refresh unread count
-        ref.read(unreadCountProvider.notifier).refresh();
-      }
-    } catch (e) {
-      if (mounted && !silent) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isAuthenticated = ref.watch(isAuthenticatedProvider);
+    final currentUserId = ref.watch(currentUserProvider)?.id;
+    final inboxCount = _inboxThreads.where((t) => t.hasUnread(currentUserId)).length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -117,123 +126,510 @@ class _MessagesInboxScreenState extends ConsumerState<MessagesInboxScreen> {
         decoration: const BoxDecoration(
           gradient: AppColors.backgroundGradient,
         ),
-        child: RefreshIndicator(
-          onRefresh: _loadInbox,
-          color: AppColors.accent,
-          backgroundColor: AppColors.surface,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // Header
-              SliverToBoxAdapter(
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.screenPadding),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            gradient: AppColors.accentGradient,
-                            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                            boxShadow: AppColors.shadowAccent,
-                          ),
-                          child: const Icon(
-                            Icons.chat_bubble_outline_rounded,
-                            color: AppColors.textInverse,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Messages',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              Text(
-                                _conversations.isEmpty
-                                    ? 'Your conversations'
-                                    : '${_conversations.length} conversation${_conversations.length == 1 ? '' : 's'}',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // New message button
-                        _NewMessageButton(onNewMessage: _openNewMessage),
-                        const SizedBox(width: AppSpacing.xs),
-                        IconButton(
-                          icon: const Icon(Icons.refresh_rounded),
-                          onPressed: _loadInbox,
-                          color: AppColors.textSecondary,
-                        ),
-                      ],
+        child: Column(
+          children: [
+            // Header
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: AppColors.accentGradient,
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                        boxShadow: AppColors.shadowAccent,
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: AppColors.textInverse,
+                        size: 24,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Messages',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            _allThreads.isEmpty
+                                ? 'Your conversations'
+                                : '${_allThreads.length} conversation${_allThreads.length == 1 ? '' : 's'}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _NewMessageButton(onNewMessage: _openNewMessage),
+                    const SizedBox(width: AppSpacing.xs),
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded),
+                      onPressed: _loadThreads,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
                 ),
               ),
+            ),
 
-              // Content
-              if (!isAuthenticated)
-                SliverFillRemaining(
-                  child: _NotAuthenticatedState(),
-                )
-              else if (_isLoading)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(AppColors.accent),
+            // Tab bar
+            if (isAuthenticated && !_isLoading && _error == null)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicator: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelColor: AppColors.textInverse,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  dividerColor: Colors.transparent,
+                  tabs: [
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Inbox'),
+                          if (inboxCount > 0) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                inboxCount > 99 ? '99+' : inboxCount.toString(),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                )
-              else if (_error != null)
-                SliverFillRemaining(
-                  child: AppErrorState(
-                    message: _error!,
-                    onRetry: _loadInbox,
-                  ),
-                )
-              else if (_conversations.isEmpty)
-                SliverFillRemaining(
-                  child: _EmptyInboxState(),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final conversation = _conversations[index];
-                        return _ConversationTile(
-                          conversation: conversation,
-                          onTap: () {
-                            context.push('/messages/${conversation.id}');
-                          },
-                        );
-                      },
-                      childCount: _conversations.length,
+                    const Tab(text: 'Sent'),
+                  ],
+                ),
+              ),
+            const SizedBox(height: AppSpacing.md),
+
+            // Content
+            Expanded(
+              child: !isAuthenticated
+                  ? _NotAuthenticatedState()
+                  : _isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation(AppColors.accent),
+                          ),
+                        )
+                      : _error != null
+                          ? AppErrorState(
+                              message: _error!,
+                              onRetry: _loadThreads,
+                            )
+                          : TabBarView(
+                              controller: _tabController,
+                              children: [
+                                _ThreadListView(
+                                  threads: _inboxThreads,
+                                  emptyTitle: 'No Messages Yet',
+                                  emptySubtitle: 'When someone messages you, it will appear here.',
+                                  onRefresh: _loadThreads,
+                                ),
+                                _ThreadListView(
+                                  threads: _sentThreads,
+                                  emptyTitle: 'No Sent Messages',
+                                  emptySubtitle: 'Messages you send will appear here.',
+                                  onRefresh: _loadThreads,
+                                ),
+                              ],
+                            ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ThreadListView extends ConsumerWidget {
+  const _ThreadListView({
+    required this.threads,
+    required this.emptyTitle,
+    required this.emptySubtitle,
+    required this.onRefresh,
+  });
+
+  final List<MessageThread> threads;
+  final String emptyTitle;
+  final String emptySubtitle;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (threads.isEmpty) {
+      return _EmptyState(title: emptyTitle, subtitle: emptySubtitle);
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      color: AppColors.accent,
+      backgroundColor: AppColors.surface,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+        itemCount: threads.length,
+        itemBuilder: (context, index) {
+          final thread = threads[index];
+          return _ThreadTile(
+            thread: thread,
+            onTap: () => context.push('/messages/${thread.id}'),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ThreadTile extends ConsumerWidget {
+  const _ThreadTile({
+    required this.thread,
+    required this.onTap,
+  });
+
+  final MessageThread thread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentUserId = ref.watch(currentUserProvider)?.id;
+    final hasUnread = thread.hasUnread(currentUserId);
+    final isClub = thread.type == ThreadType.club;
+
+    return _HoverContainer(
+      hasUnread: hasUnread,
+      onTap: onTap,
+      child: Row(
+        children: [
+          // Avatar
+          _ThreadAvatar(thread: thread, hasUnread: hasUnread),
+          const SizedBox(width: AppSpacing.md),
+
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Name and time
+                Row(
+                  children: [
+                    // Thread type badge
+                    if (isClub)
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.info.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'CLUB',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.info,
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Text(
+                        thread.displayName,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
+                    if (thread.lastMessageAt != null)
+                      Text(
+                        _formatTime(thread.lastMessageAt!),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: hasUnread ? AppColors.accent : AppColors.textTertiary,
+                          fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                  ],
                 ),
 
-              // Bottom padding
-              const SliverToBoxAdapter(
-                child: SizedBox(height: 100),
-              ),
-            ],
+                // Username for DMs
+                if (!isClub && thread.handle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${thread.handle}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+
+                // Message preview
+                if (thread.lastMessageBody != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    thread.lastMessageBody!,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: hasUnread ? AppColors.textPrimary : AppColors.textSecondary,
+                      fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
           ),
+
+          // Unread indicator
+          if (hasUnread) ...[
+            const SizedBox(width: AppSpacing.sm),
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.4),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(date.year, date.month, date.day);
+
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24 && messageDay == today) return '${diff.inHours}h';
+
+    if (messageDay == today.subtract(const Duration(days: 1))) return 'Yesterday';
+
+    if (diff.inDays < 7) {
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return days[date.weekday - 1];
+    }
+
+    return '${date.month}/${date.day}';
+  }
+}
+
+class _ThreadAvatar extends StatelessWidget {
+  const _ThreadAvatar({
+    required this.thread,
+    required this.hasUnread,
+  });
+
+  final MessageThread thread;
+  final bool hasUnread;
+
+  @override
+  Widget build(BuildContext context) {
+    final isClub = thread.type == ThreadType.club;
+    final avatarPath = isClub ? thread.clubLogoPath : thread.otherAvatarPath;
+    final initial = thread.displayName.isNotEmpty ? thread.displayName[0].toUpperCase() : 'U';
+
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: hasUnread
+            ? AppColors.accent.withValues(alpha: 0.15)
+            : (isClub ? AppColors.info.withValues(alpha: 0.12) : AppColors.primary.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(isClub ? AppSpacing.radiusMd : AppSpacing.radiusFull),
+      ),
+      child: avatarPath != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(isClub ? AppSpacing.radiusMd : AppSpacing.radiusFull),
+              child: Image.network(
+                avatarPath,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _AvatarInitial(initial: initial, hasUnread: hasUnread, isClub: isClub),
+              ),
+            )
+          : _AvatarInitial(initial: initial, hasUnread: hasUnread, isClub: isClub),
+    );
+  }
+}
+
+class _AvatarInitial extends StatelessWidget {
+  const _AvatarInitial({
+    required this.initial,
+    required this.hasUnread,
+    required this.isClub,
+  });
+
+  final String initial;
+  final bool hasUnread;
+  final bool isClub;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: isClub
+          ? Icon(
+              Icons.groups_rounded,
+              size: 24,
+              color: hasUnread ? AppColors.accent : AppColors.info,
+            )
+          : Text(
+              initial,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: hasUnread ? AppColors.accent : AppColors.primary,
+              ),
+            ),
+    );
+  }
+}
+
+class _HoverContainer extends StatefulWidget {
+  const _HoverContainer({
+    required this.child,
+    required this.hasUnread,
+    required this.onTap,
+  });
+
+  final Widget child;
+  final bool hasUnread;
+  final VoidCallback onTap;
+
+  @override
+  State<_HoverContainer> createState() => _HoverContainerState();
+}
+
+class _HoverContainerState extends State<_HoverContainer> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? AppColors.surfaceHover
+                : (widget.hasUnread ? AppColors.accent.withValues(alpha: 0.05) : AppColors.surface),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(
+              color: widget.hasUnread
+                  ? AppColors.accent.withValues(alpha: 0.3)
+                  : AppColors.borderSubtle,
+            ),
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHover,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+              ),
+              child: Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 40,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
@@ -292,332 +688,18 @@ class _NotAuthenticatedState extends StatelessWidget {
   }
 }
 
-class _EmptyInboxState extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceHover,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-              ),
-              child: Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 40,
-                color: AppColors.textTertiary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            const Text(
-              'No Messages Yet',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'When you contact a seller or another hunter, your conversations will appear here.',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ConversationTile extends StatefulWidget {
-  const _ConversationTile({
-    required this.conversation,
-    required this.onTap,
-  });
-
-  final Conversation conversation;
-  final VoidCallback onTap;
-
-  @override
-  State<_ConversationTile> createState() => _ConversationTileState();
-}
-
-class _ConversationTileState extends State<_ConversationTile> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final conv = widget.conversation;
-    final hasUnread = conv.hasUnread;
-    final contextBadge = conv.contextBadge;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: _isHovered
-                ? AppColors.surfaceHover
-                : (hasUnread ? AppColors.accent.withValues(alpha: 0.05) : AppColors.surface),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(
-              color: hasUnread
-                  ? AppColors.accent.withValues(alpha: 0.3)
-                  : AppColors.borderSubtle,
-            ),
-          ),
-          child: Row(
-            children: [
-              // Avatar with optional context badge
-              Stack(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: hasUnread
-                          ? AppColors.accent.withValues(alpha: 0.15)
-                          : AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                    ),
-                    child: conv.otherUserAvatar != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                            child: Image.network(
-                              conv.otherUserAvatar!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _AvatarInitial(
-                                name: conv.otherUserName,
-                                hasUnread: hasUnread,
-                              ),
-                            ),
-                          )
-                        : _AvatarInitial(
-                            name: conv.otherUserName,
-                            hasUnread: hasUnread,
-                          ),
-                  ),
-                  // Context type badge
-                  if (contextBadge.isNotEmpty)
-                    Positioned(
-                      right: -2,
-                      bottom: -2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: _getContextColor(conv.subjectType),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: AppColors.surface,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Text(
-                          contextBadge,
-                          style: const TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: AppSpacing.md),
-
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Name and time
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            conv.otherUserName,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (conv.lastMessageAt != null)
-                          Text(
-                            _formatTime(conv.lastMessageAt!),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: hasUnread ? AppColors.accent : AppColors.textTertiary,
-                              fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                      ],
-                    ),
-
-                    // Subject title (if present)
-                    if (conv.subjectTitle != null && conv.subjectTitle!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        conv.subjectTitle!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.info,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-
-                    // Last message preview
-                    if (conv.lastMessageBody != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        conv.lastMessageBody!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: hasUnread
-                              ? AppColors.textPrimary
-                              : AppColors.textSecondary,
-                          fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
-                          height: 1.3,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              // Unread badge
-              if (hasUnread) ...[
-                const SizedBox(width: AppSpacing.sm),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(alpha: 0.3),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    conv.unreadCount > 99 ? '99+' : conv.unreadCount.toString(),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _getContextColor(String? type) {
-    switch (type) {
-      case 'swap':
-        return AppColors.warning;
-      case 'land':
-        return AppColors.success;
-      case 'trophy':
-        return AppColors.info;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
-
-  String _formatTime(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    final today = DateTime(now.year, now.month, now.day);
-    final messageDay = DateTime(date.year, date.month, date.day);
-
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24 && messageDay == today) return '${diff.inHours}h';
-    
-    // Yesterday
-    if (messageDay == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    
-    // This week (show day name)
-    if (diff.inDays < 7) {
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return days[date.weekday - 1];
-    }
-
-    // Older (show date)
-    return '${date.month}/${date.day}';
-  }
-}
-
-class _AvatarInitial extends StatelessWidget {
-  const _AvatarInitial({
-    required this.name,
-    required this.hasUnread,
-  });
-
-  final String name;
-  final bool hasUnread;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : 'U',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: hasUnread ? AppColors.accent : AppColors.primary,
-        ),
-      ),
-    );
-  }
-}
-
-/// Button to start a new message
 class _NewMessageButton extends StatefulWidget {
   const _NewMessageButton({required this.onNewMessage});
-  
+
   final VoidCallback onNewMessage;
-  
+
   @override
   State<_NewMessageButton> createState() => _NewMessageButtonState();
 }
 
 class _NewMessageButtonState extends State<_NewMessageButton> {
   bool _isHovered = false;
-  
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
@@ -638,16 +720,12 @@ class _NewMessageButtonState extends State<_NewMessageButton> {
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             boxShadow: _isHovered ? AppColors.shadowAccent : null,
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.edit_outlined,
-                size: 16,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 6),
-              const Text(
+              Icon(Icons.edit_outlined, size: 16, color: Colors.white),
+              SizedBox(width: 6),
+              Text(
                 'New',
                 style: TextStyle(
                   fontSize: 13,
@@ -663,12 +741,12 @@ class _NewMessageButtonState extends State<_NewMessageButton> {
   }
 }
 
-/// User search content for new message modal
+/// User search content for new message modal.
 class _UserSearchContent extends ConsumerStatefulWidget {
   const _UserSearchContent({required this.onUserSelected});
-  
+
   final void Function(String userId, String userName) onUserSelected;
-  
+
   @override
   ConsumerState<_UserSearchContent> createState() => _UserSearchContentState();
 }
@@ -678,13 +756,13 @@ class _UserSearchContentState extends ConsumerState<_UserSearchContent> {
   List<Map<String, dynamic>> _results = [];
   bool _isSearching = false;
   String? _error;
-  
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _search(String query) async {
     if (query.length < 2) {
       setState(() {
@@ -693,22 +771,22 @@ class _UserSearchContentState extends ConsumerState<_UserSearchContent> {
       });
       return;
     }
-    
+
     setState(() => _isSearching = true);
-    
+
     try {
       final client = ref.read(supabaseClientProvider);
       if (client == null) throw Exception('Not connected');
-      
+
       final currentUserId = client.auth.currentUser?.id;
-      
+
       final response = await client
           .from('profiles')
           .select('id, username, display_name, avatar_path')
           .or('username.ilike.%$query%,display_name.ilike.%$query%')
           .neq('id', currentUserId ?? '')
           .limit(10);
-      
+
       if (mounted) {
         setState(() {
           _results = List<Map<String, dynamic>>.from(response);
@@ -724,20 +802,19 @@ class _UserSearchContentState extends ConsumerState<_UserSearchContent> {
       }
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Search input
         TextField(
           controller: _searchController,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: 'Search by username or name...',
+            hintText: 'Search by @username or name...',
             prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textTertiary),
-            suffixIcon: _isSearching 
+            suffixIcon: _isSearching
                 ? const Padding(
                     padding: EdgeInsets.all(12),
                     child: SizedBox(
@@ -759,54 +836,39 @@ class _UserSearchContentState extends ConsumerState<_UserSearchContent> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              borderSide: BorderSide(color: AppColors.accent),
+              borderSide: const BorderSide(color: AppColors.accent),
             ),
           ),
           onChanged: (value) => _search(value.trim()),
         ),
         const SizedBox(height: AppSpacing.md),
-        
-        // Results
         if (_error != null)
           Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
-            child: Text(
-              'Error searching: $_error',
-              style: TextStyle(color: AppColors.error),
-            ),
+            child: Text('Error: $_error', style: TextStyle(color: AppColors.error)),
           )
         else if (_results.isEmpty && _searchController.text.length >= 2)
           Padding(
             padding: const EdgeInsets.all(AppSpacing.xl),
             child: Column(
               children: [
-                Icon(
-                  Icons.person_search_rounded,
-                  size: 40,
-                  color: AppColors.textTertiary,
-                ),
+                Icon(Icons.person_search_rounded, size: 40, color: AppColors.textTertiary),
                 const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'No users found',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
+                Text('No users found', style: TextStyle(color: AppColors.textSecondary)),
               ],
             ),
           )
         else if (_results.isEmpty)
           Padding(
             padding: const EdgeInsets.all(AppSpacing.xl),
-            child: Text(
-              'Type to search for users',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
+            child: Text('Type to search for users', style: TextStyle(color: AppColors.textSecondary)),
           )
         else
           ...List.generate(_results.length, (index) {
             final user = _results[index];
             final name = user['display_name'] ?? user['username'] ?? 'User';
             final username = user['username'];
-            
+
             return _UserResultTile(
               name: name,
               username: username,
@@ -824,18 +886,18 @@ class _UserResultTile extends StatefulWidget {
     required this.username,
     required this.onTap,
   });
-  
+
   final String name;
   final String? username;
   final VoidCallback onTap;
-  
+
   @override
   State<_UserResultTile> createState() => _UserResultTileState();
 }
 
 class _UserResultTileState extends State<_UserResultTile> {
   bool _isHovered = false;
-  
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
@@ -862,7 +924,7 @@ class _UserResultTileState extends State<_UserResultTile> {
                 height: 40,
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
@@ -891,10 +953,7 @@ class _UserResultTileState extends State<_UserResultTile> {
                     if (widget.username != null)
                       Text(
                         '@${widget.username}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                   ],
                 ),

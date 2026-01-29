@@ -12,9 +12,7 @@ import 'package:shed/services/supabase_service.dart';
 import 'package:shed/utils/navigation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// 💬 CONVERSATION SCREEN - 2025 PREMIUM
-///
-/// Real-time 1:1 chat with message history and pagination.
+/// Thread/Conversation Screen - Real-time chat view.
 class ConversationScreen extends ConsumerStatefulWidget {
   const ConversationScreen({
     super.key,
@@ -32,16 +30,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
 
-  List<Message> _messages = [];
+  List<ThreadMessage> _messages = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMoreMessages = false;
   bool _isSending = false;
   String? _error;
 
-  String? _otherUserName;
-  String? _subjectLabel;
-
+  MessageThread? _thread;
   RealtimeChannel? _channel;
 
   @override
@@ -66,12 +62,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   }
 
   void _onTextChanged() {
-    // Trigger rebuild for send button enabled state
     setState(() {});
   }
 
   void _onScroll() {
-    // Load more messages when scrolling near the top
     if (_scrollController.position.pixels < 100 &&
         !_isLoadingMore &&
         _hasMoreMessages &&
@@ -90,23 +84,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       final service = ref.read(messagingServiceProvider);
       final page = await service.getMessages(widget.conversationId, limit: 50);
 
-      // Get conversation details from inbox
-      final inbox = await service.getInbox();
-      final conversation = inbox.firstWhere(
-        (c) => c.id == widget.conversationId,
-        orElse: () => Conversation(
-          id: widget.conversationId,
-          otherUserId: '',
-          otherUserName: 'User',
-        ),
-      );
+      // Get thread info
+      final thread = await service.getThread(widget.conversationId);
 
       if (mounted) {
         setState(() {
           _messages = page.messages;
           _hasMoreMessages = page.hasMore;
-          _otherUserName = conversation.otherUserName;
-          _subjectLabel = conversation.subjectLabel;
+          _thread = thread;
           _isLoading = false;
         });
         _scrollToBottom();
@@ -136,7 +121,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
       );
 
       if (mounted) {
-        // Preserve scroll position when prepending messages
         final oldScrollPosition = _scrollController.position.pixels;
         final oldMaxScroll = _scrollController.position.maxScrollExtent;
 
@@ -146,7 +130,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           _isLoadingMore = false;
         });
 
-        // Restore scroll position after new messages are added
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
             final newMaxScroll = _scrollController.position.maxScrollExtent;
@@ -165,21 +148,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
   Future<void> _markAsRead() async {
     try {
       final service = ref.read(messagingServiceProvider);
-      await service.markConversationRead(widget.conversationId);
-      // Refresh unread count
-      ref.read(unreadCountProvider.notifier).refresh();
+      await service.markThreadRead(widget.conversationId);
+      ref.read(messageUnreadCountProvider.notifier).refresh();
     } catch (_) {}
   }
 
   void _subscribeToMessages() {
     try {
       final service = ref.read(messagingServiceProvider);
-      _channel = service.subscribeToConversation(
+      _channel = service.subscribeToThread(
         widget.conversationId,
         (message) {
           if (mounted) {
             final currentUserId = ref.read(currentUserProvider)?.id;
-            // Only add if not from current user (avoid duplicates from send)
             if (message.senderId != currentUserId) {
               setState(() {
                 _messages.add(message);
@@ -214,7 +195,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     try {
       final service = ref.read(messagingServiceProvider);
       final message = await service.sendMessage(
-        conversationId: widget.conversationId,
+        threadId: widget.conversationId,
         body: body,
       );
 
@@ -237,7 +218,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
   }
 
-  /// Handle keyboard shortcuts for web: Enter sends, Shift+Enter adds newline
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (!kIsWeb) return KeyEventResult.ignored;
 
@@ -255,6 +235,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     final currentUserId = ref.watch(currentUserProvider)?.id;
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
     final hasText = _messageController.text.trim().isNotEmpty;
+    final isClub = _thread?.type == ThreadType.club;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -266,30 +247,72 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _otherUserName ?? 'Conversation',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+        title: _thread == null
+            ? const Text('Loading...')
+            : Row(
+                children: [
+                  // Avatar
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isClub
+                          ? AppColors.info.withValues(alpha: 0.12)
+                          : AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(isClub ? 8 : 18),
+                    ),
+                    child: Center(
+                      child: isClub
+                          ? const Icon(Icons.groups_rounded, size: 18, color: AppColors.info)
+                          : Text(
+                              _thread!.displayName.isNotEmpty
+                                  ? _thread!.displayName[0].toUpperCase()
+                                  : 'U',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _thread!.displayName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (!isClub && _thread!.handle != null)
+                          Text(
+                            '@${_thread!.handle}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textTertiary,
+                            ),
+                          )
+                        else if (isClub)
+                          Text(
+                            'Club Chat',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.info,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            if (_subjectLabel != null && _subjectLabel!.isNotEmpty)
-              Text(
-                _subjectLabel!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.info,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-          ],
-        ),
         actions: [
-          // Home button
           IconButton(
             icon: const Icon(Icons.home_rounded),
             tooltip: 'Home',
@@ -298,10 +321,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: AppColors.borderSubtle,
-          ),
+          child: Container(height: 1, color: AppColors.borderSubtle),
         ),
       ),
       body: Column(
@@ -337,7 +357,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                             padding: const EdgeInsets.all(AppSpacing.md),
                             itemCount: _messages.length + (_isLoadingMore ? 1 : 0),
                             itemBuilder: (context, index) {
-                              // Show loading indicator at top when loading older messages
                               if (_isLoadingMore && index == 0) {
                                 return const Padding(
                                   padding: EdgeInsets.all(AppSpacing.md),
@@ -357,15 +376,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                               final messageIndex = _isLoadingMore ? index - 1 : index;
                               final message = _messages[messageIndex];
                               final isMine = message.isMine(currentUserId);
-                              final showAvatar = messageIndex == 0 ||
-                                  _messages[messageIndex - 1].senderId !=
-                                      message.senderId;
+                              final showSender = isClub &&
+                                  !isMine &&
+                                  (messageIndex == 0 ||
+                                      _messages[messageIndex - 1].senderId != message.senderId);
 
                               return _MessageBubble(
                                 message: message,
                                 isMine: isMine,
-                                showAvatar: showAvatar,
-                                otherUserName: _otherUserName ?? 'U',
+                                showSender: showSender,
+                                isClubChat: isClub,
                               );
                             },
                           ),
@@ -381,16 +401,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
             ),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              border: Border(
-                top: BorderSide(color: AppColors.borderSubtle),
-              ),
+              border: Border(top: BorderSide(color: AppColors.borderSubtle)),
             ),
             child: SafeArea(
               top: false,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Text input with keyboard handling
                   Expanded(
                     child: Container(
                       constraints: const BoxConstraints(maxHeight: 120),
@@ -426,8 +443,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
-
-                  // Send button
                   _SendButton(
                     isSending: _isSending,
                     isEnabled: hasText && !_isSending,
@@ -468,11 +483,7 @@ class _EmptyConversationState extends StatelessWidget {
                 ),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
               ),
-              child: Icon(
-                Icons.waving_hand_rounded,
-                size: 32,
-                color: AppColors.accent,
-              ),
+              child: Icon(Icons.waving_hand_rounded, size: 32, color: AppColors.accent),
             ),
             const SizedBox(height: AppSpacing.lg),
             const Text(
@@ -486,10 +497,7 @@ class _EmptyConversationState extends StatelessWidget {
             const SizedBox(height: AppSpacing.xs),
             Text(
               'Start the conversation with a friendly message.',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],
@@ -503,135 +511,123 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
     required this.isMine,
-    required this.showAvatar,
-    required this.otherUserName,
+    required this.showSender,
+    required this.isClubChat,
   });
 
-  final Message message;
+  final ThreadMessage message;
   final bool isMine;
-  final bool showAvatar;
-  final String otherUserName;
+  final bool showSender;
+  final bool isClubChat;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        top: showAvatar ? AppSpacing.md : 2,
+        top: showSender ? AppSpacing.md : 2,
         bottom: 2,
       ),
-      child: Row(
-        mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          // Avatar (for received messages)
-          if (!isMine) ...[
-            if (showAvatar)
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          // Sender name for club chat
+          if (showSender && isClubChat)
+            Padding(
+              padding: const EdgeInsets.only(left: 44, bottom: 4),
+              child: Text(
+                message.senderName,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
                 ),
-                child: Center(
-                  child: Text(
-                    otherUserName.isNotEmpty ? otherUserName[0].toUpperCase() : 'U',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-              )
-            else
-              const SizedBox(width: 32),
-            const SizedBox(width: AppSpacing.sm),
-          ],
+              ),
+            ),
 
-          // Message bubble
-          Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.7,
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md,
-                vertical: AppSpacing.sm,
-              ),
-              decoration: BoxDecoration(
-                color: isMine ? AppColors.accent : AppColors.surface,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(AppSpacing.radiusLg),
-                  topRight: const Radius.circular(AppSpacing.radiusLg),
-                  bottomLeft: Radius.circular(isMine ? AppSpacing.radiusLg : 4),
-                  bottomRight: Radius.circular(isMine ? 4 : AppSpacing.radiusLg),
-                ),
-                border: isMine ? null : Border.all(color: AppColors.borderSubtle),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Subject context (if first message with subject)
-                  if (message.subjectTitle != null && message.subjectType != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+          Row(
+            mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // Avatar (for received messages)
+              if (!isMine) ...[
+                if (showSender || !isClubChat)
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Center(
                       child: Text(
-                        _formatSubject(message.subjectType!, message.subjectTitle!),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: isMine
-                              ? Colors.white.withValues(alpha: 0.8)
-                              : AppColors.info,
+                        message.senderName.isNotEmpty
+                            ? message.senderName[0].toUpperCase()
+                            : 'U',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
                         ),
                       ),
                     ),
+                  )
+                else
+                  const SizedBox(width: 32),
+                const SizedBox(width: AppSpacing.sm),
+              ],
 
-                  // Message body
-                  Text(
-                    message.body,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: isMine ? Colors.white : AppColors.textPrimary,
-                      height: 1.3,
-                    ),
+              // Message bubble
+              Flexible(
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.7,
                   ),
-
-                  // Time
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTime(message.createdAt),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isMine
-                          ? Colors.white.withValues(alpha: 0.7)
-                          : AppColors.textTertiary,
-                    ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
                   ),
-                ],
+                  decoration: BoxDecoration(
+                    color: isMine ? AppColors.accent : AppColors.surface,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(AppSpacing.radiusLg),
+                      topRight: const Radius.circular(AppSpacing.radiusLg),
+                      bottomLeft: Radius.circular(isMine ? AppSpacing.radiusLg : 4),
+                      bottomRight: Radius.circular(isMine ? 4 : AppSpacing.radiusLg),
+                    ),
+                    border: isMine ? null : Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        message.body,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: isMine ? Colors.white : AppColors.textPrimary,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatTime(message.createdAt),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMine
+                              ? Colors.white.withValues(alpha: 0.7)
+                              : AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
 
-          // Spacer for sent messages
-          if (isMine) const SizedBox(width: 40),
+              if (isMine) const SizedBox(width: 40),
+            ],
+          ),
         ],
       ),
     );
-  }
-
-  String _formatSubject(String type, String title) {
-    switch (type) {
-      case 'swap':
-        return 'Re: Swap - $title';
-      case 'land':
-        return 'Re: Land - $title';
-      case 'trophy':
-        return 'Re: Trophy - $title';
-      default:
-        return title;
-    }
   }
 
   String _formatTime(DateTime date) {
@@ -686,9 +682,7 @@ class _SendButtonState extends State<_SendButton> {
                 ? AppColors.surface
                 : (_isHovered ? AppColors.accentMuted : AppColors.accent),
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: isDisabled
-                ? Border.all(color: AppColors.borderSubtle)
-                : null,
+            border: isDisabled ? Border.all(color: AppColors.borderSubtle) : null,
             boxShadow: (!isDisabled && _isHovered) ? AppColors.shadowAccent : null,
           ),
           child: widget.isSending
