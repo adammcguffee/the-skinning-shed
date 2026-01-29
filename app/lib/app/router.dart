@@ -40,6 +40,9 @@ import '../features/clubs/clubs_home_screen.dart';
 import '../features/clubs/create_club_screen.dart';
 import '../features/clubs/club_detail_screen.dart';
 import '../features/clubs/club_join_screen.dart';
+import '../features/openings/openings_screen.dart';
+import '../features/openings/opening_detail_screen.dart';
+import '../features/openings/create_opening_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/settings/pages/notifications_settings_page.dart';
 import '../features/weather/weather_screen.dart';
@@ -330,6 +333,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           
+          // Openings
+          GoRoute(
+            path: AppRoutes.openings,
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: OpeningsScreen(),
+            ),
+          ),
+          
           // Settings
           GoRoute(
             path: AppRoutes.settings,
@@ -480,6 +491,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final token = state.pathParameters['token']!;
           return ClubJoinScreen(token: token);
+        },
+      ),
+      
+      // Openings routes
+      GoRoute(
+        path: AppRoutes.openingsCreate,
+        builder: (context, state) => const CreateOpeningScreen(),
+      ),
+      GoRoute(
+        path: '/openings/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return OpeningDetailScreen(openingId: id);
         },
       ),
       

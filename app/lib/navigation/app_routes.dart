@@ -22,6 +22,7 @@ class AppRoutes {
   static const String messages = '/messages';
   static const String swapShop = '/swap-shop';
   static const String clubs = '/clubs';
+  static const String openings = '/openings';
   static const String weather = '/weather';
   static const String research = '/research';
   static const String officialLinks = '/official-links';
@@ -38,6 +39,10 @@ class AppRoutes {
   static const String clubsCreate = '/clubs/create';
   static String clubDetail(String id) => '/clubs/$id';
   static String clubJoin(String token) => '/clubs/join/$token';
+  
+  // Openings routes
+  static const String openingsCreate = '/openings/create';
+  static String openingDetail(String id) => '/openings/$id';
   
   // Notifications
   static const String notifications = '/notifications';
@@ -77,10 +82,11 @@ class AppRoutes {
   static const int indexMessages = 5;
   static const int indexSwapShop = 6;
   static const int indexClubs = 7;
-  static const int indexWeather = 8;
-  static const int indexResearch = 9;
-  static const int indexOfficialLinks = 10;
-  static const int indexSettings = 11;
+  static const int indexOpenings = 8;
+  static const int indexWeather = 9;
+  static const int indexResearch = 10;
+  static const int indexOfficialLinks = 11;
+  static const int indexSettings = 12;
   
   /// Get the route path for a given navigation index.
   static String pathForIndex(int index) {
@@ -93,6 +99,7 @@ class AppRoutes {
       case indexMessages: return messages;
       case indexSwapShop: return swapShop;
       case indexClubs: return clubs;
+      case indexOpenings: return openings;
       case indexWeather: return weather;
       case indexResearch: return research;
       case indexOfficialLinks: return officialLinks;
@@ -110,6 +117,7 @@ class AppRoutes {
     if (location.startsWith(messages)) return indexMessages;
     if (location.startsWith(swapShop)) return indexSwapShop;
     if (location.startsWith(clubs)) return indexClubs;
+    if (location.startsWith(openings)) return indexOpenings;
     if (location.startsWith(weather)) return indexWeather;
     if (location.startsWith(research)) return indexResearch;
     if (location.startsWith(officialLinks)) return indexOfficialLinks;
@@ -128,6 +136,7 @@ class AppRoutes {
       case indexMessages: return 'Messages';
       case indexSwapShop: return 'Swap Shop';
       case indexClubs: return 'Clubs';
+      case indexOpenings: return 'Openings';
       case indexWeather: return 'Weather';
       case indexResearch: return 'Research';
       case indexOfficialLinks: return 'Official Links';

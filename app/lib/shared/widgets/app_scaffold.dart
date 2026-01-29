@@ -96,6 +96,11 @@ class AppScaffold extends ConsumerWidget {
       label: 'Clubs',
     ),
     AppNavDestination(
+      icon: Icons.group_add_outlined,
+      selectedIcon: Icons.group_add_rounded,
+      label: 'Openings',
+    ),
+    AppNavDestination(
       icon: Icons.cloud_outlined,
       selectedIcon: Icons.cloud_rounded,
       label: 'Weather',
