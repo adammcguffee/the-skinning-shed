@@ -40,6 +40,8 @@ import '../features/clubs/clubs_home_screen.dart';
 import '../features/clubs/create_club_screen.dart';
 import '../features/clubs/club_detail_screen.dart';
 import '../features/clubs/club_join_screen.dart';
+import '../features/notifications/notifications_screen.dart';
+import '../features/settings/pages/notifications_settings_page.dart';
 import '../features/weather/weather_screen.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
@@ -556,6 +558,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.settingsFeedback,
         builder: (context, state) => const FeedbackPage(),
+      ),
+      
+      // Notifications
+      GoRoute(
+        path: AppRoutes.notifications,
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.settingsNotifications,
+        builder: (context, state) => const NotificationsSettingsPage(),
       ),
     ],
   );

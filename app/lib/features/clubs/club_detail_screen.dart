@@ -675,6 +675,7 @@ class _StandsTabState extends ConsumerState<_StandsTab> {
         stand.id,
         widget.club.settings.signInTtlHours,
         note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
+        standName: stand.name,
       );
       
       if (mounted) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'app_buttons.dart';
+import 'notification_bell.dart';
 
 /// A modern top bar for web layout.
 class AppTopBar extends StatelessWidget {
@@ -13,6 +14,7 @@ class AppTopBar extends StatelessWidget {
     this.onSearch,
     this.onFilter,
     this.leading,
+    this.showNotificationBell = false,
   });
 
   final String title;
@@ -21,6 +23,7 @@ class AppTopBar extends StatelessWidget {
   final VoidCallback? onSearch;
   final VoidCallback? onFilter;
   final Widget? leading;
+  final bool showNotificationBell;
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +77,10 @@ class AppTopBar extends StatelessWidget {
               onPressed: onFilter,
               tooltip: 'Filter',
             ),
+          ],
+          if (showNotificationBell) ...[
+            const SizedBox(width: AppSpacing.xs),
+            const NotificationBell(),
           ],
           if (actions.isNotEmpty) ...[
             const SizedBox(width: AppSpacing.sm),

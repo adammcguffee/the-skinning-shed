@@ -39,6 +39,9 @@ class AppRoutes {
   static String clubDetail(String id) => '/clubs/$id';
   static String clubJoin(String token) => '/clubs/join/$token';
   
+  // Notifications
+  static const String notifications = '/notifications';
+  
   // Settings sub-pages
   static const String settingsPrivacy = '/settings/privacy';
   static const String settingsTerms = '/settings/terms';
@@ -46,6 +49,7 @@ class AppRoutes {
   static const String settingsHelp = '/settings/help';
   static const String settingsAbout = '/settings/about';
   static const String settingsFeedback = '/settings/feedback';
+  static const String settingsNotifications = '/settings/notifications';
   
   // Admin pages
   static const String adminReports = '/admin/reports';

@@ -724,18 +724,62 @@ class ClubsService {
     if (userId == null) return false;
     
     try {
-      await _client.from('club_posts').insert({
+      // Insert the post
+      final response = await _client.from('club_posts').insert({
         'club_id': clubId,
         'author_id': userId,
         'content': content,
         'photo_path': photoPath,
-      });
+      }).select('id').single();
+      
+      // Trigger notification (fire and forget)
+      _notifyClubEvent(
+        type: 'club_post',
+        clubId: clubId,
+        actorId: userId,
+        postId: response['id'] as String,
+        postPreview: content,
+      );
+      
       return true;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[ClubsService] Error creating post: $e');
       }
       return false;
+    }
+  }
+  
+  /// Notify club members of an event (fire and forget)
+  Future<void> _notifyClubEvent({
+    required String type,
+    required String clubId,
+    required String actorId,
+    String? postId,
+    String? postPreview,
+    String? standId,
+    String? standName,
+  }) async {
+    if (_client == null) return;
+    
+    try {
+      await _client.functions.invoke(
+        'notify-club-event',
+        body: {
+          'type': type,
+          'clubId': clubId,
+          'actorId': actorId,
+          if (postId != null) 'postId': postId,
+          if (postPreview != null) 'postPreview': postPreview,
+          if (standId != null) 'standId': standId,
+          if (standName != null) 'standName': standName,
+        },
+      );
+    } catch (e) {
+      // Don't fail the main operation if notification fails
+      if (kDebugMode) {
+        debugPrint('[ClubsService] Notification error (non-fatal): $e');
+      }
     }
   }
   

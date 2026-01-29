@@ -274,7 +274,7 @@ class StandsService {
   }
   
   /// Sign in to a stand
-  Future<SignInResult> signIn(String clubId, String standId, int ttlHours, {String? note}) async {
+  Future<SignInResult> signIn(String clubId, String standId, int ttlHours, {String? note, String? standName}) async {
     if (_client == null) {
       return SignInResult.error('Not connected');
     }
@@ -307,6 +307,15 @@ class StandsService {
         'expires_at': expiresAt.toIso8601String(),
         'note': note,
       });
+      
+      // Trigger notification (fire and forget)
+      _notifyStandEvent(
+        type: 'stand_signin',
+        clubId: clubId,
+        actorId: userId,
+        standId: standId,
+        standName: standName,
+      );
       
       return SignInResult.success();
     } on PostgrestException catch (e) {
@@ -400,6 +409,35 @@ class StandsService {
       return null;
     } catch (e) {
       return null;
+    }
+  }
+  
+  /// Notify club members of stand event (fire and forget)
+  Future<void> _notifyStandEvent({
+    required String type,
+    required String clubId,
+    required String actorId,
+    String? standId,
+    String? standName,
+  }) async {
+    if (_client == null) return;
+    
+    try {
+      await _client.functions.invoke(
+        'notify-club-event',
+        body: {
+          'type': type,
+          'clubId': clubId,
+          'actorId': actorId,
+          if (standId != null) 'standId': standId,
+          if (standName != null) 'standName': standName,
+        },
+      );
+    } catch (e) {
+      // Don't fail the main operation if notification fails
+      if (kDebugMode) {
+        debugPrint('[StandsService] Notification error (non-fatal): $e');
+      }
     }
   }
 }

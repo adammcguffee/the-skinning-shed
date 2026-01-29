@@ -9,6 +9,7 @@ export 'app_nav_rail.dart';
 export 'app_skeleton.dart';
 export 'app_surface.dart';
 export 'app_top_bar.dart';
+export 'notification_bell.dart';
 export 'banner_header.dart';
 export 'explore_category_tile.dart';
 export 'page_header.dart';
