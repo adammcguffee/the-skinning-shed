@@ -288,6 +288,14 @@ class _NotificationTile extends StatelessWidget {
         return Icons.chat_bubble_rounded;
       case 'opening_alert':
         return Icons.group_add_rounded;
+      case 'club_invite':
+        return Icons.mail_rounded;
+      case 'mention':
+        return Icons.alternate_email_rounded;
+      case 'like':
+        return Icons.favorite_rounded;
+      case 'comment':
+        return Icons.comment_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -303,6 +311,14 @@ class _NotificationTile extends StatelessWidget {
         return AppColors.success;
       case 'opening_alert':
         return AppColors.accent;
+      case 'club_invite':
+        return AppColors.info;
+      case 'mention':
+        return AppColors.accent;
+      case 'like':
+        return AppColors.error; // Red heart for likes
+      case 'comment':
+        return AppColors.primary;
       default:
         return AppColors.textSecondary;
     }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -56,6 +57,45 @@ class SocialService {
         'post_id': postId,
         'user_id': userId,
       });
+      
+      // Create notification for post owner (if not liking own post)
+      try {
+        final post = await _client
+            .from('trophy_posts')
+            .select('user_id')
+            .eq('id', postId)
+            .maybeSingle();
+        
+        final postOwnerId = post?['user_id'] as String?;
+        if (postOwnerId != null && postOwnerId != userId) {
+          // Get liker's username
+          final profile = await _client
+              .from('profiles')
+              .select('username, display_name')
+              .eq('id', userId)
+              .maybeSingle();
+          
+          final likerName = profile?['display_name'] ?? profile?['username'] ?? 'Someone';
+          
+          await _client.from('notifications').insert({
+            'user_id': postOwnerId,
+            'type': 'like',
+            'title': 'New Like',
+            'body': '$likerName liked your trophy post',
+            'data': {
+              'route': '/trophy/$postId',
+              'post_id': postId,
+              'liker_id': userId,
+            },
+          });
+        }
+      } catch (e) {
+        // Don't fail the like if notification fails
+        if (kDebugMode) {
+          debugPrint('[SocialService] Error creating like notification: $e');
+        }
+      }
+      
       return true;
     }
   }
@@ -128,6 +168,45 @@ class SocialService {
           )
         ''')
         .single();
+    
+    // Create notification for post owner (if not commenting on own post)
+    try {
+      final post = await _client
+          .from('trophy_posts')
+          .select('user_id')
+          .eq('id', postId)
+          .maybeSingle();
+      
+      final postOwnerId = post?['user_id'] as String?;
+      if (postOwnerId != null && postOwnerId != userId) {
+        // Get commenter's username
+        final profile = await _client
+            .from('profiles')
+            .select('username, display_name')
+            .eq('id', userId)
+            .maybeSingle();
+        
+        final commenterName = profile?['display_name'] ?? profile?['username'] ?? 'Someone';
+        final truncatedBody = body.length > 50 ? '${body.substring(0, 50)}...' : body;
+        
+        await _client.from('notifications').insert({
+          'user_id': postOwnerId,
+          'type': 'comment',
+          'title': 'New Comment',
+          'body': '$commenterName commented: "$truncatedBody"',
+          'data': {
+            'route': '/trophy/$postId',
+            'post_id': postId,
+            'commenter_id': userId,
+          },
+        });
+      }
+    } catch (e) {
+      // Don't fail the comment if notification fails
+      if (kDebugMode) {
+        debugPrint('[SocialService] Error creating comment notification: $e');
+      }
+    }
     
     return Comment.fromJson(response);
   }

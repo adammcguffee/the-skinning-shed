@@ -58,6 +58,7 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 /// Auth state notifier that listens to Supabase auth changes.
 /// Also triggers location prefetch in background after auth succeeds.
 /// Tracks whether user needs to choose a username.
+/// Stores intended route for redirect after login.
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier(this._service) {
     _subscription = _service.authStateChanges?.listen((state) {
@@ -95,6 +96,21 @@ class AuthNotifier extends ChangeNotifier {
   /// Username tracking
   bool _hasCheckedUsername = false;
   bool _needsUsername = false;
+  
+  /// Store intended route before redirecting to auth
+  String? _intendedRoute;
+  
+  /// Get and clear the intended route (one-time use)
+  String? consumeIntendedRoute() {
+    final route = _intendedRoute;
+    _intendedRoute = null;
+    return route;
+  }
+  
+  /// Set intended route when redirecting to auth
+  void setIntendedRoute(String route) {
+    _intendedRoute = route;
+  }
 
   bool get isAuthenticated => _session != null;
   Session? get session => _session;
@@ -219,16 +235,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthenticated = authNotifier.isAuthenticated;
       final isAuthRoute = state.matchedLocation == AppRoutes.auth;
       final isChooseUsernameRoute = state.matchedLocation == AppRoutes.chooseUsername;
+      final currentLocation = state.matchedLocation;
+      final fullUri = state.uri.toString();
       
       // If not authenticated and not on auth page, redirect to auth
+      // But save the intended route so we can redirect back after login
       if (!isAuthenticated && !isAuthRoute) {
+        // Save the intended route (use full URI to preserve path parameters)
+        authNotifier.setIntendedRoute(fullUri);
         return AppRoutes.auth;
       }
       
-      // If authenticated and on auth page, redirect to home (or choose-username if needed)
+      // If authenticated and on auth page, redirect to intended route or home
       if (isAuthenticated && isAuthRoute) {
         if (authNotifier.hasCheckedUsername && authNotifier.needsUsername) {
           return AppRoutes.chooseUsername;
+        }
+        // Check for intended route first
+        final intendedRoute = authNotifier.consumeIntendedRoute();
+        if (intendedRoute != null && intendedRoute != AppRoutes.auth) {
+          return intendedRoute;
         }
         return AppRoutes.feed;
       }

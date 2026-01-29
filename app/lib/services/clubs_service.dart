@@ -854,6 +854,32 @@ class ClubsService {
           'user_banned' => 'This user has been banned from the club',
           _ => 'Failed to send invite',
         };
+      } else {
+        // Create notification for the invited user
+        try {
+          final targetUserId = json['target_user_id'] as String?;
+          if (targetUserId != null) {
+            final club = await getClub(clubId);
+            final clubName = club?.name ?? 'a hunting club';
+            
+            await _client.from('notifications').insert({
+              'user_id': targetUserId,
+              'type': 'club_invite',
+              'title': 'Club Invitation',
+              'body': 'You\'ve been invited to join $clubName',
+              'data': {
+                'route': '/clubs',
+                'club_id': clubId,
+                'club_name': clubName,
+              },
+            });
+          }
+        } catch (notifError) {
+          // Don't fail the invite if notification fails
+          if (kDebugMode) {
+            debugPrint('[ClubsService] Error creating notification: $notifError');
+          }
+        }
       }
       
       return (success: success, error: error);

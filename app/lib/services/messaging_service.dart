@@ -340,6 +340,7 @@ class MessagingService {
     required ThreadMessage message,
   }) async {
     try {
+      // Call edge function for push notification
       await _client?.functions.invoke(
         'notify-message',
         body: {
@@ -354,6 +355,44 @@ class MessagingService {
       // Don't fail send if notification fails
       if (kDebugMode) {
         debugPrint('[MessagingService] Push notification error: $e');
+      }
+    }
+    
+    // Create in-app notification for other thread participants
+    try {
+      // Get thread participants
+      final participants = await _client
+          ?.from('thread_participants')
+          .select('user_id')
+          .eq('thread_id', threadId)
+          .neq('user_id', message.senderId);
+      
+      if (participants != null) {
+        final senderName = message.senderDisplayName ?? message.senderUsername ?? 'Someone';
+        final preview = message.body.length > 50 
+            ? '${message.body.substring(0, 50)}...' 
+            : message.body;
+        
+        for (final p in participants) {
+          final recipientId = p['user_id'] as String?;
+          if (recipientId != null) {
+            await _client?.from('notifications').insert({
+              'user_id': recipientId,
+              'type': 'message',
+              'title': 'New Message',
+              'body': '$senderName: $preview',
+              'data': {
+                'route': '/messages/$threadId',
+                'thread_id': threadId,
+                'sender_id': message.senderId,
+              },
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[MessagingService] In-app notification error: $e');
       }
     }
   }

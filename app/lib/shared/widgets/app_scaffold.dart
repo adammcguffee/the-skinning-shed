@@ -6,10 +6,12 @@ import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/navigation/app_routes.dart';
 import 'package:shed/services/ad_service.dart';
 import 'package:shed/services/supabase_service.dart';
+import 'package:shed/services/push_notification_service.dart';
 import 'package:shed/shared/widgets/ad_slot.dart';
 import 'package:shed/shared/widgets/banner_header.dart';
 import 'package:shed/shared/widgets/camo_background.dart';
 import 'package:shed/shared/widgets/modals/create_menu_sheet.dart';
+import 'package:shed/shared/widgets/notification_bell.dart';
 import 'package:shed/services/messaging_service.dart';
 import 'app_nav_rail.dart';
 
@@ -233,7 +235,17 @@ class AppScaffold extends ConsumerWidget {
                       child: Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 900),
-                          child: const BannerHeader.appTop(),
+                          child: Stack(
+                            children: [
+                              const BannerHeader.appTop(),
+                              // Notification bell - top right
+                              Positioned(
+                                top: 8,
+                                right: 0,
+                                child: NotificationBell(color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -332,7 +344,17 @@ class AppScaffold extends ConsumerWidget {
               child: HeroCamoBackground(
                 child: Padding(
                   padding: EdgeInsets.only(top: 6, left: horizontalPadding, right: horizontalPadding),
-                  child: const BannerHeader.appTop(),
+                  child: Stack(
+                    children: [
+                      const BannerHeader.appTop(),
+                      // Notification bell - top right
+                      Positioned(
+                        top: 4,
+                        right: 0,
+                        child: NotificationBell(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -709,6 +731,15 @@ class _MoreSheet extends StatelessWidget {
                       label: 'Official Links',
                       isSelected: currentIndex == AppRoutes.indexOfficialLinks,
                       onTap: () => onDestinationSelected(AppRoutes.indexOfficialLinks),
+                    ),
+                    _MoreSheetItem(
+                      icon: Icons.notifications_outlined,
+                      label: 'Notifications',
+                      isSelected: false,
+                      onTap: () {
+                        Navigator.pop(context);
+                        GoRouter.of(context).push(AppRoutes.notifications);
+                      },
                     ),
                     _MoreSheetItem(
                       icon: Icons.settings_outlined,
