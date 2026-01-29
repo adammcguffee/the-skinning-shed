@@ -14,14 +14,12 @@ class ModerationService {
   /// Fetch all content reports with reporter and target info.
   /// Only admins can access this.
   Future<List<ContentReport>> fetchReports({
-    String? statusFilter, // 'pending', 'reviewed', 'resolved', 'dismissed', null = all
+    String? statusFilter, // 'pending', 'resolved', null = all
     int limit = 50,
   }) async {
     if (_client == null) return [];
     
-    var query = _client
-        .from('content_reports')
-        .select('''
+    final selectQuery = '''
           id,
           reporter_id,
           post_id,
@@ -70,23 +68,40 @@ class ModerationService {
               display_name
             )
           )
-        ''')
-        .order('created_at', ascending: false)
-        .limit(limit);
+        ''';
+    
+    List<dynamic> response;
     
     // Filter by status if provided
-    if (statusFilter != null) {
-      if (statusFilter == 'pending') {
-        query = query.isFilter('reviewed_at', null);
-      } else {
-        query = query.not('reviewed_at', 'is', null);
-      }
+    if (statusFilter == 'pending') {
+      response = await _client
+          .from('content_reports')
+          .select(selectQuery)
+          .isFilter('reviewed_at', null)
+          .order('created_at', ascending: false)
+          .limit(limit);
+    } else if (statusFilter == 'resolved') {
+      response = await _client
+          .from('content_reports')
+          .select(selectQuery)
+          .neq('reviewed_at', '')
+          .order('created_at', ascending: false)
+          .limit(limit);
+    } else {
+      response = await _client
+          .from('content_reports')
+          .select(selectQuery)
+          .order('created_at', ascending: false)
+          .limit(limit);
     }
     
-    final response = await query;
+    // For resolved filter, we fetch all and filter in Dart since neq doesn't handle null well
+    if (statusFilter == 'resolved') {
+      response = response.where((r) => r['reviewed_at'] != null).toList();
+    }
     
-    return (response as List)
-        .map((row) => ContentReport.fromJson(row))
+    return response
+        .map((row) => ContentReport.fromJson(row as Map<String, dynamic>))
         .toList();
   }
   
