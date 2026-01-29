@@ -539,66 +539,26 @@ class _PremiumStandsTab extends ConsumerWidget {
   
   Future<void> _showSignInSheet(BuildContext context, WidgetRef ref, ClubStand stand) async {
     final noteController = TextEditingController();
+    int selectedHours = club.settings.signInTtlHours.clamp(1, 12); // Default from club settings, max 12
     
-    final result = await showModalBottomSheet<bool>(
+    final result = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _PremiumBottomSheet(
-        title: 'Sign In',
-        subtitle: stand.name,
-        icon: Icons.login_rounded,
-        child: Column(
-          children: [
-            // Info box - explain auto-expire
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.timer_outlined, size: 18, color: AppColors.primary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Stand hold auto-expires in ${club.settings.signInTtlHours}h to prevent forgotten sign-outs',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _PremiumTextField(
-              controller: noteController,
-              label: 'Note (optional)',
-              hint: 'e.g., Bow hunting, arrived from south',
-              maxLength: 80,
-            ),
-            const SizedBox(height: 24),
-            _PremiumPrimaryButton(
-              label: 'Confirm Sign In',
-              icon: Icons.check_rounded,
-              onPressed: () => Navigator.pop(context, true),
-            ),
-          ],
-        ),
+      builder: (context) => _SignInBottomSheet(
+        standName: stand.name,
+        defaultHours: selectedHours,
+        noteController: noteController,
       ),
     );
     
-    if (result == true && context.mounted) {
+    if (result != null && result > 0 && context.mounted) {
       HapticFeedback.mediumImpact();
       final service = ref.read(standsServiceProvider);
       final signInResult = await service.signIn(
         clubId,
         stand.id,
-        club.settings.signInTtlHours,
+        result, // Use the selected duration
         note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
         standName: stand.name,
       );
@@ -1242,32 +1202,37 @@ class _OccupiedInfo extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             // Expires chip
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: isMySignin 
-                    ? AppColors.primary.withValues(alpha: 0.15)
-                    : AppColors.warning.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.timer_outlined,
-                    size: 10,
-                    color: isMySignin ? AppColors.primary : AppColors.warning,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    'Expires ${signin.timeRemainingFormatted}',
-                    style: TextStyle(
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isMySignin 
+                      ? AppColors.primary.withValues(alpha: 0.15)
+                      : AppColors.warning.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.timer_outlined,
+                      size: 10,
                       color: isMySignin ? AppColors.primary : AppColors.warning,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 3),
+                    Flexible(
+                      child: Text(
+                        '${signin.timeRemainingFormatted} (${signin.expiresAtFormatted})',
+                        style: TextStyle(
+                          color: isMySignin ? AppColors.primary : AppColors.warning,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -1839,30 +1804,57 @@ class _PhotoUploadSheetState extends ConsumerState<_PhotoUploadSheet> {
     final service = ref.read(clubPhotosServiceProvider);
     final cameraLabel = _cameraController.text.trim().isEmpty ? null : _cameraController.text.trim();
     
+    int successCount = 0;
+    int failCount = 0;
+    
     for (final image in widget.images) {
       final bytes = await image.readAsBytes();
-      await service.uploadPhoto(
+      final result = await service.uploadPhoto(
         clubId: widget.clubId,
         imageBytes: bytes,
         fileName: image.name,
         cameraLabel: cameraLabel,
       );
       
+      if (result != null) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+      
       if (mounted) {
-        setState(() => _uploadedCount++);
+        setState(() => _uploadedCount = successCount + failCount);
       }
     }
     
     if (mounted) {
       HapticFeedback.mediumImpact();
+      // Always invalidate to refresh from DB
       widget.onComplete();
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Uploaded $_uploadedCount photo${_uploadedCount == 1 ? '' : 's'}'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      
+      if (successCount > 0 && failCount == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Uploaded $successCount photo${successCount == 1 ? '' : 's'}'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else if (successCount > 0 && failCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Uploaded $successCount photo${successCount == 1 ? '' : 's'}, $failCount failed'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Upload failed. Please try again.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -4095,6 +4087,196 @@ class _PremiumBottomSheet extends StatelessWidget {
               const SizedBox(height: 24),
               
               child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sign-in bottom sheet with duration selector
+class _SignInBottomSheet extends StatefulWidget {
+  const _SignInBottomSheet({
+    required this.standName,
+    required this.defaultHours,
+    required this.noteController,
+  });
+  
+  final String standName;
+  final int defaultHours;
+  final TextEditingController noteController;
+  
+  @override
+  State<_SignInBottomSheet> createState() => _SignInBottomSheetState();
+}
+
+class _SignInBottomSheetState extends State<_SignInBottomSheet> {
+  late int _selectedHours;
+  
+  // Available duration options
+  static const List<int> _durationOptions = [1, 2, 4, 6, 8, 10, 12];
+  
+  @override
+  void initState() {
+    super.initState();
+    // Find closest matching option or default to 6
+    _selectedHours = _durationOptions.contains(widget.defaultHours) 
+        ? widget.defaultHours 
+        : 6;
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Header
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(Icons.login_rounded, color: AppColors.primary, size: 28),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Sign In',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.standName,
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              
+              // Duration selector
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.timer_outlined, size: 16, color: AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Duration',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _durationOptions.map((hours) {
+                      final isSelected = _selectedHours == hours;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedHours = hours),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected 
+                                ? AppColors.primary 
+                                : AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected 
+                                  ? AppColors.primary 
+                                  : AppColors.border,
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Text(
+                            '${hours}h',
+                            style: TextStyle(
+                              color: isSelected 
+                                  ? Colors.white 
+                                  : AppColors.textPrimary,
+                              fontWeight: isSelected 
+                                  ? FontWeight.w700 
+                                  : FontWeight.w500,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              // Info box - explain auto-expire
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 18, color: AppColors.primary.withValues(alpha: 0.8)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Stand hold auto-expires in ${_selectedHours}h to prevent forgotten sign-outs',
+                        style: TextStyle(
+                          color: AppColors.primary.withValues(alpha: 0.9),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              _PremiumTextField(
+                controller: widget.noteController,
+                label: 'Note (optional)',
+                hint: 'e.g., Bow hunting, arrived from south',
+                maxLength: 80,
+              ),
+              const SizedBox(height: 24),
+              _PremiumPrimaryButton(
+                label: 'Confirm Sign In',
+                icon: Icons.check_rounded,
+                onPressed: () => Navigator.pop(context, _selectedHours),
+              ),
             ],
           ),
         ),

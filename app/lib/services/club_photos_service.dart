@@ -399,11 +399,18 @@ class ClubPhotosService {
   }
 
   Future<String?> _getSignedUrl(String path) async {
-    if (_client == null) return null;
+    if (_client == null) {
+      if (kDebugMode) debugPrint('[ClubPhotosService] _getSignedUrl: client is null');
+      return null;
+    }
     try {
       final result = await _client.storage.from(_bucket).createSignedUrl(path, 3600);
+      if (kDebugMode && result.isEmpty) {
+        debugPrint('[ClubPhotosService] _getSignedUrl returned empty for $path');
+      }
       return result;
     } catch (e) {
+      if (kDebugMode) debugPrint('[ClubPhotosService] _getSignedUrl error for $path: $e');
       return null;
     }
   }

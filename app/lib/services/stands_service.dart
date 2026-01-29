@@ -88,6 +88,27 @@ class StandSignin {
   /// Uses UTC for comparison since DB stores timestamps in UTC
   bool get isActive => status == 'active' && expiresAt.toUtc().isAfter(DateTime.now().toUtc());
   
+  /// Whether this signin is expired (past expires_at, regardless of status)
+  bool get isExpired => expiresAt.toUtc().isBefore(DateTime.now().toUtc());
+  
+  /// How this session ended (for display purposes)
+  /// Returns: 'active', 'manual', or 'auto_expired'
+  String get endReason {
+    if (isActive) return 'active';
+    if (status == 'signed_out') return 'manual';
+    // status is 'active' but expired, or status is 'expired'
+    return 'auto_expired';
+  }
+  
+  /// Human-readable end reason for display
+  String get endReasonDisplay {
+    switch (endReason) {
+      case 'manual': return 'Signed out';
+      case 'auto_expired': return 'Auto-expired';
+      default: return 'Active';
+    }
+  }
+  
   /// Formatted sign-in time (e.g., "6:12 AM") in local time
   String get signedInAtFormatted {
     final local = signedInAt.toLocal();
@@ -128,6 +149,16 @@ class StandSignin {
       return '${hours}h ${minutes}m';
     }
     return '${minutes}m';
+  }
+  
+  /// Formatted expiration time (e.g., "3:42 PM") in local time
+  String get expiresAtFormatted {
+    final local = expiresAt.toLocal();
+    final hour = local.hour;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return '$hour12:$minute $period';
   }
   
   factory StandSignin.fromJson(Map<String, dynamic> json) {
