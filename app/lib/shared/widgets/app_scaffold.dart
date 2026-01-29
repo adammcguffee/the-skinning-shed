@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
+import 'package:shed/navigation/app_routes.dart';
 import 'package:shed/services/ad_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/ad_slot.dart';
@@ -124,41 +125,14 @@ class AppScaffold extends ConsumerWidget {
   }
 
   void _onDestinationSelected(BuildContext context, int index) {
-    // Indices match _destinationsBase array order:
-    // 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-    // 5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
-    switch (index) {
-      case 0:
-        context.go('/');
-        break;
-      case 1:
-        context.go('/explore');
-        break;
-      case 2:
-        context.go('/trophy-wall');
-        break;
-      case 3:
-        context.go('/land');
-        break;
-      case 4:
-        context.go('/messages');
-        break;
-      case 5:
-        context.go('/swap-shop');
-        break;
-      case 6:
-        context.go('/weather');
-        break;
-      case 7:
-        context.go('/research');
-        break;
-      case 8:
-        context.go('/official-links');
-        break;
-      case 9:
-        context.go('/settings');
-        break;
-    }
+    // Use centralized route constants from AppRoutes
+    final path = AppRoutes.pathForIndex(index);
+    final label = AppRoutes.labelForIndex(index);
+    
+    // Debug logging (only in debug mode)
+    logNavTap(label, path);
+    
+    context.go(path);
   }
 
   /// Get the create context based on current page.
@@ -644,57 +618,48 @@ class _MoreSheet extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            // Options
+            // Options - using AppRoutes constants for correct indices
             _MoreSheetItem(
               icon: Icons.landscape_outlined,
               label: 'Land Listings',
-              isSelected: currentIndex == 3,
-              onTap: () => onDestinationSelected(3),
+              isSelected: currentIndex == AppRoutes.indexLand,
+              onTap: () => onDestinationSelected(AppRoutes.indexLand),
             ),
             _MoreSheetItem(
               icon: Icons.chat_bubble_outline_rounded,
               label: 'Messages',
-              isSelected: currentIndex == 4,
-              onTap: () => onDestinationSelected(4),
+              isSelected: currentIndex == AppRoutes.indexMessages,
+              onTap: () => onDestinationSelected(AppRoutes.indexMessages),
+            ),
+            _MoreSheetItem(
+              icon: Icons.swap_horiz_outlined,
+              label: 'Swap Shop',
+              isSelected: currentIndex == AppRoutes.indexSwapShop,
+              onTap: () => onDestinationSelected(AppRoutes.indexSwapShop),
             ),
             _MoreSheetItem(
               icon: Icons.cloud_outlined,
               label: 'Weather & Tools',
-              isSelected: currentIndex == 5,
-              onTap: () => onDestinationSelected(5),
-            ),
-            _MoreSheetItem(
-              icon: Icons.storefront_outlined,
-              label: 'Swap Shop',
-              isSelected: false,
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/swap-shop');
-              },
-            ),
-            _MoreSheetItem(
-              icon: Icons.link_outlined,
-              label: 'Official Links',
-              isSelected: false,
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/official-links');
-              },
+              isSelected: currentIndex == AppRoutes.indexWeather,
+              onTap: () => onDestinationSelected(AppRoutes.indexWeather),
             ),
             _MoreSheetItem(
               icon: Icons.insights_outlined,
               label: 'Research & Patterns',
-              isSelected: false,
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/research');
-              },
+              isSelected: currentIndex == AppRoutes.indexResearch,
+              onTap: () => onDestinationSelected(AppRoutes.indexResearch),
+            ),
+            _MoreSheetItem(
+              icon: Icons.link_outlined,
+              label: 'Official Links',
+              isSelected: currentIndex == AppRoutes.indexOfficialLinks,
+              onTap: () => onDestinationSelected(AppRoutes.indexOfficialLinks),
             ),
             _MoreSheetItem(
               icon: Icons.settings_outlined,
               label: 'Settings',
-              isSelected: currentIndex == 8,
-              onTap: () => onDestinationSelected(8),
+              isSelected: currentIndex == AppRoutes.indexSettings,
+              onTap: () => onDestinationSelected(AppRoutes.indexSettings),
             ),
 
             const SizedBox(height: AppSpacing.lg),

@@ -4,12 +4,47 @@ import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 
+/// Build version info - injected at build time via --dart-define
+/// These are replaced by GitHub Actions during the build process.
+class BuildInfo {
+  BuildInfo._();
+  
+  /// App version (e.g. "1.0.0")
+  static const String version = String.fromEnvironment(
+    'BUILD_VERSION',
+    defaultValue: '1.0.0',
+  );
+  
+  /// Build number (e.g. "42")
+  static const String buildNumber = String.fromEnvironment(
+    'BUILD_NUMBER',
+    defaultValue: 'dev',
+  );
+  
+  /// Build timestamp (e.g. "2026-01-25T12:34:56Z")
+  static const String buildTime = String.fromEnvironment(
+    'BUILD_TIME',
+    defaultValue: 'local',
+  );
+  
+  /// Git commit SHA (short, e.g. "abc1234")
+  static const String gitSha = String.fromEnvironment(
+    'GIT_SHA',
+    defaultValue: 'local',
+  );
+  
+  /// Full version string for display
+  static String get fullVersion {
+    if (gitSha == 'local') {
+      return '$version (local dev)';
+    }
+    return '$version ($buildNumber · $gitSha)';
+  }
+}
+
 /// About page - App info and credits.
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
-
-  static const String appVersion = '1.0.0';
-  static const String buildNumber = '1';
 
   @override
   Widget build(BuildContext context) {
@@ -48,12 +83,22 @@ class AboutPage extends StatelessWidget {
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Text(
-                          'Version $appVersion ($buildNumber)',
+                          'Version ${BuildInfo.fullVersion}',
                           style: TextStyle(
                             fontSize: 14,
                             color: AppColors.textSecondary,
                           ),
                         ),
+                        if (BuildInfo.buildTime != 'local') ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Built: ${BuildInfo.buildTime}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: AppSpacing.xl),
                         
                         // Mission statement

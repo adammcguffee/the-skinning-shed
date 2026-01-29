@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/auth_screen.dart';
+import '../navigation/app_routes.dart';
 import '../services/location_prefetch_service.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/feed/feed_screen.dart';
@@ -107,20 +108,9 @@ final authNotifierProvider = ChangeNotifierProvider<AuthNotifier>((ref) {
 });
 
 /// Helper to get current index from location.
-/// Indices match _destinationsBase in app_scaffold.dart:
-/// 0=Feed, 1=Explore, 2=TrophyWall, 3=Land, 4=Messages,
-/// 5=SwapShop, 6=Weather, 7=Research, 8=OfficialLinks, 9=Settings
+/// Uses centralized AppRoutes for single source of truth.
 int _getIndexFromLocation(String location) {
-  if (location.startsWith('/explore')) return 1;
-  if (location.startsWith('/trophy-wall') || location.startsWith('/profile')) return 2;
-  if (location.startsWith('/land')) return 3;
-  if (location.startsWith('/messages')) return 4;
-  if (location.startsWith('/swap-shop')) return 5;
-  if (location.startsWith('/weather')) return 6;
-  if (location.startsWith('/research')) return 7;
-  if (location.startsWith('/official-links')) return 8;
-  if (location.startsWith('/settings')) return 9;
-  return 0; // Feed is default
+  return AppRoutes.indexForLocation(location);
 }
 
 /// Router provider for the app.
@@ -135,20 +125,24 @@ final routerProvider = Provider<GoRouter>((ref) {
   
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/',
+    initialLocation: AppRoutes.feed,
     refreshListenable: authNotifier,
+    debugLogDiagnostics: kDebugMode, // Log route changes in debug mode
     redirect: (context, state) {
+      // Log route changes for debugging
+      logRouteChange(state.matchedLocation);
+      
       final isAuthenticated = authNotifier.isAuthenticated;
-      final isAuthRoute = state.matchedLocation == '/auth';
+      final isAuthRoute = state.matchedLocation == AppRoutes.auth;
       
       // If not authenticated and not on auth page, redirect to auth
       if (!isAuthenticated && !isAuthRoute) {
-        return '/auth';
+        return AppRoutes.auth;
       }
       
       // If authenticated and on auth page, redirect to home
       if (isAuthenticated && isAuthRoute) {
-        return '/';
+        return AppRoutes.feed;
       }
       
       return null;
@@ -156,7 +150,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // Auth route (outside shell)
       GoRoute(
-        path: '/auth',
+        path: AppRoutes.auth,
         builder: (context, state) => const AuthScreen(),
       ),
       
@@ -173,7 +167,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           // Feed (Home) - supports ?category= query param
           GoRoute(
-            path: '/',
+            path: AppRoutes.feed,
             pageBuilder: (context, state) {
               final category = state.uri.queryParameters['category'];
               return NoTransitionPage(
@@ -184,7 +178,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Explore
           GoRoute(
-            path: '/explore',
+            path: AppRoutes.explore,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: ExploreScreen(),
             ),
@@ -192,7 +186,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Weather & Tools
           GoRoute(
-            path: '/weather',
+            path: AppRoutes.weather,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: WeatherScreen(),
             ),
@@ -200,7 +194,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Trophy Wall (Profile)
           GoRoute(
-            path: '/trophy-wall',
+            path: AppRoutes.trophyWall,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: TrophyWallScreen(),
             ),
@@ -208,7 +202,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Land listings
           GoRoute(
-            path: '/land',
+            path: AppRoutes.land,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: LandScreen(),
             ),
@@ -216,7 +210,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Swap Shop
           GoRoute(
-            path: '/swap-shop',
+            path: AppRoutes.swapShop,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: SwapShopScreen(),
             ),
@@ -224,7 +218,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Settings
           GoRoute(
-            path: '/settings',
+            path: AppRoutes.settings,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: SettingsScreen(),
             ),
@@ -232,7 +226,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Research / Patterns
           GoRoute(
-            path: '/research',
+            path: AppRoutes.research,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: ResearchScreen(),
             ),
@@ -240,7 +234,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Official Links (State Wildlife Portals)
           GoRoute(
-            path: '/official-links',
+            path: AppRoutes.officialLinks,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: RegulationsScreen(),
             ),
@@ -248,7 +242,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           
           // Messages Inbox
           GoRoute(
-            path: '/messages',
+            path: AppRoutes.messages,
             pageBuilder: (context, state) => const NoTransitionPage(
               child: MessagesInboxScreen(),
             ),
@@ -267,15 +261,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       // Official links admin (admin only - protected)
       GoRoute(
-        path: '/admin/official-links',
+        path: AppRoutes.adminOfficialLinks,
         builder: (context, state) => const RegulationsAdminScreen(),
         redirect: (context, state) async {
           // Check admin status before allowing access
           final client = SupabaseService.instance.client;
-          if (client == null) return '/';
+          if (client == null) return AppRoutes.feed;
           
           final userId = client.auth.currentUser?.id;
-          if (userId == null) return '/';
+          if (userId == null) return AppRoutes.feed;
           
           try {
             final response = await client
@@ -286,10 +280,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             
             final isAdmin = response?['is_admin'] == true;
             if (!isAdmin) {
-              return '/'; // Redirect non-admins to home
+              return AppRoutes.feed; // Redirect non-admins to home
             }
           } catch (e) {
-            return '/'; // On error, redirect to home
+            return AppRoutes.feed; // On error, redirect to home
           }
           
           return null; // Allow access
@@ -298,13 +292,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       // Post trophy (modal / full screen)
       GoRoute(
-        path: '/post',
+        path: AppRoutes.post,
         builder: (context, state) => const PostScreen(),
       ),
       
       // Swap Shop create/detail (outside shell - full screen)
       GoRoute(
-        path: '/swap-shop/create',
+        path: AppRoutes.swapShopCreate,
         builder: (context, state) => const SwapShopCreateScreen(),
       ),
       GoRoute(
@@ -326,7 +320,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       // Land create (supports ?mode=lease|sale query param)
       GoRoute(
-        path: '/land/create',
+        path: AppRoutes.landCreate,
         builder: (context, state) {
           final mode = state.uri.queryParameters['mode'];
           return LandCreateScreen(initialMode: mode);
@@ -362,7 +356,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       // Profile edit
       GoRoute(
-        path: '/profile/edit',
+        path: AppRoutes.profileEdit,
         builder: (context, state) => const ProfileEditScreen(),
       ),
       
@@ -377,27 +371,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       
       // Settings pages
       GoRoute(
-        path: '/settings/privacy',
+        path: AppRoutes.settingsPrivacy,
         builder: (context, state) => const PrivacyPolicyPage(),
       ),
       GoRoute(
-        path: '/settings/terms',
+        path: AppRoutes.settingsTerms,
         builder: (context, state) => const TermsOfServicePage(),
       ),
       GoRoute(
-        path: '/settings/disclaimer',
+        path: AppRoutes.settingsDisclaimer,
         builder: (context, state) => const ContentDisclaimerPage(),
       ),
       GoRoute(
-        path: '/settings/help',
+        path: AppRoutes.settingsHelp,
         builder: (context, state) => const HelpCenterPage(),
       ),
       GoRoute(
-        path: '/settings/about',
+        path: AppRoutes.settingsAbout,
         builder: (context, state) => const AboutPage(),
       ),
       GoRoute(
-        path: '/settings/feedback',
+        path: AppRoutes.settingsFeedback,
         builder: (context, state) => const FeedbackPage(),
       ),
     ],
