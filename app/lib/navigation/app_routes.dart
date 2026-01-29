@@ -44,10 +44,6 @@ class AppRoutes {
   static const String openingsCreate = '/openings/create';
   static String openingDetail(String id) => '/openings/$id';
   
-  // FFL Dealers routes
-  static const String ffl = '/ffl';
-  static const String fflAdmin = '/ffl/admin';
-  
   // Notifications
   static const String notifications = '/notifications';
   

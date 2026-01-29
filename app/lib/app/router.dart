@@ -46,8 +46,6 @@ import '../features/openings/create_opening_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/settings/pages/notifications_settings_page.dart';
 import '../features/weather/weather_screen.dart';
-import '../features/ffl/ffl_directory_screen.dart';
-import '../features/ffl/ffl_admin_screen.dart';
 import '../services/supabase_service.dart';
 import '../shared/widgets/app_scaffold.dart';
 
@@ -594,43 +592,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.settingsNotifications,
         builder: (context, state) => const NotificationsSettingsPage(),
-      ),
-      
-      // FFL Dealers Directory
-      GoRoute(
-        path: AppRoutes.ffl,
-        builder: (context, state) => const FFLDirectoryScreen(),
-      ),
-      
-      // FFL Admin (admin only)
-      GoRoute(
-        path: AppRoutes.fflAdmin,
-        builder: (context, state) => const FFLAdminScreen(),
-        redirect: (context, state) async {
-          // Check admin status before allowing access
-          final client = SupabaseService.instance.client;
-          if (client == null) return AppRoutes.feed;
-          
-          final userId = client.auth.currentUser?.id;
-          if (userId == null) return AppRoutes.feed;
-          
-          try {
-            final response = await client
-                .from('profiles')
-                .select('is_admin')
-                .eq('id', userId)
-                .maybeSingle();
-            
-            final isAdmin = response?['is_admin'] == true;
-            if (!isAdmin) {
-              return AppRoutes.feed; // Redirect non-admins to home
-            }
-          } catch (e) {
-            return AppRoutes.feed; // On error, redirect to home
-          }
-          
-          return null; // Allow access
-        },
       ),
     ],
   );
