@@ -5,9 +5,11 @@ import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 /**
  * FFL Import Edge Function
  * 
- * Discovers and downloads ATF Federal Firearms Licensee XLSX from the ATF website,
- * enriches with county from ZIP->county crosswalk,
- * and upserts into ffl_dealers table.
+ * Downloads ATF Federal Firearms Licensee data from Data.gov mirror
+ * (ATF.gov blocks server-side requests), enriches with county from 
+ * ZIP->county crosswalk, and upserts into ffl_dealers table.
+ * 
+ * Data source: https://catalog.data.gov/dataset/federal-firearms-licensees
  * 
  * Security:
  * - Requires X-CRON-SECRET header OR service role auth
@@ -23,13 +25,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
-// Browser-like User-Agent to avoid 403 blocks
-const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+// Data.gov CKAN API for ATF FFL dataset
+const DATA_GOV_DATASET_ID = "federal-firearms-licensees";
+const DATA_GOV_API_URL = `https://catalog.data.gov/api/3/action/package_show?id=${DATA_GOV_DATASET_ID}`;
 
-// ATF data page where XLSX links are listed
-const ATF_DATA_PAGE = "https://www.atf.gov/firearms/listing-federal-firearms-licensees";
-
-// Month names for matching links
+// Month names for parsing resource names
 const MONTH_NAMES_FULL = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const MONTH_NAMES_SHORT = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -48,123 +48,166 @@ interface FFLRecord {
   phone: string | null;
 }
 
-interface DiscoveredXLSX {
+interface DataGovResource {
+  id: string;
+  name: string;
   url: string;
+  format: string;
+  created: string;
+  last_modified: string;
+  description?: string;
+}
+
+interface DiscoveredResource {
+  url: string;
+  format: string;
+  name: string;
   year: number;
   month: number;
+  lastModified: string;
 }
 
 /**
- * Fetch ATF data page and discover XLSX links
+ * Fetch Data.gov dataset metadata and find FFL resources
  */
-async function discoverXLSXLinks(): Promise<DiscoveredXLSX[]> {
-  console.log(`[ffl-import] Fetching ATF data page: ${ATF_DATA_PAGE}`);
+async function discoverDataGovResources(): Promise<DiscoveredResource[]> {
+  console.log(`[ffl-import] Fetching Data.gov dataset: ${DATA_GOV_API_URL}`);
   
-  const response = await fetch(ATF_DATA_PAGE, {
+  const response = await fetch(DATA_GOV_API_URL, {
     headers: {
-      "User-Agent": BROWSER_UA,
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.5",
+      "Accept": "application/json",
     },
   });
 
   if (!response.ok) {
-    console.error(`[ffl-import] Failed to fetch ATF page: HTTP ${response.status}`);
-    throw new Error(`Failed to fetch ATF data page: HTTP ${response.status}`);
+    console.error(`[ffl-import] Failed to fetch Data.gov API: HTTP ${response.status}`);
+    throw new Error(`Failed to fetch Data.gov dataset: HTTP ${response.status}`);
   }
 
-  const html = await response.text();
-  console.log(`[ffl-import] Received ${html.length} bytes of HTML`);
-
-  // Find all links containing "ffl" and ending with .xlsx
-  const linkRegex = /href=["']([^"']*ffl[^"']*\.xlsx)["']/gi;
-  const links: DiscoveredXLSX[] = [];
-  let match;
-
-  while ((match = linkRegex.exec(html)) !== null) {
-    let url = match[1];
-    
-    // Make absolute URL if relative
-    if (url.startsWith("/")) {
-      url = `https://www.atf.gov${url}`;
-    } else if (!url.startsWith("http")) {
-      url = `https://www.atf.gov/${url}`;
-    }
-
-    // Try to extract year and month from URL
-    const { year, month } = parseYearMonthFromUrl(url);
-    
-    if (year && month) {
-      links.push({ url, year, month });
-      console.log(`[ffl-import] Found XLSX link: ${url} (${month}/${year})`);
-    } else {
-      console.log(`[ffl-import] Found XLSX link (unknown date): ${url}`);
-      // Still add it with current date as fallback
-      const now = new Date();
-      links.push({ url, year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 });
-    }
+  const data = await response.json();
+  
+  if (!data.success || !data.result) {
+    throw new Error("Invalid Data.gov API response");
   }
 
-  // Also try alternative patterns for links
-  const altLinkRegex = /href=["']([^"']*\.xlsx[^"']*)["'][^>]*>[^<]*ffl/gi;
-  while ((match = altLinkRegex.exec(html)) !== null) {
-    let url = match[1];
-    if (url.startsWith("/")) {
-      url = `https://www.atf.gov${url}`;
+  const resources: DataGovResource[] = data.result.resources || [];
+  console.log(`[ffl-import] Found ${resources.length} resources in dataset`);
+
+  const discovered: DiscoveredResource[] = [];
+
+  for (const resource of resources) {
+    const format = (resource.format || "").toLowerCase();
+    const name = (resource.name || "").toLowerCase();
+    const url = resource.url;
+
+    // Only consider CSV files (preferred) or XLSX as fallback
+    if (!format.includes("csv") && !format.includes("xlsx") && !format.includes("xls")) {
+      continue;
     }
+
+    // Skip if no URL
+    if (!url) {
+      continue;
+    }
+
+    // Skip if name doesn't look like FFL data
+    const lowerName = name.toLowerCase();
+    const lowerUrl = url.toLowerCase();
+    const isFFL = lowerName.includes("ffl") || lowerName.includes("licensee") || 
+                  lowerName.includes("firearm") || lowerUrl.includes("ffl");
     
-    // Check if we already have this URL
-    if (!links.some(l => l.url === url)) {
-      const { year, month } = parseYearMonthFromUrl(url);
-      const now = new Date();
-      links.push({ 
-        url, 
-        year: year || now.getUTCFullYear(), 
-        month: month || now.getUTCMonth() + 1 
-      });
-      console.log(`[ffl-import] Found alt XLSX link: ${url}`);
+    if (!isFFL && resources.length > 1) {
+      // If multiple resources, filter to FFL-specific ones
+      continue;
     }
+
+    // Try to extract year/month from resource name or URL
+    const dateInfo = parseYearMonthFromText(name) || parseYearMonthFromText(url);
+    const lastModified = resource.last_modified || resource.created || "";
+
+    const now = new Date();
+    discovered.push({
+      url,
+      format: format.includes("csv") ? "csv" : "xlsx",
+      name: resource.name || url,
+      year: dateInfo?.year || now.getUTCFullYear(),
+      month: dateInfo?.month || now.getUTCMonth() + 1,
+      lastModified,
+    });
+
+    console.log(`[ffl-import] Found resource: ${resource.name} (${format}) - last_modified: ${lastModified}`);
   }
 
-  console.log(`[ffl-import] Total XLSX links found: ${links.length}`);
-  return links;
+  // Sort: CSV first, then by last_modified descending, then by date descending
+  discovered.sort((a, b) => {
+    // Prefer CSV over XLSX
+    if (a.format === "csv" && b.format !== "csv") return -1;
+    if (b.format === "csv" && a.format !== "csv") return 1;
+    
+    // Then by last_modified (most recent first)
+    if (a.lastModified && b.lastModified) {
+      const dateA = new Date(a.lastModified).getTime();
+      const dateB = new Date(b.lastModified).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+    }
+    
+    // Finally by year/month
+    const dateA = a.year * 100 + a.month;
+    const dateB = b.year * 100 + b.month;
+    return dateB - dateA;
+  });
+
+  console.log(`[ffl-import] Total usable resources found: ${discovered.length}`);
+  return discovered;
 }
 
 /**
- * Parse year and month from ATF XLSX URL
- * Examples:
- * - /firearms/docs/0126-ffl-list/download -> 01/2026
- * - /firearms/docs/jan2026-ffl-list.xlsx -> 01/2026
- * - /files/ffl-january-2026.xlsx -> 01/2026
+ * Parse year and month from text (resource name or URL)
  */
-function parseYearMonthFromUrl(url: string): { year: number | null; month: number | null } {
-  const lowerUrl = url.toLowerCase();
+function parseYearMonthFromText(text: string): { year: number; month: number } | null {
+  const lowerText = text.toLowerCase();
   
-  // Pattern 1: MMYY format (0126, 1225, etc.)
-  const mmyyMatch = lowerUrl.match(/(\d{2})(\d{2})-ffl/);
+  // Pattern 1: MMYY or MMYYYY format (0126, 012026, 1225, etc.)
+  const mmyyMatch = lowerText.match(/(\d{2})[\-_]?(\d{2,4})(?:\D|$)/);
   if (mmyyMatch) {
-    const month = parseInt(mmyyMatch[1], 10);
-    let year = parseInt(mmyyMatch[2], 10);
-    // Convert 2-digit year to 4-digit (assume 2000s)
-    year = year < 50 ? 2000 + year : 1900 + year;
-    if (month >= 1 && month <= 12) {
-      return { year, month };
+    const first = parseInt(mmyyMatch[1], 10);
+    let second = parseInt(mmyyMatch[2], 10);
+    
+    // If second is 2 digits, convert to 4-digit year
+    if (second < 100) {
+      second = second < 50 ? 2000 + second : 1900 + second;
+    }
+    
+    // Check if first could be a month (1-12)
+    if (first >= 1 && first <= 12 && second >= 2020 && second <= 2030) {
+      return { year: second, month: first };
     }
   }
 
-  // Pattern 2: Month name + year (jan2026, january-2026, etc.)
+  // Pattern 2: Month name + year (january 2026, jan-2026, etc.)
   for (let i = 0; i < MONTH_NAMES_FULL.length; i++) {
-    const fullPattern = new RegExp(`${MONTH_NAMES_FULL[i]}[\\-_]?(\\d{4})`);
-    const shortPattern = new RegExp(`${MONTH_NAMES_SHORT[i]}[\\-_]?(\\d{4})`);
+    const fullPattern = new RegExp(`${MONTH_NAMES_FULL[i]}[\\s\\-_]*(\\d{4})`);
+    const shortPattern = new RegExp(`${MONTH_NAMES_SHORT[i]}[\\s\\-_]*(\\d{4})`);
     
-    let yearMatch = lowerUrl.match(fullPattern) || lowerUrl.match(shortPattern);
+    const yearMatch = lowerText.match(fullPattern) || lowerText.match(shortPattern);
     if (yearMatch) {
       return { year: parseInt(yearMatch[1], 10), month: i + 1 };
     }
   }
 
-  // Pattern 3: Year-month (2026-01, 202601)
-  const isoMatch = lowerUrl.match(/(\d{4})[\\-_]?(\d{2})/);
+  // Pattern 3: Year + month name (2026 january, 2026-jan)
+  for (let i = 0; i < MONTH_NAMES_FULL.length; i++) {
+    const fullPattern = new RegExp(`(\\d{4})[\\s\\-_]*${MONTH_NAMES_FULL[i]}`);
+    const shortPattern = new RegExp(`(\\d{4})[\\s\\-_]*${MONTH_NAMES_SHORT[i]}`);
+    
+    const yearMatch = lowerText.match(fullPattern) || lowerText.match(shortPattern);
+    if (yearMatch) {
+      return { year: parseInt(yearMatch[1], 10), month: i + 1 };
+    }
+  }
+
+  // Pattern 4: Year-month ISO style (2026-01, 202601)
+  const isoMatch = lowerText.match(/(\d{4})[\-_]?(\d{2})(?:\D|$)/);
   if (isoMatch) {
     const year = parseInt(isoMatch[1], 10);
     const month = parseInt(isoMatch[2], 10);
@@ -173,97 +216,125 @@ function parseYearMonthFromUrl(url: string): { year: number | null; month: numbe
     }
   }
 
-  return { year: null, month: null };
-}
-
-/**
- * Find best XLSX link for target year/month with fallbacks
- */
-function findBestXLSXLink(
-  links: DiscoveredXLSX[],
-  targetYear: number,
-  targetMonth: number
-): DiscoveredXLSX | null {
-  // Try exact match first
-  let match = links.find(l => l.year === targetYear && l.month === targetMonth);
-  if (match) {
-    console.log(`[ffl-import] Found exact match for ${targetMonth}/${targetYear}`);
-    return match;
-  }
-
-  // Try previous month
-  let prevMonth = targetMonth - 1;
-  let prevYear = targetYear;
-  if (prevMonth < 1) {
-    prevMonth = 12;
-    prevYear--;
-  }
-  match = links.find(l => l.year === prevYear && l.month === prevMonth);
-  if (match) {
-    console.log(`[ffl-import] Found previous month match: ${prevMonth}/${prevYear}`);
-    return match;
-  }
-
-  // Try 2 months back
-  prevMonth--;
-  if (prevMonth < 1) {
-    prevMonth = 12;
-    prevYear--;
-  }
-  match = links.find(l => l.year === prevYear && l.month === prevMonth);
-  if (match) {
-    console.log(`[ffl-import] Found 2-months-back match: ${prevMonth}/${prevYear}`);
-    return match;
-  }
-
-  // Return most recent available
-  if (links.length > 0) {
-    // Sort by date descending
-    const sorted = [...links].sort((a, b) => {
-      const dateA = a.year * 100 + a.month;
-      const dateB = b.year * 100 + b.month;
-      return dateB - dateA;
-    });
-    console.log(`[ffl-import] Using most recent available: ${sorted[0].month}/${sorted[0].year}`);
-    return sorted[0];
-  }
-
   return null;
 }
 
 /**
- * Download XLSX file from ATF
+ * Select the best resource (prefer CSV, most recent)
  */
-async function downloadXLSX(url: string): Promise<ArrayBuffer> {
-  console.log(`[ffl-import] Downloading XLSX from: ${url}`);
+function selectBestResource(resources: DiscoveredResource[]): DiscoveredResource | null {
+  if (resources.length === 0) {
+    return null;
+  }
+  // Already sorted by format and date, just pick first
+  return resources[0];
+}
+
+/**
+ * Download file from URL
+ */
+async function downloadFile(url: string): Promise<ArrayBuffer> {
+  console.log(`[ffl-import] Downloading file from: ${url}`);
   
   const response = await fetch(url, {
     headers: {
-      "User-Agent": BROWSER_UA,
-      "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*",
-      "Accept-Language": "en-US,en;q=0.5",
-      "Referer": ATF_DATA_PAGE,
+      "Accept": "*/*",
     },
     redirect: "follow",
   });
 
   if (!response.ok) {
-    console.error(`[ffl-import] XLSX download failed: HTTP ${response.status} for ${url}`);
-    throw new Error(`Failed to download XLSX: HTTP ${response.status} from ${url}`);
+    console.error(`[ffl-import] Download failed: HTTP ${response.status} for ${url}`);
+    throw new Error(`Failed to download file: HTTP ${response.status} from ${url}`);
   }
 
   const buffer = await response.arrayBuffer();
   console.log(`[ffl-import] Downloaded ${buffer.byteLength} bytes`);
   
-  if (buffer.byteLength < 1000) {
-    throw new Error(`Downloaded file too small (${buffer.byteLength} bytes) - may not be valid XLSX`);
+  if (buffer.byteLength < 100) {
+    throw new Error(`Downloaded file too small (${buffer.byteLength} bytes) - may not be valid`);
   }
 
   return buffer;
 }
 
 /**
- * Parse XLSX and extract FFL records
+ * Parse CSV content into FFL records
+ */
+function parseCSV(buffer: ArrayBuffer): FFLRecord[] {
+  const decoder = new TextDecoder("utf-8");
+  const text = decoder.decode(buffer);
+  const lines = text.split(/\r?\n/);
+  
+  console.log(`[ffl-import] Parsing CSV with ${lines.length} lines`);
+
+  if (lines.length < 2) {
+    return [];
+  }
+
+  // Parse header row
+  const headerLine = lines[0];
+  const headers = parseCSVLine(headerLine).map(h => h.trim());
+  console.log(`[ffl-import] CSV headers: ${headers.slice(0, 10).join(", ")}${headers.length > 10 ? "..." : ""}`);
+
+  const records: FFLRecord[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const values = parseCSVLine(line);
+    const row: Record<string, string> = {};
+    
+    for (let j = 0; j < headers.length && j < values.length; j++) {
+      row[headers[j]] = values[j];
+    }
+
+    const record = mapRowToFFLRecord(row);
+    if (record) {
+      records.push(record);
+    }
+  }
+
+  console.log(`[ffl-import] Parsed ${records.length} valid FFL records from CSV`);
+  return records;
+}
+
+/**
+ * Parse a single CSV line handling quoted fields
+ */
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        // Escaped quote
+        current += '"';
+        i++;
+      } else {
+        // Toggle quote mode
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  
+  result.push(current.trim());
+  return result;
+}
+
+/**
+ * Parse XLSX and extract FFL records (fallback if no CSV available)
  */
 function parseXLSX(buffer: ArrayBuffer): FFLRecord[] {
   console.log(`[ffl-import] Parsing XLSX (${buffer.byteLength} bytes)`);
@@ -272,7 +343,6 @@ function parseXLSX(buffer: ArrayBuffer): FFLRecord[] {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   
-  // Convert to JSON rows
   const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
   console.log(`[ffl-import] Found ${rows.length} rows in sheet "${sheetName}"`);
 
@@ -280,7 +350,6 @@ function parseXLSX(buffer: ArrayBuffer): FFLRecord[] {
     return [];
   }
 
-  // Log first row keys to understand structure
   const firstRow = rows[0];
   const keys = Object.keys(firstRow);
   console.log(`[ffl-import] Column headers: ${keys.slice(0, 10).join(", ")}${keys.length > 10 ? "..." : ""}`);
@@ -288,32 +357,34 @@ function parseXLSX(buffer: ArrayBuffer): FFLRecord[] {
   const records: FFLRecord[] = [];
 
   for (const row of rows) {
-    // Try to map columns (ATF uses various column names)
-    const record = mapRowToFFLRecord(row);
+    const stringRow: Record<string, string> = {};
+    for (const [key, value] of Object.entries(row)) {
+      stringRow[key] = String(value ?? "").trim();
+    }
+    
+    const record = mapRowToFFLRecord(stringRow);
     if (record) {
       records.push(record);
     }
   }
 
-  console.log(`[ffl-import] Parsed ${records.length} valid FFL records`);
+  console.log(`[ffl-import] Parsed ${records.length} valid FFL records from XLSX`);
   return records;
 }
 
 /**
- * Map a row object to FFLRecord, handling various ATF column naming conventions
+ * Map a row object to FFLRecord, handling various column naming conventions
  */
-function mapRowToFFLRecord(row: Record<string, unknown>): FFLRecord | null {
-  // Common column name variations
+function mapRowToFFLRecord(row: Record<string, string>): FFLRecord | null {
   const getValue = (keys: string[]): string => {
     for (const key of keys) {
-      // Try exact match
-      if (row[key] !== undefined && row[key] !== null) {
-        return String(row[key]).trim();
+      if (row[key] !== undefined && row[key] !== "") {
+        return row[key].trim();
       }
-      // Try case-insensitive match
+      // Case-insensitive match
       const foundKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
-      if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
-        return String(row[foundKey]).trim();
+      if (foundKey && row[foundKey] !== undefined && row[foundKey] !== "") {
+        return row[foundKey].trim();
       }
     }
     return "";
@@ -322,48 +393,48 @@ function mapRowToFFLRecord(row: Record<string, unknown>): FFLRecord | null {
   // Extract fields with fallbacks for various column names
   const licenseNumber = getValue([
     "LIC_SEQN", "LICENSE_NUMBER", "License Number", "Lic_Seqn", 
-    "LicenseNumber", "FFL", "FFL_NUMBER"
+    "LicenseNumber", "FFL", "FFL_NUMBER", "License_Number"
   ]);
   
   const licenseName = getValue([
-    "LICENSE_NAME", "License Name", "LicenseName", "BUSINESS_NAME", 
-    "Business Name", "NAME", "Name", "DBA"
+    "LICENSE_NAME", "License Name", "LicenseName", "License_Name",
+    "BUSINESS_NAME", "Business Name", "NAME", "Name", "DBA"
   ]);
   
   const businessName = getValue([
-    "BUSINESS_NAME", "Business Name", "BusinessName", "Trade Name"
+    "BUSINESS_NAME", "Business Name", "BusinessName", "Business_Name", "Trade Name"
   ]);
   
   const licenseType = getValue([
-    "LIC_TYPE", "LICENSE_TYPE", "License Type", "Type"
+    "LIC_TYPE", "LICENSE_TYPE", "License Type", "License_Type", "Type"
   ]);
   
   const premiseStreet = getValue([
-    "PREMISE_STREET", "Premise Street", "PremiseStreet", "PREM_STREET",
-    "ADDRESS", "Address", "Street"
+    "PREMISE_STREET", "Premise Street", "PremiseStreet", "Premise_Street",
+    "PREM_STREET", "ADDRESS", "Address", "Street", "STREET"
   ]);
   
   const premiseCity = getValue([
-    "PREMISE_CITY", "Premise City", "PremiseCity", "PREM_CITY", 
-    "CITY", "City"
+    "PREMISE_CITY", "Premise City", "PremiseCity", "Premise_City",
+    "PREM_CITY", "CITY", "City"
   ]);
   
   const premiseState = getValue([
-    "PREMISE_STATE", "Premise State", "PremiseState", "PREM_STATE",
-    "STATE", "State"
+    "PREMISE_STATE", "Premise State", "PremiseState", "Premise_State",
+    "PREM_STATE", "STATE", "State"
   ]);
   
   const premiseZip = getValue([
-    "PREMISE_ZIP_CODE", "PREMISE_ZIP", "Premise Zip", "PremiseZip",
-    "PREM_ZIP", "ZIP", "Zip", "ZIP_CODE", "Zip Code"
+    "PREMISE_ZIP_CODE", "PREMISE_ZIP", "Premise Zip", "PremiseZip", "Premise_Zip",
+    "PREM_ZIP", "ZIP", "Zip", "ZIP_CODE", "Zip Code", "Zip_Code"
   ]);
   
   const licenseCounty = getValue([
-    "LIC_CNTY", "LICENSE_COUNTY", "County", "COUNTY"
+    "LIC_CNTY", "LICENSE_COUNTY", "County", "COUNTY", "License_County"
   ]);
   
   const phone = getValue([
-    "VOICE_PHONE", "PHONE", "Phone", "Telephone", "PHONE_NUMBER"
+    "VOICE_PHONE", "PHONE", "Phone", "Telephone", "PHONE_NUMBER", "Phone_Number"
   ]);
 
   // Validate required fields
@@ -425,7 +496,7 @@ async function loadZipCountyCrosswalk(): Promise<Map<string, string>> {
       console.log(`[ffl-import] Loaded ${ZIP_COUNTY_CACHE.size} ZIP->County mappings from storage`);
       return ZIP_COUNTY_CACHE;
     }
-  } catch (e) {
+  } catch {
     console.log("[ffl-import] No cached crosswalk found, using fallback");
   }
 
@@ -536,6 +607,8 @@ async function importRecords(
 }
 
 Deno.serve(async (req: Request) => {
+  const startTime = Date.now();
+  
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -565,26 +638,24 @@ Deno.serve(async (req: Request) => {
   });
 
   // Parse request body for manual override
-  let overrideYear: number | null = null;
-  let overrideMonth: number | null = null;
+  let overrideResourceUrl: string | null = null;
   
   try {
     if (req.method === "POST") {
       const body = await req.json();
-      if (body.year && body.month) {
-        overrideYear = parseInt(body.year, 10);
-        overrideMonth = parseInt(body.month, 10);
-        console.log(`[ffl-import] Manual override: targeting ${overrideMonth}/${overrideYear}`);
+      if (body.resource_url) {
+        overrideResourceUrl = body.resource_url;
+        console.log(`[ffl-import] Manual override: using resource URL`);
       }
     }
   } catch {
-    // No body or invalid JSON - continue with auto-detect
+    // No body or invalid JSON - continue with auto-discover
   }
 
   // Determine target year/month
   const now = new Date();
-  const targetYear = overrideYear || now.getUTCFullYear();
-  const targetMonth = overrideMonth || now.getUTCMonth() + 1;
+  const targetYear = now.getUTCFullYear();
+  const targetMonth = now.getUTCMonth() + 1;
 
   // Create import run record
   const { data: runData, error: runError } = await supabase
@@ -612,43 +683,73 @@ Deno.serve(async (req: Request) => {
     // Load ZIP->County crosswalk
     await loadZipCountyCrosswalk();
 
-    // Discover XLSX links from ATF page
-    const xlsxLinks = await discoverXLSXLinks();
-    
-    if (xlsxLinks.length === 0) {
-      throw new Error("No ATF XLSX links found on data page");
+    let resourceUrl: string;
+    let resourceFormat: string;
+    let resourceLastModified: string = "";
+    let actualYear = targetYear;
+    let actualMonth = targetMonth;
+
+    if (overrideResourceUrl) {
+      // Use manual override URL
+      resourceUrl = overrideResourceUrl;
+      resourceFormat = resourceUrl.toLowerCase().includes(".csv") ? "csv" : "xlsx";
+      console.log(`[ffl-import] Using manual resource URL: ${resourceUrl}`);
+    } else {
+      // Discover resources from Data.gov
+      console.log(`[ffl-import] Discovering resources from Data.gov...`);
+      const resources = await discoverDataGovResources();
+      
+      if (resources.length === 0) {
+        throw new Error("No FFL resources found on Data.gov dataset");
+      }
+
+      // Select best resource (prefers CSV, most recent)
+      const selectedResource = selectBestResource(resources);
+      
+      if (!selectedResource) {
+        throw new Error("No suitable FFL resource found");
+      }
+
+      resourceUrl = selectedResource.url;
+      resourceFormat = selectedResource.format;
+      resourceLastModified = selectedResource.lastModified;
+      actualYear = selectedResource.year;
+      actualMonth = selectedResource.month;
+      
+      console.log(`[ffl-import] Selected resource: ${selectedResource.name}`);
+      console.log(`[ffl-import] Resource URL: ${resourceUrl}`);
+      console.log(`[ffl-import] Resource format: ${resourceFormat}`);
+      console.log(`[ffl-import] Resource last_modified: ${resourceLastModified}`);
     }
 
-    // Find best match for target date
-    const selectedLink = findBestXLSXLink(xlsxLinks, targetYear, targetMonth);
-    
-    if (!selectedLink) {
-      throw new Error("No ATF XLSX found for last 3 months");
+    // Download the file
+    const fileBuffer = await downloadFile(resourceUrl);
+
+    // Parse based on format
+    let records: FFLRecord[];
+    if (resourceFormat === "csv") {
+      records = parseCSV(fileBuffer);
+    } else {
+      records = parseXLSX(fileBuffer);
     }
-
-    console.log(`[ffl-import] Selected XLSX: ${selectedLink.url} (${selectedLink.month}/${selectedLink.year})`);
-
-    // Download XLSX
-    const xlsxBuffer = await downloadXLSX(selectedLink.url);
-
-    // Parse XLSX
-    const records = parseXLSX(xlsxBuffer);
 
     if (records.length === 0) {
-      throw new Error("No valid FFL records found in XLSX");
+      throw new Error("No valid FFL records found in file");
     }
 
     console.log(`[ffl-import] Importing ${records.length} records`);
 
     // Import records
-    const stats = await importRecords(supabase, records, selectedLink.year, selectedLink.month);
+    const stats = await importRecords(supabase, records, actualYear, actualMonth);
+
+    const duration = Date.now() - startTime;
 
     // Update run record with success
     await supabase
       .from("ffl_import_runs")
       .update({
-        year: selectedLink.year,
-        month: selectedLink.month,
+        year: actualYear,
+        month: actualMonth,
         status: "success",
         rows_total: stats.total,
         rows_inserted: stats.inserted,
@@ -658,24 +759,28 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", runId);
 
-    console.log(
-      `[ffl-import] Import complete: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.skipped} skipped`
-    );
+    console.log(`[ffl-import] Import complete in ${duration}ms`);
+    console.log(`[ffl-import] Stats: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.skipped} skipped`);
 
     return new Response(
       JSON.stringify({
         success: true,
         runId,
-        xlsxUrl: selectedLink.url,
-        year: selectedLink.year,
-        month: selectedLink.month,
+        dataSource: "data.gov",
+        resourceUrl,
+        resourceFormat,
+        resourceLastModified,
+        year: actualYear,
+        month: actualMonth,
         stats,
+        durationMs: duration,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     const errorMsg = (error as Error).message;
-    console.error("[ffl-import] Import failed:", errorMsg);
+    const duration = Date.now() - startTime;
+    console.error(`[ffl-import] Import failed after ${duration}ms:`, errorMsg);
 
     // Update run record with failure
     await supabase
@@ -687,7 +792,7 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", runId);
 
-    return new Response(JSON.stringify({ error: errorMsg, runId }), {
+    return new Response(JSON.stringify({ error: errorMsg, runId, durationMs: duration }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
