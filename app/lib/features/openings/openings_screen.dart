@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../app/theme/app_colors.dart';
+import '../../data/us_counties.dart';
 import '../../data/us_states.dart';
 import '../../services/club_openings_service.dart';
 import '../../services/messaging_service.dart';
@@ -418,7 +419,7 @@ class _FilterDropdown extends StatelessWidget {
   }
 }
 
-class _CountyDropdown extends ConsumerWidget {
+class _CountyDropdown extends StatelessWidget {
   const _CountyDropdown({
     required this.stateCode,
     required this.value,
@@ -430,7 +431,7 @@ class _CountyDropdown extends ConsumerWidget {
   final ValueChanged<String?> onChanged;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     if (stateCode == null) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -446,43 +447,31 @@ class _CountyDropdown extends ConsumerWidget {
       );
     }
 
-    final countiesAsync = ref.watch(availableCountiesProvider(stateCode!));
+    // Use static county data instead of database query
+    final counties = USCounties.forState(stateCode!);
 
-    return countiesAsync.when(
-      loading: () => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border, width: 0.5),
       ),
-      error: (_, __) => const Text('Error'),
-      data: (counties) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceElevated,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border, width: 0.5),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              hint: const Text('County', style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
-              isExpanded: true,
-              icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.textTertiary),
-              dropdownColor: AppColors.surfaceElevated,
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-              items: [
-                const DropdownMenuItem<String>(value: null, child: Text('All Counties', style: TextStyle(color: AppColors.textTertiary))),
-                ...counties.map((c) => DropdownMenuItem(value: c, child: Text(c))),
-              ],
-              onChanged: onChanged,
-            ),
-          ),
-        );
-      },
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          hint: const Text('County', style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+          isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.textTertiary),
+          dropdownColor: AppColors.surfaceElevated,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+          items: [
+            const DropdownMenuItem<String>(value: null, child: Text('All Counties', style: TextStyle(color: AppColors.textTertiary))),
+            ...counties.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }

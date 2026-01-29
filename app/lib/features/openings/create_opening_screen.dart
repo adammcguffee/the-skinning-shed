@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../../data/us_counties.dart';
 import '../../data/us_states.dart';
 import '../../services/club_openings_service.dart';
 
@@ -201,12 +202,15 @@ class _CreateOpeningScreenState extends ConsumerState<CreateOpeningScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   flex: 2,
-                  child: _PremiumTextField(
-                    controller: TextEditingController(text: _county),
+                  child: _PremiumDropdown(
                     label: 'County *',
-                    hint: 'e.g., Randolph',
-                    enabled: _stateCode != null,
-                    onChanged: (v) => _county = v,
+                    value: _county,
+                    hint: _stateCode == null ? 'Select state first' : 'Select county',
+                    items: _stateCode == null 
+                        ? []
+                        : USCounties.forState(_stateCode!).map((c) => 
+                            DropdownMenuItem(value: c, child: Text(c))).toList(),
+                    onChanged: _stateCode == null ? null : (v) => setState(() => _county = v),
                   ),
                 ),
               ],
@@ -653,12 +657,14 @@ class _PremiumDropdown extends StatelessWidget {
     required this.value,
     required this.items,
     required this.onChanged,
+    this.hint,
   });
 
   final String label;
   final String? value;
   final List<DropdownMenuItem<String>> items;
-  final ValueChanged<String?> onChanged;
+  final ValueChanged<String?>? onChanged;
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
@@ -673,13 +679,18 @@ class _PremiumDropdown extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: onChanged == null 
+                ? AppColors.surface.withValues(alpha: 0.5) 
+                : AppColors.surface,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: AppColors.border, width: 0.5),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: value,
+              hint: hint != null 
+                  ? Text(hint!, style: const TextStyle(color: AppColors.textTertiary))
+                  : null,
               isExpanded: true,
               icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.textTertiary),
               dropdownColor: AppColors.surfaceElevated,

@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
+import '../../data/us_counties.dart';
+import '../../data/us_states.dart';
 import '../../navigation/app_routes.dart';
 import '../../services/clubs_service.dart';
 import '../../shared/widgets/widgets.dart';
-import '../../data/us_states.dart';
 
 /// Clubs home screen - shows My Clubs and Search Clubs sections
 class ClubsHomeScreen extends ConsumerStatefulWidget {
@@ -299,9 +300,9 @@ class _SearchClubsSectionState extends ConsumerState<_SearchClubsSection> {
     });
   }
   
-  Future<void> _loadCounties(String stateCode) async {
-    final service = ref.read(clubsServiceProvider);
-    final counties = await service.getClubCounties(stateCode);
+  void _loadCounties(String stateCode) {
+    // Use static county data instead of database query
+    final counties = USCounties.forState(stateCode);
     setState(() {
       _availableCounties = counties;
     });
