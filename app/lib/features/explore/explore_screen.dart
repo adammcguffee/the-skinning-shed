@@ -293,16 +293,16 @@ class _QuickLinksGrid extends StatelessWidget {
         route: '/swap-shop',
       ),
       _QuickLinkData(
+        title: 'FFL Dealers',
+        subtitle: 'Find gun dealers',
+        icon: Icons.store_rounded,
+        route: '/ffl',
+      ),
+      _QuickLinkData(
         title: 'Weather',
         subtitle: 'Conditions & tools',
         icon: Icons.cloud_rounded,
         route: '/weather',
-      ),
-      _QuickLinkData(
-        title: 'Trophy Wall',
-        subtitle: 'Your profile',
-        icon: Icons.emoji_events_rounded,
-        route: '/trophy-wall',
       ),
     ];
 
