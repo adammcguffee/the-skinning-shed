@@ -101,6 +101,7 @@ function extractArcGISItemId(url: string): string | null {
 /**
  * Fetch ArcGIS item metadata and return the actual download URL
  * ArcGIS requires fetching metadata JSON first to get the real dataUrl
+ * For public binary downloads, ArcGIS requires f=download parameter
  */
 async function getArcGISDownloadUrl(itemId: string): Promise<{ url: string; type: string; size: number }> {
   const metadataUrl = `${ARCGIS_REST_BASE}/${itemId}?f=json`;
@@ -131,16 +132,18 @@ async function getArcGISDownloadUrl(itemId: string): Promise<{ url: string; type
   console.log(`[ffl-import]   - itemId: ${itemId}`);
   console.log(`[ffl-import]   - type: ${itemType}`);
   console.log(`[ffl-import]   - size: ${size} bytes`);
-  console.log(`[ffl-import]   - dataUrl: ${dataUrl}`);
+  console.log(`[ffl-import]   - dataUrl from metadata: ${dataUrl || "(none)"}`);
 
-  if (!dataUrl) {
-    // Fallback: try the standard download endpoint
-    const fallbackUrl = `${ARCGIS_REST_BASE}/${itemId}/data`;
-    console.log(`[ffl-import] No dataUrl in metadata, trying fallback: ${fallbackUrl}`);
-    return { url: fallbackUrl, type: itemType, size };
+  // If dataUrl exists in metadata, use it exactly as-is
+  if (dataUrl) {
+    console.log(`[ffl-import] Using dataUrl from metadata: ${dataUrl}`);
+    return { url: dataUrl, type: itemType, size };
   }
 
-  return { url: dataUrl, type: itemType, size };
+  // No dataUrl in metadata - construct download URL with f=download (required for public binary access)
+  const downloadUrl = `${ARCGIS_REST_BASE}/${itemId}/data?f=download`;
+  console.log(`[ffl-import] No dataUrl in metadata, using f=download endpoint: ${downloadUrl}`);
+  return { url: downloadUrl, type: itemType, size };
 }
 
 /**
@@ -328,15 +331,34 @@ async function downloadFile(url: string): Promise<ArrayBuffer> {
     redirect: "follow",
   });
 
+  const contentType = response.headers.get("content-type") || "unknown";
+  console.log(`[ffl-import] Response status: ${response.status}, content-type: ${contentType}`);
+
   if (!response.ok) {
-    const contentType = response.headers.get("content-type") || "unknown";
     console.error(`[ffl-import] Download failed: HTTP ${response.status} for ${url}`);
     console.error(`[ffl-import] Response content-type: ${contentType}`);
+    
+    // Try to read error message if it's text/html or json
+    if (contentType.includes("text") || contentType.includes("json")) {
+      try {
+        const errorText = await response.text();
+        console.error(`[ffl-import] Error response body (first 500 chars): ${errorText.substring(0, 500)}`);
+      } catch {
+        // Ignore read errors
+      }
+    }
+    
     throw new Error(`Failed to download file: HTTP ${response.status} from ${url}`);
   }
 
+  // Validate content-type is not HTML (error page)
+  if (contentType.includes("text/html")) {
+    const htmlContent = await response.text();
+    console.error(`[ffl-import] Received HTML instead of data file. First 500 chars: ${htmlContent.substring(0, 500)}`);
+    throw new Error(`Received HTML error page instead of data file from ${url}`);
+  }
+
   const buffer = await response.arrayBuffer();
-  const contentType = response.headers.get("content-type") || "unknown";
   console.log(`[ffl-import] Downloaded ${buffer.byteLength} bytes (content-type: ${contentType})`);
   
   if (buffer.byteLength < 100) {
