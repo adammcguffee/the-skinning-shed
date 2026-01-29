@@ -181,6 +181,25 @@ class SocialService {
       'details': details,
     });
   }
+  
+  /// Report a swap shop listing.
+  Future<void> reportSwapShopListing({
+    required String listingId,
+    required String reason,
+    String? details,
+  }) async {
+    if (_client == null) throw Exception('Not connected');
+    
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    
+    await _client.from('content_reports').insert({
+      'reporter_id': userId,
+      'swap_shop_listing_id': listingId,
+      'reason': reason,
+      'details': details,
+    });
+  }
 }
 
 /// Comment model.

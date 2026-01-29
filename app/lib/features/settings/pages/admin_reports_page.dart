@@ -302,12 +302,14 @@ class _AdminReportsPageState extends ConsumerState<AdminReportsPage>
         itemCount: reports.length,
         itemBuilder: (context, index) {
           final report = reports[index];
-          return _ReportCard(
+          return           _ReportCard(
             report: report,
             onResolve: isPending ? () => _showResolveMenu(report) : null,
             onViewTarget: () {
               if (report.isPostReport && report.postId != null) {
                 context.push('/trophy/${report.postId}');
+              } else if (report.isSwapShopReport && report.swapShopListingId != null) {
+                context.push('/swap-shop/${report.swapShopListingId}');
               }
             },
           );
@@ -355,7 +357,9 @@ class _ReportCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: report.isPostReport 
                       ? AppColors.accent.withValues(alpha: 0.1)
-                      : AppColors.info.withValues(alpha: 0.1),
+                      : report.isSwapShopReport
+                          ? AppColors.success.withValues(alpha: 0.1)
+                          : AppColors.info.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                 ),
                 child: Text(
@@ -363,7 +367,11 @@ class _ReportCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: report.isPostReport ? AppColors.accent : AppColors.info,
+                    color: report.isPostReport 
+                        ? AppColors.accent 
+                        : report.isSwapShopReport 
+                            ? AppColors.success 
+                            : AppColors.info,
                   ),
                 ),
               ),
@@ -468,14 +476,14 @@ class _ReportCard extends StatelessWidget {
             ],
           ),
           
-          if (report.postOwnerName != null || report.commentOwnerName != null) ...[
+          if (report.targetOwnerName != null) ...[
             const SizedBox(height: 2),
             Row(
               children: [
                 Icon(Icons.account_circle_outlined, size: 14, color: AppColors.textTertiary),
                 const SizedBox(width: 4),
                 Text(
-                  'Content owner: ${report.postOwnerName ?? report.commentOwnerName ?? 'Unknown'}',
+                  'Content owner: ${report.targetOwnerName}',
                   style: TextStyle(
                     fontSize: 11,
                     color: AppColors.textTertiary,
@@ -490,12 +498,12 @@ class _ReportCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
             Row(
               children: [
-                if (onViewTarget != null && report.isPostReport)
+                if (onViewTarget != null && (report.isPostReport || report.isSwapShopReport))
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: onViewTarget,
                       icon: const Icon(Icons.visibility_outlined, size: 16),
-                      label: const Text('View Post'),
+                      label: Text(report.isSwapShopReport ? 'View Listing' : 'View Post'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.textSecondary,
                         side: BorderSide(color: AppColors.borderSubtle),
@@ -503,7 +511,7 @@ class _ReportCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (onViewTarget != null && report.isPostReport && onResolve != null)
+                if (onViewTarget != null && (report.isPostReport || report.isSwapShopReport) && onResolve != null)
                   const SizedBox(width: AppSpacing.sm),
                 if (onResolve != null)
                   Expanded(

@@ -26,6 +26,7 @@ class ModerationService {
           reporter_id,
           post_id,
           comment_id,
+          swap_shop_listing_id,
           reason,
           details,
           created_at,
@@ -51,6 +52,17 @@ class ModerationService {
           comment:comment_id (
             id,
             body,
+            user_id,
+            owner:user_id (
+              id,
+              username,
+              display_name
+            )
+          ),
+          swap_shop_listing:swap_shop_listing_id (
+            id,
+            title,
+            description,
             user_id,
             owner:user_id (
               id,
@@ -149,6 +161,7 @@ class ContentReport {
     required this.reporterId,
     this.postId,
     this.commentId,
+    this.swapShopListingId,
     required this.reason,
     this.details,
     required this.createdAt,
@@ -163,12 +176,17 @@ class ContentReport {
     this.commentBody,
     this.commentOwnerId,
     this.commentOwnerName,
+    this.swapShopTitle,
+    this.swapShopDescription,
+    this.swapShopOwnerId,
+    this.swapShopOwnerName,
   });
   
   final String id;
   final String reporterId;
   final String? postId;
   final String? commentId;
+  final String? swapShopListingId;
   final String reason;
   final String? details;
   final DateTime createdAt;
@@ -183,19 +201,46 @@ class ContentReport {
   final String? commentBody;
   final String? commentOwnerId;
   final String? commentOwnerName;
+  final String? swapShopTitle;
+  final String? swapShopDescription;
+  final String? swapShopOwnerId;
+  final String? swapShopOwnerName;
   
   bool get isPending => reviewedAt == null;
   bool get isPostReport => postId != null;
   bool get isCommentReport => commentId != null;
+  bool get isSwapShopReport => swapShopListingId != null;
   
-  String get targetType => isPostReport ? 'Post' : 'Comment';
+  String get targetType {
+    if (isPostReport) return 'Trophy Post';
+    if (isSwapShopReport) return 'Swap Shop';
+    if (isCommentReport) return 'Comment';
+    return 'Unknown';
+  }
+  
   String get targetPreview {
     if (isPostReport) {
       return postStory?.substring(0, postStory!.length > 100 ? 100 : postStory!.length) ?? 'No story';
+    } else if (isSwapShopReport) {
+      return swapShopTitle ?? swapShopDescription?.substring(0, swapShopDescription!.length > 100 ? 100 : swapShopDescription!.length) ?? 'No title';
     } else if (isCommentReport) {
       return commentBody?.substring(0, commentBody!.length > 100 ? 100 : commentBody!.length) ?? 'No body';
     }
     return 'Unknown';
+  }
+  
+  String? get targetOwnerId {
+    if (isPostReport) return postOwnerId;
+    if (isSwapShopReport) return swapShopOwnerId;
+    if (isCommentReport) return commentOwnerId;
+    return null;
+  }
+  
+  String? get targetOwnerName {
+    if (isPostReport) return postOwnerName;
+    if (isSwapShopReport) return swapShopOwnerName;
+    if (isCommentReport) return commentOwnerName;
+    return null;
   }
   
   String get reasonLabel {
@@ -215,12 +260,15 @@ class ContentReport {
     final postOwner = post?['owner'] as Map<String, dynamic>?;
     final comment = json['comment'] as Map<String, dynamic>?;
     final commentOwner = comment?['owner'] as Map<String, dynamic>?;
+    final swapShop = json['swap_shop_listing'] as Map<String, dynamic>?;
+    final swapShopOwner = swapShop?['owner'] as Map<String, dynamic>?;
     
     return ContentReport(
       id: json['id'],
       reporterId: json['reporter_id'],
       postId: json['post_id'],
       commentId: json['comment_id'],
+      swapShopListingId: json['swap_shop_listing_id'],
       reason: json['reason'],
       details: json['details'],
       createdAt: DateTime.parse(json['created_at']),
@@ -235,6 +283,10 @@ class ContentReport {
       commentBody: comment?['body'],
       commentOwnerId: comment?['user_id'],
       commentOwnerName: commentOwner?['display_name'] ?? commentOwner?['username'],
+      swapShopTitle: swapShop?['title'],
+      swapShopDescription: swapShop?['description'],
+      swapShopOwnerId: swapShop?['user_id'],
+      swapShopOwnerName: swapShopOwner?['display_name'] ?? swapShopOwner?['username'],
     );
   }
 }

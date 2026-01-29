@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/messaging_service.dart';
+import 'package:shed/services/social_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/swap_shop_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
@@ -245,8 +246,115 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
       _showOwnerMenu();
     } else if (isAdmin) {
       _showAdminMenu();
+    } else {
+      _showReportMenu();
     }
-    // Non-owners/non-admins don't see menu
+  }
+  
+  void _showReportMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.radiusXl),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                'Report Listing',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Why are you reporting this listing?',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ...ReportReason.values.map((reason) => ListTile(
+                leading: Icon(_getReportReasonIcon(reason), color: AppColors.textSecondary),
+                title: Text(reason.label),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _submitReport(reason);
+                },
+                contentPadding: EdgeInsets.zero,
+              )),
+              const SizedBox(height: AppSpacing.md),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  IconData _getReportReasonIcon(ReportReason reason) {
+    switch (reason) {
+      case ReportReason.spam:
+        return Icons.report_outlined;
+      case ReportReason.harassment:
+        return Icons.person_off_outlined;
+      case ReportReason.inappropriate:
+        return Icons.no_adult_content_outlined;
+      case ReportReason.misinformation:
+        return Icons.fact_check_outlined;
+      case ReportReason.other:
+        return Icons.more_horiz_outlined;
+    }
+  }
+  
+  Future<void> _submitReport(ReportReason reason) async {
+    try {
+      final socialService = ref.read(socialServiceProvider);
+      await socialService.reportSwapShopListing(
+        listingId: widget.listingId,
+        reason: reason.value,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Report submitted. Thank you for helping keep our community safe.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadListing() async {
@@ -509,14 +617,13 @@ class _SwapShopDetailScreenState extends ConsumerState<SwapShopDetailScreen> {
                   );
                 },
               ),
-              // More menu (owner: edit/delete, admin: remove)
+              // More menu (owner: edit/delete, admin: remove, others: report)
               Consumer(
                 builder: (context, ref, child) {
-                  final isAdminAsync = ref.watch(isAdminProvider);
-                  final isAdmin = isAdminAsync.valueOrNull ?? false;
-                  final showMenu = _isOwner || isAdmin;
+                  final isAuthenticated = ref.watch(isAuthenticatedProvider);
                   
-                  if (!showMenu) return const SizedBox.shrink();
+                  // Only show menu if user is signed in
+                  if (!isAuthenticated) return const SizedBox.shrink();
                   
                   return IconButton(
                     icon: Container(
