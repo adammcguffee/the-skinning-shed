@@ -51,6 +51,44 @@ class ClubStand {
   }
 }
 
+/// Hunt details stored in sign-in
+class HuntDetails {
+  const HuntDetails({
+    this.parkedAt,
+    this.entryRoute,
+    this.wind,
+    this.weapon,
+    this.extra,
+  });
+  
+  final String? parkedAt;
+  final String? entryRoute;
+  final String? wind;
+  final String? weapon;
+  final String? extra;
+  
+  factory HuntDetails.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const HuntDetails();
+    return HuntDetails(
+      parkedAt: json['parked_at'] as String?,
+      entryRoute: json['entry_route'] as String?,
+      wind: json['wind'] as String?,
+      weapon: json['weapon'] as String?,
+      extra: json['extra'] as String?,
+    );
+  }
+  
+  Map<String, dynamic> toJson() => {
+    if (parkedAt != null && parkedAt!.isNotEmpty) 'parked_at': parkedAt,
+    if (entryRoute != null && entryRoute!.isNotEmpty) 'entry_route': entryRoute,
+    if (wind != null && wind!.isNotEmpty) 'wind': wind,
+    if (weapon != null && weapon!.isNotEmpty) 'weapon': weapon,
+    if (extra != null && extra!.isNotEmpty) 'extra': extra,
+  };
+  
+  bool get isEmpty => parkedAt == null && entryRoute == null && wind == null && weapon == null && extra == null;
+}
+
 /// Stand sign-in model
 class StandSignin {
   const StandSignin({
@@ -63,9 +101,11 @@ class StandSignin {
     this.signedOutAt,
     required this.expiresAt,
     this.note,
+    this.details,
     this.username,
     this.displayName,
     this.avatarPath,
+    this.activityPromptDismissed = false,
   });
   
   final String id;
@@ -77,9 +117,11 @@ class StandSignin {
   final DateTime? signedOutAt;
   final DateTime expiresAt;
   final String? note;
+  final HuntDetails? details;
   final String? username;
   final String? displayName;
   final String? avatarPath;
+  final bool activityPromptDismissed;
   
   String get userName => displayName ?? username ?? 'Unknown';
   String get handle => username != null ? '@$username' : '';
@@ -175,9 +217,83 @@ class StandSignin {
           : null,
       expiresAt: DateTime.parse(json['expires_at'] as String),
       note: json['note'] as String?,
+      details: HuntDetails.fromJson(json['details'] as Map<String, dynamic>?),
       username: profile?['username'] as String?,
       displayName: profile?['display_name'] as String?,
       avatarPath: profile?['avatar_path'] as String?,
+      activityPromptDismissed: json['activity_prompt_dismissed'] as bool? ?? false,
+    );
+  }
+}
+
+/// Stand activity entry model
+class StandActivity {
+  const StandActivity({
+    required this.id,
+    required this.clubId,
+    required this.standId,
+    required this.userId,
+    this.signinId,
+    required this.body,
+    required this.createdAt,
+    this.username,
+    this.displayName,
+    this.avatarPath,
+  });
+  
+  final String id;
+  final String clubId;
+  final String standId;
+  final String userId;
+  final String? signinId;
+  final String body;
+  final DateTime createdAt;
+  final String? username;
+  final String? displayName;
+  final String? avatarPath;
+  
+  String get userName => displayName ?? username ?? 'User';
+  String get handle => username != null ? '@$username' : '';
+  
+  factory StandActivity.fromJson(Map<String, dynamic> json) {
+    return StandActivity(
+      id: json['id'] as String,
+      clubId: json['club_id'] as String,
+      standId: json['stand_id'] as String,
+      userId: json['user_id'] as String,
+      signinId: json['signin_id'] as String?,
+      body: json['body'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      username: json['username'] as String?,
+      displayName: json['display_name'] as String?,
+      avatarPath: json['avatar_path'] as String?,
+    );
+  }
+}
+
+/// Pending activity prompt model
+class PendingActivityPrompt {
+  const PendingActivityPrompt({
+    required this.signinId,
+    required this.standId,
+    required this.standName,
+    required this.signedInAt,
+    required this.expiresAt,
+  });
+  
+  final String signinId;
+  final String standId;
+  final String standName;
+  final DateTime signedInAt;
+  final DateTime expiresAt;
+  
+  factory PendingActivityPrompt.fromJson(Map<String, dynamic> json) {
+    return PendingActivityPrompt(
+      signinId: json['signin_id'] as String,
+      standId: json['stand_id'] as String,
+      standName: json['stand_name'] as String,
+      signedInAt: DateTime.parse(json['signed_in_at'] as String),
+      expiresAt: DateTime.parse(json['expires_at'] as String),
     );
   }
 }
@@ -206,16 +322,17 @@ class StandsService {
   
   final SupabaseClient? _client;
   
-  /// Get stands with active sign-ins for a club
+  /// Get stands with active sign-ins for a club (excludes soft-deleted)
   Future<List<ClubStand>> getStandsWithSignins(String clubId) async {
     if (_client == null) return [];
     
     try {
-      // Get all stands
+      // Get all non-deleted stands
       final standsResponse = await _client
           .from('club_stands')
           .select()
           .eq('club_id', clubId)
+          .eq('is_deleted', false)
           .order('sort_order');
       
       // Get active sign-ins (not expired) - use UTC for comparison
@@ -307,17 +424,17 @@ class StandsService {
     }
   }
   
-  /// Delete a stand
+  /// Soft delete a stand (admin only - ends active signins first)
   Future<bool> deleteStand(String standId) async {
     if (_client == null) return false;
     
     try {
-      await _client
-          .from('club_stands')
-          .delete()
-          .eq('id', standId);
+      final result = await _client.rpc('soft_delete_stand', params: {
+        'p_stand_id': standId,
+      });
       
-      return true;
+      final json = result as Map<String, dynamic>;
+      return json['success'] == true;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[StandsService] Error deleting stand: $e');
@@ -326,8 +443,59 @@ class StandsService {
     }
   }
   
-  /// Sign in to a stand
-  Future<SignInResult> signIn(String clubId, String standId, int ttlHours, {String? note, String? standName}) async {
+  /// Update stand name/description via RPC (admin only)
+  Future<bool> updateStandViaRpc(String standId, String name, {String? description}) async {
+    if (_client == null) return false;
+    
+    try {
+      final result = await _client.rpc('update_stand', params: {
+        'p_stand_id': standId,
+        'p_name': name,
+        'p_description': description,
+      });
+      
+      final json = result as Map<String, dynamic>;
+      return json['success'] == true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error updating stand: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Update sign-in details (note + hunt details)
+  Future<bool> updateSigninDetails(String signinId, {String? note, HuntDetails? details}) async {
+    if (_client == null) return false;
+    
+    try {
+      final data = <String, dynamic>{};
+      if (note != null) data['note'] = note;
+      if (details != null) data['details'] = details.toJson();
+      
+      await _client
+          .from('stand_signins')
+          .update(data)
+          .eq('id', signinId);
+      
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error updating signin details: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Sign in to a stand with optional hunt details
+  Future<SignInResult> signIn(
+    String clubId, 
+    String standId, 
+    int ttlHours, {
+    String? note, 
+    String? standName,
+    HuntDetails? details,
+  }) async {
     if (_client == null) {
       return SignInResult.error('Not connected');
     }
@@ -345,6 +513,7 @@ class StandsService {
           .update({
             'status': 'signed_out',
             'signed_out_at': now.toIso8601String(),
+            'ended_reason': 'new_signin',
           })
           .eq('club_id', clubId)
           .eq('user_id', userId)
@@ -360,6 +529,7 @@ class StandsService {
         'status': 'active',
         'expires_at': expiresAt.toIso8601String(),
         'note': note,
+        if (details != null && !details.isEmpty) 'details': details.toJson(),
       });
       
       // Trigger notification (fire and forget)
@@ -494,6 +664,169 @@ class StandsService {
       }
     }
   }
+  
+  // =====================
+  // STAND ACTIVITY
+  // =====================
+  
+  /// Get recent activity for a stand
+  Future<List<StandActivity>> getStandActivity(String standId, {int limit = 20}) async {
+    if (_client == null) return [];
+    
+    try {
+      final result = await _client.rpc('get_stand_activity', params: {
+        'p_stand_id': standId,
+        'p_limit': limit,
+      });
+      
+      return (result as List).map((row) {
+        final json = row as Map<String, dynamic>;
+        return StandActivity.fromJson(json);
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error getting stand activity: $e');
+      }
+      return [];
+    }
+  }
+  
+  /// Add activity entry to a stand
+  Future<bool> addStandActivity(String clubId, String standId, String body, {String? signinId}) async {
+    if (_client == null) return false;
+    
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return false;
+    
+    try {
+      await _client.from('stand_activity').insert({
+        'club_id': clubId,
+        'stand_id': standId,
+        'user_id': userId,
+        'body': body,
+        if (signinId != null) 'signin_id': signinId,
+      });
+      
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error adding stand activity: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Edit an activity entry
+  Future<bool> editStandActivity(String activityId, String body) async {
+    if (_client == null) return false;
+    
+    try {
+      await _client
+          .from('stand_activity')
+          .update({
+            'body': body,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', activityId);
+      
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error editing stand activity: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Delete an activity entry
+  Future<bool> deleteStandActivity(String activityId) async {
+    if (_client == null) return false;
+    
+    try {
+      await _client
+          .from('stand_activity')
+          .delete()
+          .eq('id', activityId);
+      
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error deleting stand activity: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Get pending activity prompt for current user in a club
+  Future<PendingActivityPrompt?> getPendingActivityPrompt(String clubId) async {
+    if (_client == null) return null;
+    
+    try {
+      final result = await _client.rpc('get_pending_activity_prompts', params: {
+        'p_club_id': clubId,
+      });
+      
+      final list = result as List;
+      if (list.isEmpty) return null;
+      
+      return PendingActivityPrompt.fromJson(list.first as Map<String, dynamic>);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error getting pending activity prompt: $e');
+      }
+      return null;
+    }
+  }
+  
+  /// Dismiss activity prompt for a signin
+  Future<bool> dismissActivityPrompt(String signinId) async {
+    if (_client == null) return false;
+    
+    try {
+      await _client.rpc('dismiss_activity_prompt', params: {
+        'p_signin_id': signinId,
+      });
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error dismissing activity prompt: $e');
+      }
+      return false;
+    }
+  }
+  
+  /// Sign out and return the signin for activity prompt
+  Future<StandSignin?> signOutWithPrompt(String signinId) async {
+    if (_client == null) return null;
+    
+    try {
+      // First get the signin details
+      final signinResponse = await _client
+          .from('stand_signins')
+          .select('*, profiles:profiles!stand_signins_user_profiles_fkey(username, display_name, avatar_path)')
+          .eq('id', signinId)
+          .single();
+      
+      final signin = StandSignin.fromJson(signinResponse);
+      
+      // Then sign out
+      await _client
+          .from('stand_signins')
+          .update({
+            'status': 'signed_out',
+            'signed_out_at': DateTime.now().toUtc().toIso8601String(),
+            'ended_reason': 'manual',
+          })
+          .eq('id', signinId);
+      
+      return signin;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[StandsService] Error signing out with prompt: $e');
+      }
+      return null;
+    }
+  }
 }
 
 // =====================
@@ -516,4 +849,16 @@ final clubStandsProvider = FutureProvider.autoDispose.family<List<ClubStand>, St
 final myActiveSigninProvider = FutureProvider.autoDispose.family<StandSignin?, String>((ref, clubId) async {
   final service = ref.watch(standsServiceProvider);
   return service.getMyActiveSignin(clubId);
+});
+
+/// Provider for stand activity
+final standActivityProvider = FutureProvider.autoDispose.family<List<StandActivity>, String>((ref, standId) async {
+  final service = ref.watch(standsServiceProvider);
+  return service.getStandActivity(standId);
+});
+
+/// Provider for pending activity prompts
+final pendingActivityPromptProvider = FutureProvider.autoDispose.family<PendingActivityPrompt?, String>((ref, clubId) async {
+  final service = ref.watch(standsServiceProvider);
+  return service.getPendingActivityPrompt(clubId);
 });

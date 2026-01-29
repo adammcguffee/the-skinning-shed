@@ -453,16 +453,37 @@ class _PremiumStandsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final standsAsync = ref.watch(clubStandsProvider(clubId));
     final mySigninAsync = ref.watch(myActiveSigninProvider(clubId));
+    final pendingPromptAsync = ref.watch(pendingActivityPromptProvider(clubId));
     
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(clubStandsProvider(clubId));
         ref.invalidate(myActiveSigninProvider(clubId));
+        ref.invalidate(pendingActivityPromptProvider(clubId));
         onRefresh();
       },
       color: AppColors.primary,
       child: CustomScrollView(
         slivers: [
+          // Pending activity prompt banner (for auto-expired sessions)
+          SliverToBoxAdapter(
+            child: pendingPromptAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (prompt) => prompt != null
+                  ? _PendingActivityBanner(
+                      prompt: prompt,
+                      onLog: () => _showLogYourSitFromPrompt(context, ref, prompt),
+                      onDismiss: () async {
+                        final service = ref.read(standsServiceProvider);
+                        await service.dismissActivityPrompt(prompt.signinId);
+                        ref.invalidate(pendingActivityPromptProvider(clubId));
+                      },
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
+          
           // My Hunt Card
           SliverToBoxAdapter(
             child: mySigninAsync.when(
@@ -542,6 +563,7 @@ class _PremiumStandsTab extends ConsumerWidget {
                         ? () => _showSignOutSheet(context, ref, mySignin)
                         : null,
                     onDelete: () => _deleteStand(context, ref, sortedStands[index]),
+                    onTap: () => _showStandDetailsSheet(context, ref, sortedStands[index], mySignin),
                   ),
                 ),
               );
@@ -596,7 +618,9 @@ class _PremiumStandsTab extends ConsumerWidget {
   
   Future<void> _showSignInSheet(BuildContext context, WidgetRef ref, ClubStand stand) async {
     final noteController = TextEditingController();
-    int selectedHours = club.settings.signInTtlHours.clamp(1, 12); // Default from club settings, max 12
+    final parkedAtController = TextEditingController();
+    final entryRouteController = TextEditingController();
+    int selectedHours = club.settings.signInTtlHours.clamp(1, 12);
     
     final result = await showModalBottomSheet<int>(
       context: context,
@@ -606,18 +630,32 @@ class _PremiumStandsTab extends ConsumerWidget {
         standName: stand.name,
         defaultHours: selectedHours,
         noteController: noteController,
+        parkedAtController: parkedAtController,
+        entryRouteController: entryRouteController,
       ),
     );
     
     if (result != null && result > 0 && context.mounted) {
       HapticFeedback.mediumImpact();
       final service = ref.read(standsServiceProvider);
+      
+      // Build hunt details if any were provided
+      HuntDetails? details;
+      if (parkedAtController.text.trim().isNotEmpty || 
+          entryRouteController.text.trim().isNotEmpty) {
+        details = HuntDetails(
+          parkedAt: parkedAtController.text.trim().isEmpty ? null : parkedAtController.text.trim(),
+          entryRoute: entryRouteController.text.trim().isEmpty ? null : entryRouteController.text.trim(),
+        );
+      }
+      
       final signInResult = await service.signIn(
         clubId,
         stand.id,
-        result, // Use the selected duration
+        result,
         note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
         standName: stand.name,
+        details: details,
       );
       
       if (context.mounted) {
@@ -686,12 +724,7 @@ class _PremiumStandsTab extends ConsumerWidget {
     
     if (result == true && context.mounted) {
       HapticFeedback.mediumImpact();
-      final service = ref.read(standsServiceProvider);
-      final success = await service.signOut(signin.id);
-      if (success) {
-        ref.invalidate(clubStandsProvider(clubId));
-        ref.invalidate(myActiveSigninProvider(clubId));
-      }
+      await _showSignOutWithPrompt(context, ref, signin);
     }
   }
   
@@ -724,6 +757,311 @@ class _PremiumStandsTab extends ConsumerWidget {
       await service.deleteStand(stand.id);
       ref.invalidate(clubStandsProvider(clubId));
     }
+  }
+  
+  Future<void> _showStandDetailsSheet(
+    BuildContext context, 
+    WidgetRef ref, 
+    ClubStand stand,
+    StandSignin? mySignin,
+  ) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _StandDetailsSheet(
+        club: club,
+        stand: stand,
+        isAdmin: isAdmin,
+        isMySignin: mySignin?.standId == stand.id,
+        mySignin: mySignin,
+        onSignIn: () {
+          Navigator.pop(ctx);
+          _showSignInSheet(context, ref, stand);
+        },
+        onSignOut: mySignin != null ? () async {
+          Navigator.pop(ctx);
+          await _showSignOutWithPrompt(context, ref, mySignin);
+        } : null,
+        onEditStand: isAdmin ? () async {
+          Navigator.pop(ctx);
+          await _showEditStandSheet(context, ref, stand);
+        } : null,
+        onDeleteStand: isAdmin ? () async {
+          Navigator.pop(ctx);
+          await _deleteStand(context, ref, stand);
+        } : null,
+        onRefresh: () {
+          ref.invalidate(clubStandsProvider(clubId));
+          ref.invalidate(myActiveSigninProvider(clubId));
+          ref.invalidate(standActivityProvider(stand.id));
+        },
+      ),
+    );
+  }
+  
+  Future<void> _showSignOutWithPrompt(BuildContext context, WidgetRef ref, StandSignin signin) async {
+    final service = ref.read(standsServiceProvider);
+    
+    // Sign out first
+    final signedOutSignin = await service.signOutWithPrompt(signin.id);
+    
+    // Refresh UI immediately
+    ref.invalidate(clubStandsProvider(clubId));
+    ref.invalidate(myActiveSigninProvider(clubId));
+    
+    if (!context.mounted || signedOutSignin == null) return;
+    
+    // Show "Log your sit" prompt
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _LogYourSitSheet(
+        signin: signedOutSignin,
+        standName: signedOutSignin.standId, // We'll get name from context
+        onSubmit: (body) async {
+          final success = await service.addStandActivity(
+            clubId,
+            signedOutSignin.standId,
+            body,
+            signinId: signedOutSignin.id,
+          );
+          if (ctx.mounted) {
+            Navigator.pop(ctx);
+            if (success) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Activity posted!'),
+                  backgroundColor: AppColors.success,
+                ),
+              );
+            }
+          }
+        },
+        onSkip: () => Navigator.pop(ctx),
+      ),
+    );
+  }
+  
+  Future<void> _showLogYourSitFromPrompt(BuildContext context, WidgetRef ref, PendingActivityPrompt prompt) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _LogYourSitSheet(
+        signin: StandSignin(
+          id: prompt.signinId,
+          clubId: clubId,
+          standId: prompt.standId,
+          userId: '', // Not needed for this flow
+          status: 'signed_out',
+          signedInAt: prompt.signedInAt,
+          expiresAt: prompt.expiresAt,
+        ),
+        standName: prompt.standName,
+        onSubmit: (body) async {
+          final service = ref.read(standsServiceProvider);
+          final success = await service.addStandActivity(
+            clubId,
+            prompt.standId,
+            body,
+            signinId: prompt.signinId,
+          );
+          if (ctx.mounted) {
+            Navigator.pop(ctx);
+            if (success) {
+              ref.invalidate(pendingActivityPromptProvider(clubId));
+              ref.invalidate(standActivityProvider(prompt.standId));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Activity posted!'),
+                  backgroundColor: AppColors.success,
+                ),
+              );
+            }
+          }
+        },
+        onSkip: () async {
+          Navigator.pop(ctx);
+          final service = ref.read(standsServiceProvider);
+          await service.dismissActivityPrompt(prompt.signinId);
+          ref.invalidate(pendingActivityPromptProvider(clubId));
+        },
+      ),
+    );
+  }
+  
+  Future<void> _showEditStandSheet(BuildContext context, WidgetRef ref, ClubStand stand) async {
+    final nameController = TextEditingController(text: stand.name);
+    final descController = TextEditingController(text: stand.description ?? '');
+    
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _PremiumBottomSheet(
+        title: 'Edit Stand',
+        icon: Icons.edit_rounded,
+        child: Column(
+          children: [
+            _PremiumTextField(
+              controller: nameController,
+              label: 'Stand Name',
+              hint: 'e.g., North Tower',
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            _PremiumTextField(
+              controller: descController,
+              label: 'Description (optional)',
+              hint: 'e.g., Near the creek',
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _PremiumSecondaryButton(
+                    label: 'Cancel',
+                    onPressed: () => Navigator.pop(context, false),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _PremiumPrimaryButton(
+                    label: 'Save',
+                    onPressed: () => Navigator.pop(context, true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    if (result == true && context.mounted) {
+      HapticFeedback.mediumImpact();
+      final service = ref.read(standsServiceProvider);
+      final success = await service.updateStandViaRpc(
+        stand.id,
+        nameController.text.trim(),
+        description: descController.text.trim().isEmpty ? null : descController.text.trim(),
+      );
+      
+      if (success) {
+        ref.invalidate(clubStandsProvider(clubId));
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update stand')),
+        );
+      }
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PENDING ACTIVITY BANNER (AUTO-EXPIRED)
+// ════════════════════════════════════════════════════════════════════════════
+
+class _PendingActivityBanner extends StatelessWidget {
+  const _PendingActivityBanner({
+    required this.prompt,
+    required this.onLog,
+    required this.onDismiss,
+  });
+  
+  final PendingActivityPrompt prompt;
+  final VoidCallback onLog;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.edit_note_rounded,
+                color: AppColors.primary,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Log your sit at ${prompt.standName}?',
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Your session auto-ended. Tell the club what you saw.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              children: [
+                SizedBox(
+                  width: 70,
+                  height: 32,
+                  child: TextButton(
+                    onPressed: onLog,
+                    style: TextButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Log', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: 24,
+                  child: TextButton(
+                    onPressed: onDismiss,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      foregroundColor: AppColors.textTertiary,
+                    ),
+                    child: const Text('Dismiss', style: TextStyle(fontSize: 11)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1067,6 +1405,7 @@ class _PremiumStandCard extends StatelessWidget {
     required this.onSignIn,
     required this.onSignOut,
     required this.onDelete,
+    required this.onTap,
   });
   
   final ClubStand stand;
@@ -1077,71 +1416,104 @@ class _PremiumStandCard extends StatelessWidget {
   final VoidCallback onSignIn;
   final VoidCallback? onSignOut;
   final VoidCallback onDelete;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final signin = stand.activeSignin;
     final isOccupied = stand.isOccupied;
     
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isMySignin
-              ? AppColors.primary
-              : isOccupied
-                  ? AppColors.warning.withValues(alpha: 0.3)
-                  : AppColors.success.withValues(alpha: 0.3),
-          width: isMySignin ? 1.5 : 0.5,
+    // Premium styling for occupied stands - subtle warm orange tint
+    final backgroundColor = isOccupied 
+        ? (isMySignin 
+            ? AppColors.primary.withValues(alpha: 0.08)
+            : const Color(0xFFFFF8F0)) // Very light warm orange
+        : AppColors.surface;
+    
+    final borderColor = isMySignin
+        ? AppColors.primary
+        : isOccupied
+            ? const Color(0xFFE8A865) // Warm orange for occupied
+            : AppColors.success.withValues(alpha: 0.4);
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: borderColor,
+            width: isMySignin ? 1.5 : 1,
+          ),
+          // Premium shadow for occupied stands
+          boxShadow: isOccupied ? [
+            BoxShadow(
+              color: const Color(0xFFE8A865).withValues(alpha: 0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ] : null,
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            // Status indicator
-            _StatusIndicator(
-              isOccupied: isOccupied,
-              isMySignin: isMySignin,
-              signin: signin,
-            ),
-            const SizedBox(width: 14),
-            
-            // Stand info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    stand.name,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (isOccupied && signin != null)
-                    _OccupiedInfo(signin: signin, isMySignin: isMySignin)
-                  else
-                    const _AvailableInfo(),
-                ],
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              // Status indicator
+              _StatusIndicator(
+                isOccupied: isOccupied,
+                isMySignin: isMySignin,
+                signin: signin,
               ),
-            ),
-            
-            // Action
-            _StandAction(
-              isOccupied: isOccupied,
-              isMySignin: isMySignin,
-              hasActiveSignin: hasActiveSignin,
-              isAdmin: isAdmin,
-              onSignIn: onSignIn,
-              onSignOut: onSignOut,
-              onDelete: onDelete,
-            ),
-          ],
+              const SizedBox(width: 14),
+              
+              // Stand info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            stand.name,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        // Chevron to indicate tappable
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: AppColors.textTertiary.withValues(alpha: 0.6),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (isOccupied && signin != null)
+                      _OccupiedInfo(signin: signin, isMySignin: isMySignin)
+                    else
+                      const _AvailableInfo(),
+                  ],
+                ),
+              ),
+              
+              // Action
+              _StandAction(
+                isOccupied: isOccupied,
+                isMySignin: isMySignin,
+                hasActiveSignin: hasActiveSignin,
+                isAdmin: isAdmin,
+                onSignIn: onSignIn,
+                onSignOut: onSignOut,
+                onDelete: onDelete,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -4127,17 +4499,21 @@ class _PremiumBottomSheet extends StatelessWidget {
   }
 }
 
-/// Sign-in bottom sheet with duration selector
+/// Sign-in bottom sheet with duration selector and hunt details
 class _SignInBottomSheet extends StatefulWidget {
   const _SignInBottomSheet({
     required this.standName,
     required this.defaultHours,
     required this.noteController,
+    required this.parkedAtController,
+    required this.entryRouteController,
   });
   
   final String standName;
   final int defaultHours;
   final TextEditingController noteController;
+  final TextEditingController parkedAtController;
+  final TextEditingController entryRouteController;
   
   @override
   State<_SignInBottomSheet> createState() => _SignInBottomSheetState();
@@ -4145,6 +4521,7 @@ class _SignInBottomSheet extends StatefulWidget {
 
 class _SignInBottomSheetState extends State<_SignInBottomSheet> {
   late int _selectedHours;
+  bool _showDetails = false;
   
   // Available duration options
   static const List<int> _durationOptions = [1, 2, 4, 6, 8, 10, 12];
@@ -4303,6 +4680,73 @@ class _SignInBottomSheetState extends State<_SignInBottomSheet> {
                 hint: 'e.g., Bow hunting, arrived from south',
                 maxLength: 80,
               ),
+              const SizedBox(height: 16),
+              
+              // Hunt Details expandable section
+              GestureDetector(
+                onTap: () => setState(() => _showDetails = !_showDetails),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 18,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Hunt details (optional)',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        _showDetails 
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Expanded hunt details
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                child: _showDetails 
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Column(
+                          children: [
+                            _PremiumTextField(
+                              controller: widget.parkedAtController,
+                              label: 'Parked at',
+                              hint: 'e.g., North gate pull-off',
+                              maxLength: 60,
+                            ),
+                            const SizedBox(height: 12),
+                            _PremiumTextField(
+                              controller: widget.entryRouteController,
+                              label: 'Entry route',
+                              hint: 'e.g., Came in from south firebreak',
+                              maxLength: 100,
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              
               const SizedBox(height: 24),
               _PremiumPrimaryButton(
                 label: 'Confirm Sign In',
@@ -4380,12 +4824,14 @@ class _PremiumPrimaryButton extends StatelessWidget {
   });
   
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final IconData? icon;
   final bool isDestructive;
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = onPressed == null;
+    
     return SizedBox(
       width: double.infinity,
       height: 48,
@@ -5154,6 +5600,798 @@ class _PremiumInviteSheetState extends ConsumerState<_PremiumInviteSheet> with S
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// STAND DETAILS SHEET
+// ════════════════════════════════════════════════════════════════════════════
+
+class _StandDetailsSheet extends ConsumerStatefulWidget {
+  const _StandDetailsSheet({
+    required this.club,
+    required this.stand,
+    required this.isAdmin,
+    required this.isMySignin,
+    required this.mySignin,
+    required this.onSignIn,
+    required this.onSignOut,
+    required this.onEditStand,
+    required this.onDeleteStand,
+    required this.onRefresh,
+  });
+  
+  final Club club;
+  final ClubStand stand;
+  final bool isAdmin;
+  final bool isMySignin;
+  final StandSignin? mySignin;
+  final VoidCallback onSignIn;
+  final VoidCallback? onSignOut;
+  final VoidCallback? onEditStand;
+  final VoidCallback? onDeleteStand;
+  final VoidCallback onRefresh;
+
+  @override
+  ConsumerState<_StandDetailsSheet> createState() => _StandDetailsSheetState();
+}
+
+class _StandDetailsSheetState extends ConsumerState<_StandDetailsSheet> {
+  final _activityController = TextEditingController();
+  bool _isPostingActivity = false;
+  
+  @override
+  void dispose() {
+    _activityController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _postActivity() async {
+    final body = _activityController.text.trim();
+    if (body.isEmpty) return;
+    
+    setState(() => _isPostingActivity = true);
+    HapticFeedback.mediumImpact();
+    
+    final service = ref.read(standsServiceProvider);
+    final success = await service.addStandActivity(
+      widget.club.id,
+      widget.stand.id,
+      body,
+      signinId: widget.isMySignin ? widget.stand.activeSignin?.id : null,
+    );
+    
+    if (mounted) {
+      setState(() => _isPostingActivity = false);
+      
+      if (success) {
+        _activityController.clear();
+        ref.invalidate(standActivityProvider(widget.stand.id));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Activity posted'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to post activity')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final signin = widget.stand.activeSignin;
+    final isOccupied = widget.stand.isOccupied;
+    final activityAsync = ref.watch(standActivityProvider(widget.stand.id));
+    
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          
+          // Content
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      // Status indicator
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: isOccupied 
+                              ? const Color(0xFFFFF0E0)
+                              : AppColors.success.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isOccupied 
+                                ? const Color(0xFFE8A865)
+                                : AppColors.success.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          isOccupied ? Icons.person_rounded : Icons.chair_alt_rounded,
+                          color: isOccupied ? const Color(0xFFD4930D) : AppColors.success,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.stand.name,
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isOccupied 
+                                    ? const Color(0xFFFFF0E0)
+                                    : AppColors.success.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isOccupied ? 'Occupied' : 'Available',
+                                style: TextStyle(
+                                  color: isOccupied 
+                                      ? const Color(0xFFD4930D)
+                                      : AppColors.success,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Admin menu
+                      if (widget.isAdmin)
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
+                          color: AppColors.surfaceElevated,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          onSelected: (value) {
+                            if (value == 'edit') widget.onEditStand?.call();
+                            if (value == 'delete') widget.onDeleteStand?.call();
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit_rounded, size: 18, color: AppColors.textSecondary),
+                                  SizedBox(width: 10),
+                                  Text('Edit Stand'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_rounded, size: 18, color: AppColors.error),
+                                  SizedBox(width: 10),
+                                  Text('Delete Stand', style: TextStyle(color: AppColors.error)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Occupied info
+                  if (isOccupied && signin != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8F0),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE8A865).withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor: const Color(0xFFE8A865).withValues(alpha: 0.2),
+                                child: Text(
+                                  signin.userName.isNotEmpty ? signin.userName[0].toUpperCase() : '?',
+                                  style: const TextStyle(
+                                    color: Color(0xFFD4930D),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      signin.userName,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    if (signin.handle.isNotEmpty)
+                                      Text(
+                                        signin.handle,
+                                        style: const TextStyle(
+                                          color: AppColors.textTertiary,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              _InfoChip(
+                                icon: Icons.login_rounded,
+                                label: signin.signedInAtFormatted,
+                              ),
+                              const SizedBox(width: 8),
+                              _InfoChip(
+                                icon: Icons.timer_rounded,
+                                label: 'Expires ${signin.expiresAtFormatted}',
+                              ),
+                            ],
+                          ),
+                          if (signin.note != null && signin.note!.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              signin.note!,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                          // Hunt details
+                          if (signin.details != null && !signin.details!.isEmpty) ...[
+                            const SizedBox(height: 12),
+                            if (signin.details!.parkedAt != null) ...[
+                              _DetailRow(icon: Icons.local_parking_rounded, label: 'Parked', value: signin.details!.parkedAt!),
+                              const SizedBox(height: 6),
+                            ],
+                            if (signin.details!.entryRoute != null)
+                              _DetailRow(icon: Icons.route_rounded, label: 'Entry', value: signin.details!.entryRoute!),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Action buttons
+                  if (!isOccupied && !widget.isMySignin && widget.mySignin == null)
+                    _PremiumPrimaryButton(
+                      label: 'Sign In to This Stand',
+                      icon: Icons.login_rounded,
+                      onPressed: widget.onSignIn,
+                    )
+                  else if (widget.isMySignin && widget.onSignOut != null)
+                    _PremiumPrimaryButton(
+                      label: 'Sign Out',
+                      icon: Icons.logout_rounded,
+                      isDestructive: true,
+                      onPressed: widget.onSignOut!,
+                    ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Recent Activity Section
+                  Row(
+                    children: [
+                      const Icon(Icons.history_rounded, size: 18, color: AppColors.textSecondary),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Recent Activity',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Observations from this stand',
+                    style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Add activity input
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _activityController,
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            hintText: 'What did you see? (e.g., 8pt buck at 80 yards)',
+                            hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 13),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: _isPostingActivity ? null : _postActivity,
+                              child: _isPostingActivity
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Text('Post'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Activity list
+                  activityAsync.when(
+                    loading: () => const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    error: (_, __) => const Text(
+                      'Could not load activity',
+                      style: TextStyle(color: AppColors.textTertiary),
+                    ),
+                    data: (activities) {
+                      if (activities.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(24),
+                          child: const Center(
+                            child: Text(
+                              'No activity yet',
+                              style: TextStyle(color: AppColors.textTertiary),
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      return Column(
+                        children: activities.take(10).map((activity) => 
+                          _ActivityCard(
+                            activity: activity,
+                            onDelete: () async {
+                              final service = ref.read(standsServiceProvider);
+                              await service.deleteStandActivity(activity.id);
+                              ref.invalidate(standActivityProvider(widget.stand.id));
+                            },
+                          ),
+                        ).toList(),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.icon, required this.label});
+  
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: AppColors.textTertiary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.icon, required this.label, required this.value});
+  
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: AppColors.textTertiary),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: const TextStyle(color: AppColors.textTertiary, fontSize: 12),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  const _ActivityCard({required this.activity, required this.onDelete});
+  
+  final StandActivity activity;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final timeAgo = _formatTimeAgo(activity.createdAt);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                child: Text(
+                  activity.userName.isNotEmpty ? activity.userName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      activity.handle.isNotEmpty ? activity.handle : activity.userName,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(
+                      timeAgo,
+                      style: const TextStyle(
+                        color: AppColors.textTertiary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                color: AppColors.textTertiary,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            activity.body,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  String _formatTimeAgo(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.month}/${dt.day}';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LOG YOUR SIT SHEET (POST SIGN-OUT)
+// ════════════════════════════════════════════════════════════════════════════
+
+class _LogYourSitSheet extends StatefulWidget {
+  const _LogYourSitSheet({
+    required this.signin,
+    required this.standName,
+    required this.onSubmit,
+    required this.onSkip,
+  });
+  
+  final StandSignin signin;
+  final String standName;
+  final Future<void> Function(String body) onSubmit;
+  final VoidCallback onSkip;
+
+  @override
+  State<_LogYourSitSheet> createState() => _LogYourSitSheetState();
+}
+
+class _LogYourSitSheetState extends State<_LogYourSitSheet> {
+  final _controller = TextEditingController();
+  bool _isSubmitting = false;
+  String? _selectedQuickNote;
+  
+  static const _quickNotes = [
+    'Saw buck',
+    'Saw doe',
+    'Saw turkey',
+    'Heard movement',
+    'Nothing seen',
+  ];
+  
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _submit() async {
+    String body = _controller.text.trim();
+    
+    // Prepend quick note if selected
+    if (_selectedQuickNote != null) {
+      if (body.isNotEmpty) {
+        body = '$_selectedQuickNote - $body';
+      } else {
+        body = _selectedQuickNote!;
+      }
+    }
+    
+    if (body.isEmpty) {
+      widget.onSkip();
+      return;
+    }
+    
+    setState(() => _isSubmitting = true);
+    HapticFeedback.mediumImpact();
+    
+    await widget.onSubmit(body);
+    
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Icon
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.edit_note_rounded, color: AppColors.primary, size: 28),
+              ),
+              const SizedBox(height: 16),
+              
+              const Text(
+                'Log Your Sit',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Help the club track movement at this stand',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              
+              // Quick note chips
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _quickNotes.map((note) {
+                  final isSelected = _selectedQuickNote == note;
+                  return GestureDetector(
+                    onTap: () => setState(() => 
+                      _selectedQuickNote = isSelected ? null : note
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected 
+                            ? AppColors.primary 
+                            : AppColors.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected 
+                              ? AppColors.primary 
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Text(
+                        note,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              
+              // Text input
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: TextField(
+                  controller: _controller,
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                  maxLines: 3,
+                  maxLength: 300,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g., 8pt at 80 yards at 7:10am, came from south ridge…',
+                    hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 13),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.all(14),
+                    counterStyle: TextStyle(color: AppColors.textTertiary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              Row(
+                children: [
+                  Expanded(
+                    child: _PremiumSecondaryButton(
+                      label: 'Skip',
+                      onPressed: widget.onSkip,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PremiumPrimaryButton(
+                      label: 'Post',
+                      icon: Icons.send_rounded,
+                      onPressed: _isSubmitting ? null : () => _submit(),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
