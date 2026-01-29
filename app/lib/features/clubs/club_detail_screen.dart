@@ -83,26 +83,43 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
         final isAdmin = membership?.isAdmin ?? false;
         final memberCount = membersAsync.valueOrNull?.length ?? 0;
         
-        // Show FAB on Members tab for admins (mobile-friendly invite)
-        final showInviteFab = _selectedTab == 3 && isAdmin;
+        // Show contextual FAB based on tab
+        Widget? fab;
+        final isMember = membership != null;
+        
+        if (_selectedTab == 1 && isMember) {
+          // Stands tab - Add Stand FAB (any member can add)
+          fab = FloatingActionButton.extended(
+            onPressed: () => _showAddStandSheet(context, club),
+            backgroundColor: AppColors.primary,
+            icon: const Icon(Icons.add_location_alt_rounded, color: Colors.white),
+            label: const Text(
+              'Add Stand',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          );
+        } else if (_selectedTab == 3 && isAdmin) {
+          // Members tab - Invite FAB (admin only)
+          fab = FloatingActionButton.extended(
+            onPressed: () => _showInviteSheet(context, club),
+            backgroundColor: AppColors.primary,
+            icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+            label: const Text(
+              'Invite',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          );
+        }
         
         return Scaffold(
           backgroundColor: AppColors.background,
-          // Mobile-friendly FAB for inviting members
-          floatingActionButton: showInviteFab
-              ? FloatingActionButton.extended(
-                  onPressed: () => _showInviteSheet(context, club),
-                  backgroundColor: AppColors.primary,
-                  icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-                  label: const Text(
-                    'Invite',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                )
-              : null,
+          floatingActionButton: fab,
           body: SafeArea(
             child: Column(
               children: [
@@ -111,6 +128,7 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
                   club: club,
                   memberCount: memberCount,
                   isAdmin: isAdmin,
+                  isMember: isMember,
                   onBack: () {
                     // Resilient back: go back if possible, else go to clubs list
                     if (GoRouter.of(context).canPop()) {
@@ -120,6 +138,7 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
                     }
                   },
                   onInvite: () => _showInviteSheet(context, club),
+                  onAddStand: () => _showAddStandSheet(context, club),
                   onSettings: () => context.push('/clubs/${club.id}/settings'),
                 ),
                 
@@ -199,6 +218,46 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
       ),
     );
   }
+  
+  Future<void> _showAddStandSheet(BuildContext context, Club club) async {
+    final controller = TextEditingController();
+    final descController = TextEditingController();
+    
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _AddStandSheet(
+        nameController: controller,
+        descController: descController,
+      ),
+    );
+    
+    if (result != null && result.isNotEmpty && context.mounted) {
+      HapticFeedback.mediumImpact();
+      final service = ref.read(standsServiceProvider);
+      final success = await service.createStand(
+        club.id,
+        result,
+        description: descController.text.trim().isEmpty ? null : descController.text.trim(),
+      );
+      if (success) {
+        ref.invalidate(clubStandsProvider(club.id));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Added "$result"'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to add stand')),
+        );
+      }
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -210,16 +269,20 @@ class _PremiumHeader extends StatelessWidget {
     required this.club,
     required this.memberCount,
     required this.isAdmin,
+    required this.isMember,
     required this.onBack,
     required this.onInvite,
+    required this.onAddStand,
     required this.onSettings,
   });
   
   final Club club;
   final int memberCount;
   final bool isAdmin;
+  final bool isMember;
   final VoidCallback onBack;
   final VoidCallback onInvite;
+  final VoidCallback onAddStand;
   final VoidCallback onSettings;
 
   @override
@@ -288,8 +351,8 @@ class _PremiumHeader extends StatelessWidget {
             ),
           ),
           
-          // Admin menu
-          if (isAdmin)
+          // Menu (visible for members - shows different options based on role)
+          if (isMember)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
               color: AppColors.surfaceElevated,
@@ -299,32 +362,49 @@ class _PremiumHeader extends StatelessWidget {
                   case 'invite':
                     onInvite();
                     break;
+                  case 'add_stand':
+                    onAddStand();
+                    break;
                   case 'settings':
                     onSettings();
                     break;
                 }
               },
               itemBuilder: (context) => [
+                // Any member can add a stand
                 const PopupMenuItem(
-                  value: 'invite',
+                  value: 'add_stand',
                   child: Row(
                     children: [
-                      Icon(Icons.person_add_rounded, size: 18, color: AppColors.textSecondary),
+                      Icon(Icons.add_location_alt_rounded, size: 18, color: AppColors.textSecondary),
                       SizedBox(width: 12),
-                      Text('Invite Members'),
+                      Text('Add Stand'),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
-                  value: 'settings',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings_rounded, size: 18, color: AppColors.textSecondary),
-                      SizedBox(width: 12),
-                      Text('Club Settings'),
-                    ],
+                // Admin-only options
+                if (isAdmin) ...[
+                  const PopupMenuItem(
+                    value: 'invite',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_add_rounded, size: 18, color: AppColors.textSecondary),
+                        SizedBox(width: 12),
+                        Text('Invite Members'),
+                      ],
+                    ),
                   ),
-                ),
+                  const PopupMenuItem(
+                    value: 'settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings_rounded, size: 18, color: AppColors.textSecondary),
+                        SizedBox(width: 12),
+                        Text('Club Settings'),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
         ],
@@ -4421,6 +4501,116 @@ class _PremiumPostCard extends StatelessWidget {
               style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.4),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ADD STAND SHEET (ANY MEMBER)
+// ════════════════════════════════════════════════════════════════════════════
+
+class _AddStandSheet extends StatefulWidget {
+  const _AddStandSheet({
+    required this.nameController,
+    required this.descController,
+  });
+  
+  final TextEditingController nameController;
+  final TextEditingController descController;
+
+  @override
+  State<_AddStandSheet> createState() => _AddStandSheetState();
+}
+
+class _AddStandSheetState extends State<_AddStandSheet> {
+  @override
+  void initState() {
+    super.initState();
+    widget.nameController.addListener(_onTextChanged);
+  }
+  
+  void _onTextChanged() {
+    setState(() {}); // Rebuild to update button state
+  }
+  
+  @override
+  void dispose() {
+    widget.nameController.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasName = widget.nameController.text.trim().isNotEmpty;
+    
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Header
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.add_location_alt_rounded, color: AppColors.primary, size: 28),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Add Stand',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              _PremiumTextField(
+                controller: widget.nameController,
+                label: 'Stand Name',
+                hint: 'e.g., North Tower, Stand 12',
+                autofocus: true,
+              ),
+              const SizedBox(height: 16),
+              _PremiumTextField(
+                controller: widget.descController,
+                label: 'Description (optional)',
+                hint: 'e.g., Near the creek',
+              ),
+              const SizedBox(height: 24),
+              _PremiumPrimaryButton(
+                label: 'Add Stand',
+                onPressed: hasName 
+                    ? () => Navigator.pop(context, widget.nameController.text.trim())
+                    : null,
+              ),
+            ],
+          ),
         ),
       ),
     );
