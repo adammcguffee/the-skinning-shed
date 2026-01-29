@@ -80,12 +80,16 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
         }
         
         final membership = membershipAsync.valueOrNull;
-        final isAdmin = membership?.isAdmin ?? false;
         final memberCount = membersAsync.valueOrNull?.length ?? 0;
+        
+        // Check if user is admin via membership OR if they're the club owner
+        final currentUserId = ref.read(supabaseServiceProvider).client?.auth.currentUser?.id;
+        final isOwner = club.ownerId == currentUserId;
+        final isAdmin = (membership?.isAdmin ?? false) || isOwner;
         
         // Show contextual FAB based on tab
         Widget? fab;
-        final isMember = membership != null;
+        final isMember = membership != null || isOwner;  // Owner is always a member
         
         if (_selectedTab == 1 && isMember) {
           // Stands tab - Add Stand FAB (any member can add)
@@ -373,7 +377,7 @@ class _PremiumHeader extends StatelessWidget {
             ),
           ),
           
-          // Menu (visible for admins only - shows Club Settings and contextual options)
+          // Menu (visible for admins/owners - shows Club Settings and contextual options)
           if (isAdmin)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
@@ -387,10 +391,13 @@ class _PremiumHeader extends StatelessWidget {
                   case 'manage_stands':
                     onManageStands?.call();
                     break;
+                  case 'invite':
+                    onInvite();
+                    break;
                 }
               },
               itemBuilder: (context) => [
-                // Show Manage Stands when on Stands tab (index 1)
+                // Manage Stands - when on Stands tab (index 1)
                 if (selectedTab == 1)
                   const PopupMenuItem(
                     value: 'manage_stands',
@@ -402,6 +409,18 @@ class _PremiumHeader extends StatelessWidget {
                       ],
                     ),
                   ),
+                // Invite Members
+                const PopupMenuItem(
+                  value: 'invite',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_add_rounded, size: 18, color: AppColors.textSecondary),
+                      SizedBox(width: 12),
+                      Text('Invite Members'),
+                    ],
+                  ),
+                ),
+                // Club Settings
                 const PopupMenuItem(
                   value: 'settings',
                   child: Row(
