@@ -14,8 +14,9 @@ const _categoryMap = {
   'Other Game': 'other',
 };
 
-/// High-quality category images (Unsplash - free to use, CC0 license).
-/// These can be replaced with local assets or Supabase storage URLs.
+/// High-quality category images.
+/// - Deer: Unsplash (free to use, CC0 license)
+/// - Turkey, Bass, Other Game: Local assets (custom photos)
 /// 
 /// Image selection criteria:
 /// - Non-gory, conservation-friendly
@@ -23,14 +24,15 @@ const _categoryMap = {
 /// - Good composition for cropping
 /// - Works in both light and dark themes
 const _categoryImages = {
-  // Whitetail deer in forest - verified working
+  // Whitetail deer in forest - verified working (Unsplash)
   'deer': 'https://images.unsplash.com/photo-1484406566174-9da000fda645?w=600&q=80',
-  // Wild turkey in field
-  'turkey': 'https://images.unsplash.com/photo-1574158346846-93e8aaf56b47?w=600&q=80',
-  // Largemouth bass / fishing catch
-  'bass': 'https://images.unsplash.com/photo-1545450660-3378a7f3a364?w=600&q=80',
-  // Cottontail rabbit - small game
-  'other': 'https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=600&q=80',
+};
+
+/// Local asset paths for category images
+const _categoryAssets = {
+  'turkey': 'assets/images/categories/turkey.jpg',
+  'bass': 'assets/images/categories/bass.jpg',
+  'other': 'assets/images/categories/other_game.jpg',
 };
 
 /// 🧭 EXPLORE SCREEN - 2025 CINEMATIC DARK THEME
@@ -224,21 +226,21 @@ class _SpeciesGrid extends StatelessWidget {
         name: 'Turkey',
         categoryKey: 'turkey',
         color: AppColors.categoryTurkey,
-        imageUrl: _categoryImages['turkey'],
+        assetPath: _categoryAssets['turkey'],
         semanticLabel: 'Browse turkey trophies',
       ),
       ExploreCategoryData(
         name: 'Largemouth Bass',
         categoryKey: 'bass',
         color: AppColors.categoryBass,
-        imageUrl: _categoryImages['bass'],
+        assetPath: _categoryAssets['bass'],
         semanticLabel: 'Browse largemouth bass catches',
       ),
       ExploreCategoryData(
         name: 'Other Game',
         categoryKey: 'other',
         color: AppColors.categoryOtherGame,
-        imageUrl: _categoryImages['other'],
+        assetPath: _categoryAssets['other'],
         semanticLabel: 'Browse other game and fish',
       ),
     ];

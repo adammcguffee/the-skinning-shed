@@ -74,6 +74,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/explore/
+    - assets/images/categories/
     - assets/branding/banner_v2/
     - assets/data/
  
