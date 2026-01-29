@@ -5787,7 +5787,7 @@ class _PremiumInviteSheetState extends ConsumerState<_PremiumInviteSheet> with S
       setState(() {
         _isGeneratingLink = false;
         if (token != null) {
-          _inviteUrl = 'https://www.theskinningshed.com/clubs/join/$token';
+          _inviteUrl = 'https://www.theskinningshed.com/#/clubs/join/$token';
         }
       });
     }

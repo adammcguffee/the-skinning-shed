@@ -227,7 +227,7 @@ The Stands tab polls every 12 seconds while visible for near-real-time updates.
 ### Invite Link Format
 
 ```
-https://www.theskinningshed.com/clubs/join/<TOKEN>
+https://www.theskinningshed.com/#/clubs/join/<TOKEN>
 ```
 
 Where `<TOKEN>` is a 32-character base64 string.
