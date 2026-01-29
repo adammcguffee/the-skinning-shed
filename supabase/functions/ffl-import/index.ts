@@ -30,8 +30,8 @@ const corsHeaders = {
 const DATA_GOV_DATASET_ID = "federal-firearms-licensees-december-2021";
 const DATA_GOV_API_URL = `https://catalog.data.gov/api/3/action/package_show?id=${DATA_GOV_DATASET_ID}`;
 
-// ArcGIS download URL pattern - used when Data.gov links to ArcGIS item pages
-const ARCGIS_DOWNLOAD_BASE = "https://atf-geoplatform.maps.arcgis.com/sharing/rest/content/items";
+// ArcGIS REST API base - used when Data.gov links to ArcGIS item pages
+const ARCGIS_REST_BASE = "https://atf-geoplatform.maps.arcgis.com/sharing/rest/content/items";
 
 // Month names for parsing resource names
 const MONTH_NAMES_FULL = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -69,33 +69,78 @@ interface DiscoveredResource {
   year: number;
   month: number;
   lastModified: string;
+  arcgisItemId: string | null; // If this is an ArcGIS resource, store the item ID
 }
 
 /**
- * Convert ArcGIS item page URL to direct download URL
- * e.g., https://atf-geoplatform.maps.arcgis.com/home/item.html?id=ABC123
- *    -> https://atf-geoplatform.maps.arcgis.com/sharing/rest/content/items/ABC123/data
+ * Extract ArcGIS item ID from various URL formats
+ * Returns null if not an ArcGIS URL
  */
-function convertArcGISUrl(url: string): string {
+function extractArcGISItemId(url: string): string | null {
   // Pattern: .../home/item.html?id=<ITEM_ID>
   const itemMatch = url.match(/item\.html\?id=([a-zA-Z0-9]+)/);
   if (itemMatch) {
-    const itemId = itemMatch[1];
-    const directUrl = `${ARCGIS_DOWNLOAD_BASE}/${itemId}/data`;
-    console.log(`[ffl-import] Converted ArcGIS item page to direct download: ${directUrl}`);
-    return directUrl;
+    return itemMatch[1];
   }
   
-  // Pattern: .../items/<ITEM_ID> (already a REST URL, just need /data)
+  // Pattern: .../items/<ITEM_ID>
   const restMatch = url.match(/\/items\/([a-zA-Z0-9]+)(?:\/|$)/);
-  if (restMatch && !url.endsWith("/data")) {
-    const itemId = restMatch[1];
-    const directUrl = `${ARCGIS_DOWNLOAD_BASE}/${itemId}/data`;
-    console.log(`[ffl-import] Converted ArcGIS REST URL to download: ${directUrl}`);
-    return directUrl;
+  if (restMatch) {
+    return restMatch[1];
   }
   
-  return url;
+  // Pattern: arcgis.com URLs with id param
+  const idParamMatch = url.match(/[?&]id=([a-zA-Z0-9]+)/);
+  if (idParamMatch && url.includes("arcgis.com")) {
+    return idParamMatch[1];
+  }
+  
+  return null;
+}
+
+/**
+ * Fetch ArcGIS item metadata and return the actual download URL
+ * ArcGIS requires fetching metadata JSON first to get the real dataUrl
+ */
+async function getArcGISDownloadUrl(itemId: string): Promise<{ url: string; type: string; size: number }> {
+  const metadataUrl = `${ARCGIS_REST_BASE}/${itemId}?f=json`;
+  console.log(`[ffl-import] Fetching ArcGIS item metadata: ${metadataUrl}`);
+  
+  const response = await fetch(metadataUrl, {
+    headers: {
+      "Accept": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ArcGIS item metadata: HTTP ${response.status} from ${metadataUrl}`);
+  }
+
+  const metadata = await response.json();
+  
+  // Check for error in response
+  if (metadata.error) {
+    throw new Error(`ArcGIS API error: ${metadata.error.message || JSON.stringify(metadata.error)}`);
+  }
+
+  const dataUrl = metadata.url || metadata.dataUrl;
+  const itemType = metadata.type || "unknown";
+  const size = metadata.size || 0;
+
+  console.log(`[ffl-import] ArcGIS item metadata:`);
+  console.log(`[ffl-import]   - itemId: ${itemId}`);
+  console.log(`[ffl-import]   - type: ${itemType}`);
+  console.log(`[ffl-import]   - size: ${size} bytes`);
+  console.log(`[ffl-import]   - dataUrl: ${dataUrl}`);
+
+  if (!dataUrl) {
+    // Fallback: try the standard download endpoint
+    const fallbackUrl = `${ARCGIS_REST_BASE}/${itemId}/data`;
+    console.log(`[ffl-import] No dataUrl in metadata, trying fallback: ${fallbackUrl}`);
+    return { url: fallbackUrl, type: itemType, size };
+  }
+
+  return { url: dataUrl, type: itemType, size };
 }
 
 /**
@@ -153,8 +198,11 @@ async function discoverDataGovResources(): Promise<DiscoveredResource[]> {
       continue;
     }
 
-    // Convert ArcGIS item page URLs to direct download URLs
-    url = convertArcGISUrl(url);
+    // Check if this is an ArcGIS URL and extract item ID
+    const arcgisItemId = extractArcGISItemId(url);
+    if (arcgisItemId) {
+      console.log(`[ffl-import] Detected ArcGIS resource with itemId: ${arcgisItemId}`);
+    }
 
     // Try to extract year/month from resource name or URL
     const dateInfo = parseYearMonthFromText(resource.name || "") || parseYearMonthFromText(url);
@@ -168,9 +216,10 @@ async function discoverDataGovResources(): Promise<DiscoveredResource[]> {
       year: dateInfo?.year || now.getUTCFullYear(),
       month: dateInfo?.month || now.getUTCMonth() + 1,
       lastModified,
+      arcgisItemId,
     });
 
-    console.log(`[ffl-import] Found data resource: ${resource.name} (${format}) -> ${url.substring(0, 80)}...`);
+    console.log(`[ffl-import] Found data resource: ${resource.name} (${format})${arcgisItemId ? ` [ArcGIS: ${arcgisItemId}]` : ""}`);
   }
 
   // Sort: EXCEL first (typically more complete), then by last_modified descending
@@ -749,16 +798,25 @@ Deno.serve(async (req: Request) => {
         throw new Error("No suitable FFL resource found");
       }
 
-      resourceUrl = selectedResource.url;
       resourceFormat = selectedResource.format;
       resourceLastModified = selectedResource.lastModified;
       actualYear = selectedResource.year;
       actualMonth = selectedResource.month;
       
       console.log(`[ffl-import] Selected resource: ${selectedResource.name}`);
-      console.log(`[ffl-import] Resource URL: ${resourceUrl}`);
       console.log(`[ffl-import] Resource format: ${resourceFormat}`);
       console.log(`[ffl-import] Resource last_modified: ${resourceLastModified}`);
+
+      // If this is an ArcGIS resource, fetch metadata to get the real download URL
+      if (selectedResource.arcgisItemId) {
+        console.log(`[ffl-import] Fetching ArcGIS download URL for item: ${selectedResource.arcgisItemId}`);
+        const arcgisInfo = await getArcGISDownloadUrl(selectedResource.arcgisItemId);
+        resourceUrl = arcgisInfo.url;
+        console.log(`[ffl-import] ArcGIS download URL: ${resourceUrl}`);
+      } else {
+        resourceUrl = selectedResource.url;
+        console.log(`[ffl-import] Direct resource URL: ${resourceUrl}`);
+      }
     }
 
     // Download the file
