@@ -129,6 +129,7 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
                   memberCount: memberCount,
                   isAdmin: isAdmin,
                   isMember: isMember,
+                  selectedTab: _selectedTab,
                   onBack: () {
                     // Resilient back: go back if possible, else go to clubs list
                     if (GoRouter.of(context).canPop()) {
@@ -140,6 +141,7 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
                   onInvite: () => _showInviteSheet(context, club),
                   onAddStand: () => _showAddStandSheet(context, club),
                   onSettings: () => context.push('/clubs/${club.id}/settings'),
+                  onManageStands: () => _showManageStandsSheet(context, club),
                 ),
                 
                 // Premium Tab Bar
@@ -258,6 +260,22 @@ class _ClubDetailScreenState extends ConsumerState<ClubDetailScreen>
       }
     }
   }
+  
+  Future<void> _showManageStandsSheet(BuildContext context, Club club) async {
+    HapticFeedback.mediumImpact();
+    
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _ManageStandsSheet(
+        clubId: club.id,
+        onStandDeleted: () {
+          ref.invalidate(clubStandsProvider(club.id));
+        },
+      ),
+    );
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -274,6 +292,8 @@ class _PremiumHeader extends StatelessWidget {
     required this.onInvite,
     required this.onAddStand,
     required this.onSettings,
+    this.selectedTab = 0,
+    this.onManageStands,
   });
   
   final Club club;
@@ -284,6 +304,8 @@ class _PremiumHeader extends StatelessWidget {
   final VoidCallback onInvite;
   final VoidCallback onAddStand;
   final VoidCallback onSettings;
+  final int selectedTab;
+  final VoidCallback? onManageStands;
 
   @override
   Widget build(BuildContext context) {
@@ -351,60 +373,45 @@ class _PremiumHeader extends StatelessWidget {
             ),
           ),
           
-          // Menu (visible for members - shows different options based on role)
-          if (isMember)
+          // Menu (visible for admins only - shows Club Settings and contextual options)
+          if (isAdmin)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
               color: AppColors.surfaceElevated,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onSelected: (value) {
                 switch (value) {
-                  case 'invite':
-                    onInvite();
-                    break;
-                  case 'add_stand':
-                    onAddStand();
-                    break;
                   case 'settings':
                     onSettings();
+                    break;
+                  case 'manage_stands':
+                    onManageStands?.call();
                     break;
                 }
               },
               itemBuilder: (context) => [
-                // Any member can add a stand
+                // Show Manage Stands when on Stands tab (index 1)
+                if (selectedTab == 1)
+                  const PopupMenuItem(
+                    value: 'manage_stands',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_location_alt_rounded, size: 18, color: AppColors.textSecondary),
+                        SizedBox(width: 12),
+                        Text('Manage Stands'),
+                      ],
+                    ),
+                  ),
                 const PopupMenuItem(
-                  value: 'add_stand',
+                  value: 'settings',
                   child: Row(
                     children: [
-                      Icon(Icons.add_location_alt_rounded, size: 18, color: AppColors.textSecondary),
+                      Icon(Icons.settings_rounded, size: 18, color: AppColors.textSecondary),
                       SizedBox(width: 12),
-                      Text('Add Stand'),
+                      Text('Club Settings'),
                     ],
                   ),
                 ),
-                // Admin-only options
-                if (isAdmin) ...[
-                  const PopupMenuItem(
-                    value: 'invite',
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_add_rounded, size: 18, color: AppColors.textSecondary),
-                        SizedBox(width: 12),
-                        Text('Invite Members'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.settings_rounded, size: 18, color: AppColors.textSecondary),
-                        SizedBox(width: 12),
-                        Text('Club Settings'),
-                      ],
-                    ),
-                  ),
-                ],
               ],
             ),
         ],
@@ -4612,6 +4619,262 @@ class _AddStandSheetState extends State<_AddStandSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MANAGE STANDS SHEET (ADMIN)
+// ════════════════════════════════════════════════════════════════════════════
+
+class _ManageStandsSheet extends ConsumerStatefulWidget {
+  const _ManageStandsSheet({
+    required this.clubId,
+    required this.onStandDeleted,
+  });
+  
+  final String clubId;
+  final VoidCallback onStandDeleted;
+
+  @override
+  ConsumerState<_ManageStandsSheet> createState() => _ManageStandsSheetState();
+}
+
+class _ManageStandsSheetState extends ConsumerState<_ManageStandsSheet> {
+  bool _isDeleting = false;
+  String? _deletingStandId;
+  
+  Future<void> _deleteStand(ClubStand stand) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Delete Stand?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${stand.name}"? This cannot be undone.',
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true || !mounted) return;
+    
+    setState(() {
+      _isDeleting = true;
+      _deletingStandId = stand.id;
+    });
+    
+    HapticFeedback.mediumImpact();
+    final service = ref.read(standsServiceProvider);
+    final success = await service.deleteStand(stand.id);
+    
+    if (mounted) {
+      setState(() {
+        _isDeleting = false;
+        _deletingStandId = null;
+      });
+      
+      if (success) {
+        widget.onStandDeleted();
+        ref.invalidate(clubStandsProvider(widget.clubId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deleted "${stand.name}"'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to delete stand'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final standsAsync = ref.watch(clubStandsProvider(widget.clubId));
+    
+    return Container(
+      margin: const EdgeInsets.all(12),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textTertiary.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Header
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.edit_location_alt_rounded, color: AppColors.primary, size: 28),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Manage Stands',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Delete stands you no longer need',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Stands list
+          Flexible(
+            child: standsAsync.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(color: AppColors.primary),
+              ),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text(
+                  'Failed to load stands',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+              data: (stands) {
+                if (stands.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Text(
+                      'No stands yet',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  );
+                }
+                
+                return ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  itemCount: stands.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final stand = stands[index];
+                    final isDeleting = _deletingStandId == stand.id;
+                    
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.location_on_rounded,
+                              color: AppColors.primary,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  stand.name,
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                if (stand.description != null && stand.description!.isNotEmpty)
+                                  Text(
+                                    stand.description!,
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (isDeleting)
+                            const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.error,
+                              ),
+                            )
+                          else
+                            IconButton(
+                              onPressed: _isDeleting ? null : () => _deleteStand(stand),
+                              icon: const Icon(Icons.delete_outline_rounded),
+                              color: AppColors.error,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
