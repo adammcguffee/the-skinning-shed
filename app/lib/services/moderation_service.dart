@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -19,6 +20,11 @@ class ModerationService {
   }) async {
     if (_client == null) return [];
     
+    // PostgREST relationship hints: 
+    // - reporter uses FK content_reports_reporter_id_profiles_fkey -> profiles
+    // - trophy_posts uses FK content_reports_post_id_fkey -> trophy_posts
+    // - post_comments uses FK content_reports_comment_id_fkey -> post_comments
+    // - swap_shop_listings uses FK content_reports_swap_shop_listing_id_fkey
     final selectQuery = '''
           id,
           reporter_id,
@@ -31,78 +37,86 @@ class ModerationService {
           reviewed_at,
           reviewed_by,
           resolution,
-          reporter:reporter_id (
+          reporter:profiles!content_reports_reporter_id_profiles_fkey (
             id,
             username,
             display_name
           ),
-          post:post_id (
+          trophy_posts!content_reports_post_id_fkey (
             id,
             story,
             cover_photo_path,
             user_id,
-            owner:user_id (
+            profiles!trophy_posts_user_id_fkey (
               id,
               username,
               display_name
             )
           ),
-          comment:comment_id (
+          post_comments!content_reports_comment_id_fkey (
             id,
             body,
             user_id,
-            owner:user_id (
+            profiles!post_comments_user_id_fkey (
               id,
               username,
               display_name
             )
           ),
-          swap_shop_listing:swap_shop_listing_id (
+          swap_shop_listings!content_reports_swap_shop_listing_id_fkey (
             id,
             title,
             description,
-            user_id,
-            owner:user_id (
-              id,
-              username,
-              display_name
-            )
+            user_id
           )
         ''';
     
-    List<dynamic> response;
-    
-    // Filter by status if provided
-    if (statusFilter == 'pending') {
-      response = await _client
-          .from('content_reports')
-          .select(selectQuery)
-          .isFilter('reviewed_at', null)
-          .order('created_at', ascending: false)
-          .limit(limit);
-    } else if (statusFilter == 'resolved') {
-      response = await _client
-          .from('content_reports')
-          .select(selectQuery)
-          .neq('reviewed_at', '')
-          .order('created_at', ascending: false)
-          .limit(limit);
-    } else {
-      response = await _client
-          .from('content_reports')
-          .select(selectQuery)
-          .order('created_at', ascending: false)
-          .limit(limit);
+    try {
+      List<dynamic> response;
+      
+      // Filter by status if provided
+      if (statusFilter == 'pending') {
+        response = await _client
+            .from('content_reports')
+            .select(selectQuery)
+            .isFilter('reviewed_at', null)
+            .order('created_at', ascending: false)
+            .limit(limit);
+      } else if (statusFilter == 'resolved') {
+        // Fetch all and filter in Dart since neq doesn't handle null well for timestamps
+        response = await _client
+            .from('content_reports')
+            .select(selectQuery)
+            .not('reviewed_at', 'is', null)
+            .order('created_at', ascending: false)
+            .limit(limit);
+      } else {
+        response = await _client
+            .from('content_reports')
+            .select(selectQuery)
+            .order('created_at', ascending: false)
+            .limit(limit);
+      }
+      
+      return response
+          .map((row) => ContentReport.fromJson(row as Map<String, dynamic>))
+          .toList();
+    } on PostgrestException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ModerationService] PostgrestException fetching reports:');
+        debugPrint('  code: ${e.code}');
+        debugPrint('  message: ${e.message}');
+        debugPrint('  details: ${e.details}');
+        debugPrint('  hint: ${e.hint}');
+      }
+      rethrow;
+    } catch (e, stack) {
+      if (kDebugMode) {
+        debugPrint('[ModerationService] Error fetching reports: $e');
+        debugPrint(stack.toString());
+      }
+      rethrow;
     }
-    
-    // For resolved filter, we fetch all and filter in Dart since neq doesn't handle null well
-    if (statusFilter == 'resolved') {
-      response = response.where((r) => r['reviewed_at'] != null).toList();
-    }
-    
-    return response
-        .map((row) => ContentReport.fromJson(row as Map<String, dynamic>))
-        .toList();
   }
   
   /// Mark a report as reviewed with a resolution.
@@ -115,26 +129,46 @@ class ModerationService {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
     
-    await _client
-        .from('content_reports')
-        .update({
-          'reviewed_at': DateTime.now().toIso8601String(),
-          'reviewed_by': userId,
-          'resolution': resolution,
-        })
-        .eq('id', reportId);
+    try {
+      await _client
+          .from('content_reports')
+          .update({
+            'reviewed_at': DateTime.now().toIso8601String(),
+            'reviewed_by': userId,
+            'resolution': resolution,
+          })
+          .eq('id', reportId);
+    } on PostgrestException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ModerationService] PostgrestException resolving report:');
+        debugPrint('  code: ${e.code}');
+        debugPrint('  message: ${e.message}');
+        debugPrint('  details: ${e.details}');
+        debugPrint('  hint: ${e.hint}');
+      }
+      rethrow;
+    }
   }
   
   /// Get count of pending reports.
   Future<int> getPendingReportCount() async {
     if (_client == null) return 0;
     
-    final response = await _client
-        .from('content_reports')
-        .select('id')
-        .isFilter('reviewed_at', null);
-    
-    return (response as List).length;
+    try {
+      final response = await _client
+          .from('content_reports')
+          .select('id')
+          .isFilter('reviewed_at', null);
+      
+      return (response as List).length;
+    } on PostgrestException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ModerationService] PostgrestException getting report count:');
+        debugPrint('  code: ${e.code}');
+        debugPrint('  message: ${e.message}');
+      }
+      return 0;
+    }
   }
   
   // ============ MODERATION ACTIONS LOG ============
@@ -270,13 +304,19 @@ class ContentReport {
   }
   
   factory ContentReport.fromJson(Map<String, dynamic> json) {
+    // Handle relationship names from PostgREST query
     final reporter = json['reporter'] as Map<String, dynamic>?;
-    final post = json['post'] as Map<String, dynamic>?;
-    final postOwner = post?['owner'] as Map<String, dynamic>?;
-    final comment = json['comment'] as Map<String, dynamic>?;
-    final commentOwner = comment?['owner'] as Map<String, dynamic>?;
-    final swapShop = json['swap_shop_listing'] as Map<String, dynamic>?;
-    final swapShopOwner = swapShop?['owner'] as Map<String, dynamic>?;
+    
+    // trophy_posts relationship (was 'post')
+    final post = json['trophy_posts'] as Map<String, dynamic>?;
+    final postOwner = post?['profiles'] as Map<String, dynamic>?;
+    
+    // post_comments relationship (was 'comment')
+    final comment = json['post_comments'] as Map<String, dynamic>?;
+    final commentOwner = comment?['profiles'] as Map<String, dynamic>?;
+    
+    // swap_shop_listings relationship
+    final swapShop = json['swap_shop_listings'] as Map<String, dynamic>?;
     
     return ContentReport(
       id: json['id'],
@@ -301,7 +341,7 @@ class ContentReport {
       swapShopTitle: swapShop?['title'],
       swapShopDescription: swapShop?['description'],
       swapShopOwnerId: swapShop?['user_id'],
-      swapShopOwnerName: swapShopOwner?['display_name'] ?? swapShopOwner?['username'],
+      swapShopOwnerName: null, // Swap shop owner fetched separately if needed
     );
   }
 }

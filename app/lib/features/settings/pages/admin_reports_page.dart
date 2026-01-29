@@ -1,10 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shed/app/theme/app_colors.dart';
 import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/moderation_service.dart';
-import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -56,10 +57,36 @@ class _AdminReportsPageState extends ConsumerState<AdminReportsPage>
           _isLoading = false;
         });
       }
-    } catch (e) {
+    } on PostgrestException catch (e) {
+      // Log detailed error for debugging
+      debugPrint('[AdminReports] PostgrestException:');
+      debugPrint('  code: ${e.code}');
+      debugPrint('  message: ${e.message}');
+      debugPrint('  details: ${e.details}');
+      debugPrint('  hint: ${e.hint}');
+      
+      if (mounted) {
+        String errorMessage = 'Unable to load reports. ';
+        if (e.code == '42501') {
+          errorMessage += 'You may not have admin permissions.';
+        } else if (e.code == '42P01') {
+          errorMessage += 'Database table not found.';
+        } else {
+          errorMessage += 'Please try again.';
+        }
+        
+        setState(() {
+          _error = errorMessage;
+          _isLoading = false;
+        });
+      }
+    } catch (e, stack) {
+      debugPrint('[AdminReports] Error: $e');
+      debugPrint(stack.toString());
+      
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = 'Unable to load reports. Please try again.';
           _isLoading = false;
         });
       }
