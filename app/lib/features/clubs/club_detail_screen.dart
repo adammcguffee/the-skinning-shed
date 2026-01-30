@@ -936,6 +936,9 @@ class _PremiumStandsTab extends ConsumerWidget {
           if (ctx.mounted) {
             Navigator.pop(ctx);
             if (success) {
+              // Invalidate providers to refresh activity list
+              ref.invalidate(pendingActivityPromptProvider(clubId));
+              ref.invalidate(standActivityProvider(signedOutSignin.standId));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Activity posted!'),
@@ -945,7 +948,12 @@ class _PremiumStandsTab extends ConsumerWidget {
             }
           }
         },
-        onSkip: () => Navigator.pop(ctx),
+        onSkip: () async {
+          Navigator.pop(ctx);
+          // Dismiss the prompt so it doesn't show again
+          await service.dismissActivityPrompt(signedOutSignin.id);
+          ref.invalidate(pendingActivityPromptProvider(clubId));
+        },
       ),
     );
   }
