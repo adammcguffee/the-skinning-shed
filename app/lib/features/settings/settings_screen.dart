@@ -93,12 +93,20 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsItem(
                       icon: Icons.privacy_tip_outlined,
                       title: 'Privacy Policy',
+                      subtitle: 'How we handle your data',
                       onTap: () => context.push('/settings/privacy'),
                     ),
                     _SettingsItem(
                       icon: Icons.article_outlined,
                       title: 'Terms of Service',
+                      subtitle: 'Rules for using the app',
                       onTap: () => context.push('/settings/terms'),
+                    ),
+                    _SettingsItem(
+                      icon: Icons.copyright_outlined,
+                      title: 'Copyright & IP',
+                      subtitle: 'Intellectual property info',
+                      onTap: () => context.push('/settings/copyright'),
                     ),
                     _SettingsItem(
                       icon: Icons.warning_amber_outlined,

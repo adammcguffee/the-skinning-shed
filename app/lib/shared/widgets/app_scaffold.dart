@@ -747,6 +747,11 @@ class _MoreSheet extends StatelessWidget {
                       isSelected: currentIndex == AppRoutes.indexSettings,
                       onTap: () => onDestinationSelected(AppRoutes.indexSettings),
                     ),
+                    const SizedBox(height: AppSpacing.md),
+                    
+                    // Legal links footer
+                    _LegalLinksFooter(),
+                    
                     const SizedBox(height: AppSpacing.lg),
                   ],
                 ),
@@ -754,6 +759,88 @@ class _MoreSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Legal links footer for the More sheet and other places.
+class _LegalLinksFooter extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final year = DateTime.now().year;
+    
+    return Column(
+      children: [
+        Divider(
+          color: AppColors.borderSubtle,
+          height: 1,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: AppSpacing.md,
+          runSpacing: AppSpacing.xs,
+          children: [
+            _LegalLink(
+              label: 'Terms',
+              onTap: () {
+                Navigator.pop(context);
+                GoRouter.of(context).push(AppRoutes.settingsTerms);
+              },
+            ),
+            Text('•', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+            _LegalLink(
+              label: 'Privacy',
+              onTap: () {
+                Navigator.pop(context);
+                GoRouter.of(context).push(AppRoutes.settingsPrivacy);
+              },
+            ),
+            Text('•', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+            _LegalLink(
+              label: 'Copyright',
+              onTap: () {
+                Navigator.pop(context);
+                GoRouter.of(context).push(AppRoutes.settingsCopyright);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          '© $year The Skinning Shed',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textTertiary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegalLink extends StatelessWidget {
+  const _LegalLink({
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: AppColors.textSecondary,
+          decoration: TextDecoration.underline,
+          decorationColor: AppColors.textTertiary,
+        ),
       ),
     );
   }

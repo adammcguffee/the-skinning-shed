@@ -50,11 +50,17 @@ class AppRoutes {
   // Settings sub-pages
   static const String settingsPrivacy = '/settings/privacy';
   static const String settingsTerms = '/settings/terms';
+  static const String settingsCopyright = '/settings/copyright';
   static const String settingsDisclaimer = '/settings/disclaimer';
   static const String settingsHelp = '/settings/help';
   static const String settingsAbout = '/settings/about';
   static const String settingsFeedback = '/settings/feedback';
   static const String settingsNotifications = '/settings/notifications';
+  
+  // Public legal pages (accessible without auth for link sharing)
+  static const String terms = '/terms';
+  static const String privacy = '/privacy';
+  static const String copyright = '/copyright';
   
   // Admin pages
   static const String adminReports = '/admin/reports';

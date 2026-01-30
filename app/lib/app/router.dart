@@ -23,6 +23,7 @@ import '../features/research/research_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/pages/privacy_policy_page.dart';
 import '../features/settings/pages/terms_of_service_page.dart';
+import '../features/settings/pages/copyright_page.dart';
 import '../features/settings/pages/content_disclaimer_page.dart';
 import '../features/settings/pages/help_center_page.dart';
 import '../features/settings/pages/about_page.dart';
@@ -610,8 +611,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const TermsOfServicePage(),
       ),
       GoRoute(
+        path: AppRoutes.settingsCopyright,
+        builder: (context, state) => const CopyrightPage(),
+      ),
+      GoRoute(
         path: AppRoutes.settingsDisclaimer,
         builder: (context, state) => const ContentDisclaimerPage(),
+      ),
+      
+      // Public legal routes (also accessible via /terms, /privacy, /copyright)
+      GoRoute(
+        path: AppRoutes.terms,
+        builder: (context, state) => const TermsOfServicePage(),
+      ),
+      GoRoute(
+        path: AppRoutes.privacy,
+        builder: (context, state) => const PrivacyPolicyPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.copyright,
+        builder: (context, state) => const CopyrightPage(),
       ),
       GoRoute(
         path: AppRoutes.settingsHelp,
