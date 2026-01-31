@@ -59,6 +59,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="The Skinning Shed">
+  
+  <!-- Disable iOS Safari automatic link detection (email/phone/address/date) -->
+  <meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
@@ -75,8 +78,21 @@
   <link rel="dns-prefetch" href="https://ssrlhrydcetpspmdphfo.supabase.co">
 </head>
 <body>
-  <!-- Loading indicator while Flutter initializes -->
+  <!-- Global styles for Flutter web -->
   <style>
+    /* Prevent Safari/Browser default underlines/colors for any anchor tags Flutter may emit */
+    a, a:visited, a:hover, a:active {
+      color: inherit !important;
+      text-decoration: none !important;
+      -webkit-text-decoration: none !important;
+    }
+
+    /* Prevent iOS tap highlight boxes that can look like yellow accents */
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    /* Base body styles */
     body {
       margin: 0;
       padding: 0;

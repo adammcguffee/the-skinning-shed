@@ -8,6 +8,7 @@ import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/privacy_utils.dart';
 import 'package:shed/utils/season_utils.dart';
 
 // Season filter value - null means "All Time"
@@ -46,8 +47,12 @@ class UserProfile {
   final String? defaultState;
   final String? defaultCounty;
   
-  String get name => displayName ?? username ?? 'Hunter';
-  String get handle => username != null ? '@$username' : '';
+  String get name => getSafeDisplayName(
+    displayName: displayName,
+    username: username,
+    defaultName: 'Hunter',
+  );
+  String get handle => getSafeHandle(username);
   String? get location {
     if (defaultState != null && defaultCounty != null) {
       return '$defaultCounty, $defaultState';
@@ -224,7 +229,36 @@ class _TrophyWallScreenState extends ConsumerState<TrophyWallScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= AppSpacing.breakpointTablet;
+    
+    // When viewing another user's profile, wrap in Scaffold with back button
+    if (!_isOwnProfile && widget.userId != null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+            onPressed: () => context.pop(),
+          ),
+          title: Text(
+            _profile?.name ?? 'Trophy Wall',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          centerTitle: true,
+        ),
+        body: _buildContent(isWide),
+      );
+    }
 
+    return _buildContent(isWide);
+  }
+  
+  Widget _buildContent(bool isWide) {
     return CustomScrollView(
       slivers: [
         // Profile header with banner

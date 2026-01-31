@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/privacy_utils.dart';
 import 'supabase_service.dart';
 
 // ============================================
@@ -52,16 +53,20 @@ class MessageThread {
   final bool muted;
   final DateTime updatedAt;
 
-  /// Display name for the thread.
+  /// Display name for the thread (email-safe).
   String get displayName {
     if (type == ThreadType.club) {
       return clubName ?? 'Club Chat';
     }
-    return otherDisplayName ?? otherUsername ?? 'User';
+    return getSafeDisplayName(
+      displayName: otherDisplayName,
+      username: otherUsername,
+      defaultName: 'User',
+    );
   }
 
-  /// Username (@handle) for DM threads.
-  String? get handle => type == ThreadType.dm ? otherUsername : null;
+  /// Username (@handle) for DM threads (email-safe).
+  String? get handle => type == ThreadType.dm ? getSafeHandle(otherUsername) : null;
 
   /// Check if thread has unread messages.
   bool hasUnread(String? currentUserId) {
@@ -134,7 +139,11 @@ class ThreadMessage {
   final String? senderDisplayName;
   final String? senderAvatarPath;
 
-  String get senderName => senderDisplayName ?? senderUsername ?? 'User';
+  String get senderName => getSafeDisplayName(
+    displayName: senderDisplayName,
+    username: senderUsername,
+    defaultName: 'User',
+  );
 
   bool isMine(String? currentUserId) => senderId == currentUserId;
 
@@ -368,7 +377,11 @@ class MessagingService {
           .neq('user_id', message.senderId);
       
       if (participants != null) {
-        final senderName = message.senderDisplayName ?? message.senderUsername ?? 'Someone';
+        final senderName = getSafeDisplayName(
+          displayName: message.senderDisplayName,
+          username: message.senderUsername,
+          defaultName: 'Someone',
+        );
         final preview = message.body.length > 50 
             ? '${message.body.substring(0, 50)}...' 
             : message.body;

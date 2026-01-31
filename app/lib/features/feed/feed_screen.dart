@@ -11,6 +11,7 @@ import 'package:shed/data/us_counties.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/privacy_utils.dart';
 
 /// 🏠 FEED SCREEN - 2025 CINEMATIC DARK THEME
 ///
@@ -623,8 +624,11 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
     
     final likes = widget.trophy['likes_count'] ?? 0;
     final comments = widget.trophy['comments_count'] ?? 0;
-    final username = widget.trophy['profiles']?['display_name'] ?? 
-                     widget.trophy['profiles']?['username'] ?? 'Hunter';
+    final username = getSafeDisplayName(
+      displayName: widget.trophy['profiles']?['display_name'] as String?,
+      username: widget.trophy['profiles']?['username'] as String?,
+      defaultName: 'Hunter',
+    );
     final userId = widget.trophy['user_id'] as String?;
     final avatarPath = widget.trophy['profiles']?['avatar_path'] as String?;
 

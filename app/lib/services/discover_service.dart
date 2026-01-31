@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/privacy_utils.dart';
 import 'supabase_service.dart';
 
 /// User profile for discover/search results.
@@ -30,8 +31,12 @@ class DiscoverUser {
   final int? postCount;
   bool isFollowing;
 
-  String get name => displayName ?? username ?? 'User';
-  String get handle => username != null ? '@$username' : '';
+  String get name => getSafeDisplayName(
+    displayName: displayName,
+    username: username,
+    defaultName: 'User',
+  );
+  String get handle => getSafeHandle(username);
 
   factory DiscoverUser.fromJson(Map<String, dynamic> json) {
     return DiscoverUser(
@@ -88,8 +93,12 @@ class TrendingPost {
   final String? userAvatarPath;
 
   String get species => speciesName ?? customSpeciesName ?? 'Trophy';
-  String get userName => userDisplayName ?? userUsername ?? 'Hunter';
-  String get userHandle => userUsername != null ? '@$userUsername' : '';
+  String get userName => getSafeDisplayName(
+    displayName: userDisplayName,
+    username: userUsername,
+    defaultName: 'Hunter',
+  );
+  String get userHandle => getSafeHandle(userUsername);
   String get location {
     final parts = [county, state].where((s) => s != null && s.isNotEmpty);
     return parts.join(', ');

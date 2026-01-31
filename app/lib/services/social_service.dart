@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/privacy_utils.dart';
 import 'supabase_service.dart';
 
 /// Social interactions service for likes, comments, and reports.
@@ -301,7 +302,11 @@ class Comment {
   final String? displayName;
   final String? avatarPath;
   
-  String get authorName => displayName ?? username ?? 'Hunter';
+  String get authorName => getSafeDisplayName(
+    displayName: displayName,
+    username: username,
+    defaultName: 'Hunter',
+  );
   
   factory Comment.fromJson(Map<String, dynamic> json) {
     final profile = json['profiles'] as Map<String, dynamic>?;

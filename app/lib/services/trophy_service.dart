@@ -89,10 +89,14 @@ class TrophyService {
           ),
           weather_snapshots (
             temp_f,
+            feels_like_f,
             wind_speed,
             wind_dir_deg,
+            wind_dir_text,
             pressure_hpa,
+            pressure_inhg,
             humidity_pct,
+            cloud_pct,
             condition_text
           ),
           moon_snapshots (
