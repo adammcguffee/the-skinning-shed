@@ -1,0 +1,15 @@
+# The Skinning Shed - robots.txt
+# https://theskinningshed.com
+
+User-agent: *
+Allow: /
+
+# Disallow private/user-specific routes
+Disallow: /auth
+Disallow: /admin/
+Disallow: /profile/edit
+Disallow: /post
+Disallow: /messages
+
+# Point to sitemap
+Sitemap: https://theskinningshed.com/sitemap.xml

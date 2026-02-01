@@ -1,0 +1,6 @@
+# The Skinning Shed Security Policy
+# https://theskinningshed.com/.well-known/security.txt
+
+Contact: mailto:support@theskinningshed.com
+Preferred-Languages: en
+Canonical: https://theskinningshed.com/.well-known/security.txt
