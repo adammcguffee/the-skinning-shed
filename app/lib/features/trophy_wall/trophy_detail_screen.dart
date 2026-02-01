@@ -612,7 +612,16 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
   }
 
   Widget _buildImageHeader(BuildContext context) {
-    final photos = _trophy!['trophy_photos'] as List? ?? [];
+    // Safely handle trophy_photos - could be List, Map, or null
+    final photosRaw = _trophy!['trophy_photos'];
+    final List photos;
+    if (photosRaw is List) {
+      photos = photosRaw;
+    } else if (photosRaw is Map) {
+      photos = [photosRaw];
+    } else {
+      photos = [];
+    }
     // For detail view, prefer medium_path, fall back to original storage_path
     final mediumPath = photos.isNotEmpty ? photos.first['medium_path'] as String? : null;
     final storagePath = photos.isNotEmpty ? photos.first['storage_path'] as String? : null;
@@ -931,16 +940,23 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
   }
 
   Widget _buildConditionsSection(BuildContext context) {
-    // weather_snapshots and moon_snapshots come as arrays from the join
-    final weatherList = _trophy!['weather_snapshots'] as List?;
-    final moonList = _trophy!['moon_snapshots'] as List?;
+    // Safely handle weather_snapshots - could be List, Map, or null
+    final weatherRaw = _trophy!['weather_snapshots'];
+    Map<String, dynamic>? weather;
+    if (weatherRaw is List && weatherRaw.isNotEmpty) {
+      weather = weatherRaw.first as Map<String, dynamic>?;
+    } else if (weatherRaw is Map) {
+      weather = Map<String, dynamic>.from(weatherRaw);
+    }
     
-    final weather = weatherList?.isNotEmpty == true 
-        ? weatherList!.first as Map<String, dynamic>? 
-        : null;
-    final moon = moonList?.isNotEmpty == true 
-        ? moonList!.first as Map<String, dynamic>? 
-        : null;
+    // Safely handle moon_snapshots - could be List, Map, or null
+    final moonRaw = _trophy!['moon_snapshots'];
+    Map<String, dynamic>? moon;
+    if (moonRaw is List && moonRaw.isNotEmpty) {
+      moon = moonRaw.first as Map<String, dynamic>?;
+    } else if (moonRaw is Map) {
+      moon = Map<String, dynamic>.from(moonRaw);
+    }
     
     if (weather == null && moon == null) return const SizedBox.shrink();
 
