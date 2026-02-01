@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../utils/privacy_utils.dart';
 import 'supabase_service.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -82,8 +83,12 @@ class ClubPhoto {
       takenAt: json['taken_at'] != null ? DateTime.parse(json['taken_at'] as String) : null,
       cameraLabel: json['camera_label'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
-      authorName: profile?['display_name'] as String? ?? profile?['username'] as String?,
-      authorUsername: profile?['username'] as String?,
+      authorName: getSafeDisplayName(
+        displayName: profile?['display_name'] as String?,
+        username: profile?['username'] as String?,
+        defaultName: 'Member',
+      ),
+      authorUsername: sanitizeDisplayValue(profile?['username'] as String?),
       signedUrl: signedUrl,
       thumbSignedUrl: thumbSignedUrl,
       mediumSignedUrl: mediumSignedUrl,
