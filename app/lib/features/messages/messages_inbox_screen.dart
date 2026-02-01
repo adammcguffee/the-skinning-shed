@@ -8,6 +8,7 @@ import 'package:shed/app/theme/app_spacing.dart';
 import 'package:shed/services/messaging_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/privacy_utils.dart';
 
 /// Messages Inbox Screen with Inbox/Sent tabs.
 class MessagesInboxScreen extends ConsumerStatefulWidget {
@@ -866,12 +867,15 @@ class _UserSearchContentState extends ConsumerState<_UserSearchContent> {
         else
           ...List.generate(_results.length, (index) {
             final user = _results[index];
-            final name = user['display_name'] ?? user['username'] ?? 'User';
-            final username = user['username'];
+            final name = getSafeDisplayName(
+              displayName: user['display_name'] as String?,
+              username: user['username'] as String?,
+            );
+            final safeUsername = sanitizeDisplayValue(user['username'] as String?);
 
             return _UserResultTile(
               name: name,
-              username: username,
+              username: safeUsername,
               onTap: () => widget.onUserSelected(user['id'], name),
             );
           }),

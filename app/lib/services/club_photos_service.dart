@@ -150,7 +150,11 @@ class BuckProfile {
       notes: json['notes'] as String?,
       status: json['status'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
-      creatorName: profile?['display_name'] as String? ?? profile?['username'] as String?,
+      creatorName: getSafeDisplayName(
+        displayName: profile?['display_name'] as String?,
+        username: profile?['username'] as String?,
+        defaultName: 'Member',
+      ),
       shooterVotes: json['shooter_votes'] as int? ?? 0,
       cullVotes: json['cull_votes'] as int? ?? 0,
       letWalkVotes: json['let_walk_votes'] as int? ?? 0,

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shed/services/supabase_service.dart';
+import 'package:shed/utils/privacy_utils.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Land listing model.
@@ -75,7 +76,11 @@ class LandListing {
       status: json['status'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
       photos: photos,
-      ownerName: profile?['display_name'] as String? ?? profile?['username'] as String?,
+      ownerName: getSafeDisplayName(
+        displayName: profile?['display_name'] as String?,
+        username: profile?['username'] as String?,
+        defaultName: 'Owner',
+      ),
       ownerAvatarPath: profile?['avatar_path'] as String?,
     );
   }

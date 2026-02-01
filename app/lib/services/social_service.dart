@@ -76,7 +76,11 @@ class SocialService {
               .eq('id', userId)
               .maybeSingle();
           
-          final likerName = profile?['display_name'] ?? profile?['username'] ?? 'Someone';
+          final likerName = getSafeDisplayName(
+            displayName: profile?['display_name'] as String?,
+            username: profile?['username'] as String?,
+            defaultName: 'Someone',
+          );
           
           await _client.from('notifications').insert({
             'user_id': postOwnerId,
@@ -187,7 +191,11 @@ class SocialService {
             .eq('id', userId)
             .maybeSingle();
         
-        final commenterName = profile?['display_name'] ?? profile?['username'] ?? 'Someone';
+        final commenterName = getSafeDisplayName(
+          displayName: profile?['display_name'] as String?,
+          username: profile?['username'] as String?,
+          defaultName: 'Someone',
+        );
         final truncatedBody = body.length > 50 ? '${body.substring(0, 50)}...' : body;
         
         await _client.from('notifications').insert({

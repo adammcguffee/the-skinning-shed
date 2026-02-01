@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/privacy_utils.dart';
 import 'supabase_service.dart';
 
 /// Service for admin moderation features (reports, actions).
@@ -330,14 +331,23 @@ class ContentReport {
       reviewedAt: json['reviewed_at'] != null ? DateTime.parse(json['reviewed_at']) : null,
       reviewedBy: json['reviewed_by'],
       resolution: json['resolution'],
-      reporterName: reporter?['display_name'] ?? reporter?['username'],
+      reporterName: getSafeDisplayName(
+        displayName: reporter?['display_name'] as String?,
+        username: reporter?['username'] as String?,
+      ),
       postStory: post?['story'],
       postCoverPhotoPath: post?['cover_photo_path'],
       postOwnerId: post?['user_id'],
-      postOwnerName: postOwner?['display_name'] ?? postOwner?['username'],
+      postOwnerName: getSafeDisplayName(
+        displayName: postOwner?['display_name'] as String?,
+        username: postOwner?['username'] as String?,
+      ),
       commentBody: comment?['body'],
       commentOwnerId: comment?['user_id'],
-      commentOwnerName: commentOwner?['display_name'] ?? commentOwner?['username'],
+      commentOwnerName: getSafeDisplayName(
+        displayName: commentOwner?['display_name'] as String?,
+        username: commentOwner?['username'] as String?,
+      ),
       swapShopTitle: swapShop?['title'],
       swapShopDescription: swapShop?['description'],
       swapShopOwnerId: swapShop?['user_id'],
@@ -382,7 +392,11 @@ class ModerationAction {
       action: json['action'],
       reason: json['reason'],
       createdAt: DateTime.parse(json['created_at']),
-      adminName: admin?['display_name'] ?? admin?['username'],
+      adminName: getSafeDisplayName(
+        displayName: admin?['display_name'] as String?,
+        username: admin?['username'] as String?,
+        defaultName: 'Admin',
+      ),
     );
   }
 }

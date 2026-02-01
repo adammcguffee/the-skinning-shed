@@ -76,20 +76,28 @@
   <!-- Preconnect to Supabase for faster API calls -->
   <link rel="preconnect" href="https://ssrlhrydcetpspmdphfo.supabase.co">
   <link rel="dns-prefetch" href="https://ssrlhrydcetpspmdphfo.supabase.co">
-</head>
-<body>
-  <!-- Global styles for Flutter web -->
+  
+  <!-- Global styles - MUST be in head to prevent FOUC and Safari styling issues -->
   <style>
     /* Prevent Safari/Browser default underlines/colors for any anchor tags Flutter may emit */
-    a, a:visited, a:hover, a:active {
+    a, a:link, a:visited, a:hover, a:active {
       color: inherit !important;
       text-decoration: none !important;
       -webkit-text-decoration: none !important;
+      border-bottom: none !important;
+      outline: none !important;
     }
 
     /* Prevent iOS tap highlight boxes that can look like yellow accents */
-    * {
-      -webkit-tap-highlight-color: transparent;
+    *, *::before, *::after {
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-touch-callout: none;
+    }
+    
+    /* Disable iOS data detection styling */
+    [x-apple-data-detectors] {
+      color: inherit !important;
+      text-decoration: none !important;
     }
     
     /* Base body styles */
@@ -99,6 +107,10 @@
       background-color: #0a0a0a;
       min-height: 100vh;
     }
+  </style>
+</head>
+<body>
+  <style>
     .loading-indicator {
       position: fixed;
       top: 50%;
