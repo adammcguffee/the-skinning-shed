@@ -54,8 +54,14 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
 
   Future<void> _loadTrophy() async {
     try {
+      if (kDebugMode) {
+        debugPrint('[TrophyDetailScreen] Loading trophy: ${widget.trophyId}');
+      }
       final trophyService = ref.read(trophyServiceProvider);
       final trophy = await trophyService.fetchTrophy(widget.trophyId);
+      if (kDebugMode) {
+        debugPrint('[TrophyDetailScreen] Trophy loaded: ${trophy != null}');
+      }
       if (mounted) {
         setState(() {
           _trophy = trophy;
@@ -63,10 +69,14 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
           _isLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[TrophyDetailScreen] Load error: $e');
+        debugPrint('[TrophyDetailScreen] Stack: $stackTrace');
+      }
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = 'Failed to load trophy: ${e.toString()}';
           _isLoading = false;
         });
       }
@@ -228,75 +238,155 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        body: const Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation(AppColors.accent),
-          ),
-        ),
-      );
-    }
-
-    if (_error != null || _trophy == null) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        body: AppErrorState(
-          message: _error ?? 'Trophy not found',
-          onRetry: _loadTrophy,
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          // Image header with carousel
-          _buildImageHeader(context),
-
-          // Content
-          SliverToBoxAdapter(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: AppColors.backgroundGradient,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header info
-                  _buildHeaderInfo(context),
-
-                  // Actions row
-                  _buildActionsRow(context),
-
-                  const Divider(height: AppSpacing.xxxl),
-
-                  // User info
-                  _buildUserInfo(context),
-
-                  const SizedBox(height: AppSpacing.xxl),
-
-                  // Story/Notes
-                  if (_trophy!['story'] != null && _trophy!['story'].isNotEmpty)
-                    _buildStorySection(context),
-
-                  // Weather conditions at harvest
-                  if (_trophy!['weather_snapshots'] != null)
-                    _buildConditionsSection(context),
-
-                  // Comments section
-                  _buildCommentsSection(context),
-
-                  const SizedBox(height: 100),
-                ],
-              ),
+    // Wrap everything in a try-catch to prevent white screen crashes
+    try {
+      if (_isLoading) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(AppColors.accent),
             ),
           ),
-        ],
-      ),
-    );
+        );
+      }
+
+      if (_error != null || _trophy == null) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+              onPressed: () => context.pop(),
+            ),
+          ),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: AppColors.textTertiary),
+                const SizedBox(height: 16),
+                Text(
+                  _error ?? 'Trophy not found',
+                  style: const TextStyle(color: AppColors.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _loadTrophy,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: CustomScrollView(
+          slivers: [
+            // Image header with carousel
+            _buildImageHeader(context),
+
+            // Content
+            SliverToBoxAdapter(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: AppColors.backgroundGradient,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header info
+                    _buildHeaderInfo(context),
+
+                    // Actions row
+                    _buildActionsRow(context),
+
+                    const Divider(height: AppSpacing.xxxl),
+
+                    // User info
+                    _buildUserInfo(context),
+
+                    const SizedBox(height: AppSpacing.xxl),
+
+                    // Story/Notes
+                    if (_trophy!['story'] != null && _trophy!['story'].toString().isNotEmpty)
+                      _buildStorySection(context),
+
+                    // Weather conditions at harvest
+                    if (_trophy!['weather_snapshots'] != null)
+                      _buildConditionsSection(context),
+
+                    // Comments section
+                    _buildCommentsSection(context),
+
+                    const SizedBox(height: 100),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } catch (e, stackTrace) {
+      // Log the error
+      if (kDebugMode) {
+        debugPrint('[TrophyDetailScreen] Build error: $e');
+        debugPrint('[TrophyDetailScreen] Stack trace: $stackTrace');
+      }
+      
+      // Return a safe error screen
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: AppColors.error),
+              const SizedBox(height: 16),
+              const Text(
+                'Something went wrong',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  e.toString(),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _isLoading = true;
+                    _error = null;
+                  });
+                  _loadTrophy();
+                },
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   /// Check if current user owns this trophy.
