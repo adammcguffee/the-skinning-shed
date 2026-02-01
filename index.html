@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO Meta Tags -->
+  <title>The Skinning Shed — Trophy Wall, Hunting Land & Gear for Hunters</title>
+  <meta name="description" content="The Skinning Shed is the ultimate hunting and fishing community. Share your trophies, find hunting land, buy and sell gear, and connect with fellow hunters.">
+  <meta name="keywords" content="hunting, fishing, trophy wall, hunting land, deer hunting, turkey hunting, bass fishing, outdoor gear, swap shop">
+  <meta name="author" content="The Skinning Shed">
+  <meta name="robots" content="index, follow">
+  
+  <!-- Canonical URL -->
+  <link rel="canonical" href="https://www.theskinningshed.com/">
+  
+  <!-- Open Graph / Facebook / iMessage Link Preview -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.theskinningshed.com/" />
+  <meta property="og:title" content="The Skinning Shed" />
+  <meta property="og:description" content="Trophy Walls • Clubs • Weather • Land • Swap Shop" />
+  <meta property="og:image" content="https://www.theskinningshed.com/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="The Skinning Shed - Hunting & Fishing Community" />
+  <meta property="og:site_name" content="The Skinning Shed" />
+  <meta property="og:locale" content="en_US" />
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://www.theskinningshed.com/" />
+  <meta name="twitter:title" content="The Skinning Shed" />
+  <meta name="twitter:description" content="Trophy Walls • Clubs • Weather • Land • Swap Shop" />
+  <meta name="twitter:image" content="https://www.theskinningshed.com/og-image.png" />
+  <meta name="twitter:image:alt" content="The Skinning Shed - Hunting & Fishing Community" />
+  
+  <!-- Theme Color -->
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="msapplication-TileColor" content="#1a1a1a">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="The Skinning Shed">
+  
+  <!-- Disable iOS Safari automatic link detection (email/phone/address/date) -->
+  <meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon.png">
+  <link rel="shortcut icon" href="favicon.png">
+
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Preconnect to Supabase for faster API calls -->
+  <link rel="preconnect" href="https://ssrlhrydcetpspmdphfo.supabase.co">
+  <link rel="dns-prefetch" href="https://ssrlhrydcetpspmdphfo.supabase.co">
+  
+  <!-- Global styles - MUST be in head to prevent FOUC and Safari styling issues -->
+  <style>
+    /* Prevent Safari/Browser default underlines/colors for any anchor tags Flutter may emit */
+    a, a:link, a:visited, a:hover, a:active {
+      color: inherit !important;
+      text-decoration: none !important;
+      -webkit-text-decoration: none !important;
+      border-bottom: none !important;
+      outline: none !important;
+    }
+
+    /* Prevent iOS tap highlight boxes that can look like yellow accents */
+    *, *::before, *::after {
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-touch-callout: none;
+    }
+    
+    /* Disable iOS data detection styling */
+    [x-apple-data-detectors] {
+      color: inherit !important;
+      text-decoration: none !important;
+    }
+    
+    /* Base body styles */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0a0a0a;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <style>
+    .loading-indicator {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .loading-indicator svg {
+      width: 48px;
+      height: 48px;
+      animation: spin 1s linear infinite;
+    }
+    .loading-indicator p {
+      color: #666;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <div class="loading-indicator" id="loading">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2">
+      <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+      <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+    </svg>
+    <p>Loading The Skinning Shed...</p>
+  </div>
+  <script>
+    // Remove loading indicator once Flutter is ready
+    window.addEventListener('flutter-first-frame', function() {
+      var loading = document.getElementById('loading');
+      if (loading) loading.remove();
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

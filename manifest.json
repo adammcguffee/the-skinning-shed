@@ -1,0 +1,39 @@
+{
+    "name": "The Skinning Shed",
+    "short_name": "Skinning Shed",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#0a0a0a",
+    "theme_color": "#1a1a1a",
+    "description": "The ultimate hunting and fishing community. Share trophies, find land, trade gear, and connect with fellow hunters.",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "categories": ["sports", "social", "lifestyle"],
+    "lang": "en-US",
+    "id": "theskinningshed",
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
