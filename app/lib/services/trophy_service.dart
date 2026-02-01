@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -64,42 +65,49 @@ class TrophyService {
   Future<Map<String, dynamic>?> fetchTrophy(String id) async {
     if (_client == null) return null;
     
-    final response = await _client
-        .from('trophy_posts')
-        .select('''
-          *,
-          profiles:user_id (
-            id,
-            username,
-            display_name,
-            avatar_path
-          ),
-          trophy_photos (
-            id,
-            storage_path,
-            sort_order
-          ),
-          weather_snapshots (
-            temp_f,
-            feels_like_f,
-            wind_speed,
-            wind_dir_deg,
-            wind_dir_text,
-            pressure_hpa,
-            pressure_inhg,
-            humidity_pct,
-            cloud_pct,
-            condition_text
-          ),
-          moon_snapshots (
-            phase_name,
-            illumination_pct
-          )
-        ''')
-        .eq('id', id)
-        .single();
-    
-    return response;
+    try {
+      final response = await _client
+          .from('trophy_posts')
+          .select('''
+            *,
+            profiles:user_id (
+              id,
+              username,
+              display_name,
+              avatar_path
+            ),
+            trophy_photos (
+              id,
+              storage_path,
+              sort_order
+            ),
+            weather_snapshots (
+              temp_f,
+              feels_like_f,
+              wind_speed,
+              wind_dir_deg,
+              wind_dir_text,
+              pressure_hpa,
+              pressure_inhg,
+              humidity_pct,
+              cloud_pct,
+              condition_text
+            ),
+            moon_snapshots (
+              phase_name,
+              illumination_pct
+            )
+          ''')
+          .eq('id', id)
+          .maybeSingle();
+      
+      return response;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[TrophyService] fetchTrophy error: $e');
+      }
+      rethrow;
+    }
   }
   
   /// Fetch trophies for a specific user (Trophy Wall).
