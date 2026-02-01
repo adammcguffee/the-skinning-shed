@@ -581,8 +581,8 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
   }
 
   Widget _buildHeaderInfo(BuildContext context) {
-    final species = _trophy!['species']?['common_name'] ?? 
-                    _trophy!['custom_species_name'] ?? 'Trophy';
+    // Species comes from custom_species_name since species table doesn't exist
+    final species = _trophy!['custom_species_name'] ?? 'Trophy';
     final category = _trophy!['category'] as String? ?? '';
     final state = _trophy!['state'] ?? '';
     final county = _trophy!['county'] ?? '';

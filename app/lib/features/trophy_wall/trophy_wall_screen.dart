@@ -1523,8 +1523,8 @@ class _TrophyGridItemState extends State<_TrophyGridItem> {
   }
   
   String get _speciesName {
-    // Get species name: prefer species.common_name, fallback to category label
-    final speciesName = widget.trophy['species']?['common_name'] as String?;
+    // Get species name: prefer custom_species_name, fallback to category label
+    final speciesName = widget.trophy['custom_species_name'] as String?;
     if (speciesName != null && speciesName.isNotEmpty) return speciesName;
     
     // Custom species name fallback

@@ -599,8 +599,7 @@ class _CinematicFeedCardState extends State<_CinematicFeedCard> {
 
   @override
   Widget build(BuildContext context) {
-    final species = widget.trophy['species']?['common_name'] ?? 
-                    widget.trophy['custom_species_name'] ?? 'Trophy';
+    final species = widget.trophy['custom_species_name'] ?? 'Trophy';
     final state = widget.trophy['state'] ?? '';
     final county = widget.trophy['county'] ?? '';
     final location = [county, state].where((s) => s.isNotEmpty).join(', ');

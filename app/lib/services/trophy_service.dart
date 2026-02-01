@@ -32,10 +32,6 @@ class TrophyService {
             username,
             display_name,
             avatar_path
-          ),
-          species:species_id (
-            common_name,
-            scientific_name
           )
         ''')
         .eq('visibility', 'public');
@@ -78,10 +74,6 @@ class TrophyService {
             display_name,
             avatar_path
           ),
-          species:species_id (
-            common_name,
-            scientific_name
-          ),
           trophy_photos (
             id,
             storage_path,
@@ -116,12 +108,7 @@ class TrophyService {
     
     final response = await _client
         .from('trophy_posts')
-        .select('''
-          *,
-          species:species_id (
-            common_name
-          )
-        ''')
+        .select('*')
         .eq('user_id', userId)
         .order('harvest_date', ascending: false);
     
