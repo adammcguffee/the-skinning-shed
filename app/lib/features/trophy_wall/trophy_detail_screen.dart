@@ -10,6 +10,7 @@ import 'package:shed/services/social_service.dart';
 import 'package:shed/services/trophy_service.dart';
 import 'package:shed/services/supabase_service.dart';
 import 'package:shed/shared/widgets/widgets.dart';
+import 'package:shed/utils/privacy_utils.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// 🏆 TROPHY DETAIL SCREEN - 2025 PREMIUM
@@ -746,8 +747,13 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
 
   Widget _buildUserInfo(BuildContext context) {
     final profile = _trophy!['profiles'] as Map<String, dynamic>?;
-    final displayName = profile?['display_name'] ?? profile?['username'] ?? 'Hunter';
-    final username = profile?['username'];
+    // Use privacy-safe display name (never shows emails)
+    final displayName = getSafeDisplayName(
+      displayName: profile?['display_name'] as String?,
+      username: profile?['username'] as String?,
+      defaultName: 'Hunter',
+    );
+    final username = sanitizeDisplayValue(profile?['username'] as String?);
     final userId = profile?['id'];
     final currentUserId = ref.read(currentUserProvider)?.id;
 
@@ -784,7 +790,7 @@ class _TrophyDetailScreenState extends ConsumerState<TrophyDetailScreen> {
                     displayName,
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
-                  if (username != null)
+                  if (username != null && username.isNotEmpty)
                     Text(
                       '@$username',
                       style: Theme.of(context).textTheme.bodySmall,

@@ -1,6 +1,6 @@
 -- Fix trophy post related RLS policies
 -- Error 42501 (insufficient_privilege) was occurring on INSERT
--- Root cause: weather_snapshots and moon_snapshots were missing INSERT policies
+-- Root cause: weather_snapshots, moon_snapshots, and analytics_buckets were missing INSERT policies
 
 -- ============================================
 -- WEATHER SNAPSHOTS - Add INSERT policy
@@ -32,6 +32,23 @@ WITH CHECK (
   EXISTS (
     SELECT 1 FROM trophy_posts
     WHERE trophy_posts.id = moon_snapshots.post_id
+    AND trophy_posts.user_id = auth.uid()
+  )
+);
+
+-- ============================================
+-- ANALYTICS BUCKETS - Add INSERT policy
+-- ============================================
+DROP POLICY IF EXISTS "Users can insert analytics for own posts" ON analytics_buckets;
+
+CREATE POLICY "Users can insert analytics for own posts"
+ON analytics_buckets
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM trophy_posts
+    WHERE trophy_posts.id = analytics_buckets.post_id
     AND trophy_posts.user_id = auth.uid()
   )
 );
